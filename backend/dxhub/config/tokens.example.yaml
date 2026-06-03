@@ -1,0 +1,21 @@
+tokens:
+  DX-JP-TEST-001:
+    enabled: true
+    client_name: cn-client-01
+    expires_at: 2026-07-01
+    egress:
+      name: mac-mini
+      display_name: 日本住宅出口
+      region: 日本
+      type: 住宅 IP
+      management_addr: 100.80.36.89
+      proxy_addr: 10.66.0.100:1080
+    local_proxy:
+      listen_addr: 127.0.0.1
+      listen_port: 7890
+    hub:
+      endpoint: 36.50.84.68:51820
+      public_key: HUB_WIREGUARD_PUBLIC_KEY
+    wireguard:
+      address: 10.66.0.20/24
+      private_key: CLIENT_WIREGUARD_PRIVATE_KEY

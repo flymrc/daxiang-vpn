@@ -1,0 +1,81 @@
+package paths
+
+import (
+	"os"
+	"path/filepath"
+)
+
+type Context struct {
+	Root             string
+	ConfigPath       string
+	SingBoxConfig    string
+	RunDir           string
+	BinDir           string
+	SingBoxPath      string
+	PIDPath          string
+	LogDir           string
+	SingBoxLogPath   string
+	SingBoxErrorPath string
+}
+
+func NewContext() (Context, error) {
+	root := os.Getenv("DXVPN_HOME")
+	if root == "" {
+		local := os.Getenv("LOCALAPPDATA")
+		if local == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return Context{}, err
+			}
+			local = filepath.Join(home, "AppData", "Local")
+		}
+		root = filepath.Join(local, "DaxiangVPN")
+	}
+
+	return Context{
+		Root:             root,
+		ConfigPath:       filepath.Join(root, "config.yaml"),
+		SingBoxConfig:    filepath.Join(root, "runtime", "session.json"),
+		RunDir:           filepath.Join(root, "run"),
+		BinDir:           filepath.Join(root, "bin"),
+		SingBoxPath:      filepath.Join(root, "bin", "dxvpn.exe"),
+		PIDPath:          filepath.Join(root, "run", "dxvpn.pid"),
+		LogDir:           filepath.Join(root, "logs"),
+		SingBoxLogPath:   filepath.Join(root, "logs", "dxvpn.log"),
+		SingBoxErrorPath: filepath.Join(root, "logs", "dxvpn.err.log"),
+	}, nil
+}
+
+func (c Context) EnsureDirs() error {
+	for _, dir := range []string{
+		c.Root,
+		filepath.Dir(c.SingBoxConfig),
+		c.RunDir,
+		c.BinDir,
+		c.LogDir,
+	} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return err
+		}
+	}
+	_ = c.RemoveLegacyArtifacts()
+	return nil
+}
+
+func (c Context) RemoveLegacyArtifacts() error {
+	legacyPaths := []string{
+		filepath.Join(c.Root, "sing-box"),
+		filepath.Join(c.RunDir, "sing-box.pid"),
+		filepath.Join(c.LogDir, "sing-box.log"),
+		filepath.Join(c.LogDir, "sing-box.err.log"),
+		c.SingBoxConfig,
+		c.SingBoxLogPath,
+		c.SingBoxErrorPath,
+	}
+	for _, path := range legacyPaths {
+		if err := os.RemoveAll(path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
