@@ -28,7 +28,16 @@ func Run(args []string) error {
 
 	switch args[0] {
 	case proxy.EngineCommand:
-		return proxy.RunEngine(ctx)
+		return proxy.RunEngine(engineContext(ctx, args[1:]))
+	case proxy.KillCommand:
+		if len(args) < 2 {
+			return errors.New("缺少 pid")
+		}
+		pid, err := strconv.Atoi(args[1])
+		if err != nil {
+			return fmt.Errorf("无效 pid：%s", args[1])
+		}
+		return proxy.KillPID(pid)
 	case "login":
 		if len(args) != 2 {
 			return errors.New("用法：dxvpn.exe login <授权码>")
@@ -58,46 +67,68 @@ func printUsage() {
 
 用法：
   dxvpn.exe login <授权码>
-  dxvpn.exe start [--port <端口>]
+  dxvpn.exe start [--port <端口>] [--fast]
   dxvpn.exe status
   dxvpn.exe stop
   dxvpn.exe help
 
 本地代理端口默认 7890，可临时指定其它端口：
   dxvpn.exe start --port 7891
-也可用环境变量 DXVPN_LOCAL_PORT 指定（--port 优先）。`)
+也可用环境变量 DXVPN_LOCAL_PORT 指定（--port 优先）。
+
+--fast：高性能模式，使用系统网络栈（延迟更低、速度更快），
+        需要管理员权限，启动时会弹出 UAC 授权窗口。`)
 }
 
-// parsePortOverride resolves the local proxy port override for `start`.
-// Precedence: --port flag > DXVPN_LOCAL_PORT env > 0 (use Hub/config value).
-func parsePortOverride(args []string) (int, error) {
+type startOptions struct {
+	port int  // 0 = use Hub/config value
+	fast bool // system TUN (admin)
+}
+
+// parseStartOptions parses the `start` flags.
+// Port precedence: --port flag > DXVPN_LOCAL_PORT env > 0 (use Hub/config value).
+func parseStartOptions(args []string) (startOptions, error) {
+	var opts startOptions
 	portText := ""
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
+		case arg == "--fast":
+			opts.fast = true
 		case arg == "--port":
 			if i+1 >= len(args) {
-				return 0, errors.New("--port 需要一个端口号")
+				return opts, errors.New("--port 需要一个端口号")
 			}
 			portText = args[i+1]
 			i++
 		case strings.HasPrefix(arg, "--port="):
 			portText = strings.TrimPrefix(arg, "--port=")
 		default:
-			return 0, fmt.Errorf("未知参数：%s", arg)
+			return opts, fmt.Errorf("未知参数：%s", arg)
 		}
 	}
 	if portText == "" {
 		portText = strings.TrimSpace(os.Getenv("DXVPN_LOCAL_PORT"))
 	}
-	if portText == "" {
-		return 0, nil
+	if portText != "" {
+		port, err := strconv.Atoi(portText)
+		if err != nil || port < 1 || port > 65535 {
+			return opts, fmt.Errorf("端口无效：%s", portText)
+		}
+		opts.port = port
 	}
-	port, err := strconv.Atoi(portText)
-	if err != nil || port < 1 || port > 65535 {
-		return 0, fmt.Errorf("端口无效：%s", portText)
+	return opts, nil
+}
+
+// engineContext resolves the context for the engine child, honoring --home so
+// an elevated engine uses the launching user's paths.
+func engineContext(def paths.Context, args []string) paths.Context {
+	for i := 0; i < len(args); i++ {
+		if args[i] == proxy.HomeFlag && i+1 < len(args) {
+			return paths.FromRoot(args[i+1])
+		}
 	}
-	return port, nil
+	return def
 }
 
 func login(ctx paths.Context, token string) error {
@@ -163,7 +194,7 @@ func loadInstalledConfig(ctx paths.Context) (config.Config, error) {
 }
 
 func start(ctx paths.Context, args []string) error {
-	portOverride, err := parsePortOverride(args)
+	opts, err := parseStartOptions(args)
 	if err != nil {
 		return err
 	}
@@ -172,8 +203,8 @@ func start(ctx paths.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if portOverride != 0 {
-		cfg.LocalProxy.ListenPort = portOverride
+	if opts.port != 0 {
+		cfg.LocalProxy.ListenPort = opts.port
 		if err := cfg.Validate(); err != nil {
 			return err
 		}
@@ -194,20 +225,28 @@ func start(ctx paths.Context, args []string) error {
 		return nil
 	}
 
-	if err := proxy.WriteSingBoxConfig(ctx, cfg); err != nil {
+	if err := proxy.WriteSingBoxConfig(ctx, cfg, opts.fast); err != nil {
 		return err
 	}
 	defer func() {
 		_ = os.Remove(ctx.SingBoxConfig)
 	}()
-	if err := proxy.Start(ctx, cfg); err != nil {
+	if err := proxy.Start(ctx, cfg, opts.fast); err != nil {
 		return err
 	}
-	if !waitForTCP(cfg.LocalProxy.Addr(), 8*time.Second) {
+	// System TUN (--fast) takes longer to come up (driver + interface setup).
+	timeout := 8 * time.Second
+	if opts.fast {
+		timeout = 20 * time.Second
+	}
+	if !waitForTCP(cfg.LocalProxy.Addr(), timeout) {
 		return errors.New("代理启动失败，请重试")
 	}
 
 	fmt.Println("已启动")
+	if opts.fast {
+		fmt.Println("模式：高性能（系统网络栈）")
+	}
 	printStartSummary(cfg)
 	return nil
 }

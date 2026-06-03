@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"syscall"
 
 	box "github.com/sagernet/sing-box"
@@ -34,6 +36,13 @@ import (
 // dozens of protocols (vmess/vless/trojan/shadowsocks/tor/...) that the full
 // sing-box ships with, which is what keeps the binary small.
 func RunEngine(ctx paths.Context) error {
+	// Record our own PID so Stop can find us — works whether we were launched
+	// normally or elevated (where the parent can't capture the child PID).
+	_ = os.MkdirAll(filepath.Dir(ctx.PIDPath), 0700)
+	if err := os.WriteFile(ctx.PIDPath, []byte(strconv.Itoa(os.Getpid())), 0600); err != nil {
+		return err
+	}
+
 	content, err := os.ReadFile(ctx.SingBoxConfig)
 	if err != nil {
 		return err

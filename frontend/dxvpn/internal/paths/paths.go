@@ -32,6 +32,12 @@ func NewContext() (Context, error) {
 		root = filepath.Join(local, "DaxiangVPN")
 	}
 
+	return FromRoot(root), nil
+}
+
+// FromRoot builds a Context rooted at an explicit directory. Used to pass the
+// resolved root to the (possibly elevated) engine child via the --home flag.
+func FromRoot(root string) Context {
 	return Context{
 		Root:             root,
 		ConfigPath:       filepath.Join(root, "config.yaml"),
@@ -43,7 +49,7 @@ func NewContext() (Context, error) {
 		LogDir:           filepath.Join(root, "logs"),
 		SingBoxLogPath:   filepath.Join(root, "logs", "dxvpn.log"),
 		SingBoxErrorPath: filepath.Join(root, "logs", "dxvpn.err.log"),
-	}, nil
+	}
 }
 
 func (c Context) EnsureDirs() error {

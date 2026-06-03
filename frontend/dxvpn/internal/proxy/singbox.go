@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -18,6 +19,15 @@ import (
 // EngineCommand is the hidden subcommand that runs sing-box in-process. Start
 // re-executes this binary with this argument as a detached background process.
 const EngineCommand = "__engine"
+
+// KillCommand is the hidden subcommand that terminates a PID. It exists so the
+// elevated kill path (for --fast engines) shows our app name in the UAC prompt
+// rather than taskkill.
+const KillCommand = "__killpid"
+
+// HomeFlag passes the resolved app root to the engine child, so an elevated
+// engine reads the same config/PID paths even if UAC ran under another account.
+const HomeFlag = "--home"
 
 // Windows process creation flags used to launch the engine without a console
 // window and detached from this CLI process group.
@@ -76,7 +86,7 @@ type singBoxRoute struct {
 	Final string `json:"final"`
 }
 
-func WriteSingBoxConfig(ctx paths.Context, cfg config.Config) error {
+func WriteSingBoxConfig(ctx paths.Context, cfg config.Config, systemTUN bool) error {
 	host, portText, err := splitAddr(cfg.Egress.ProxyAddr)
 	if err != nil {
 		return err
@@ -90,9 +100,11 @@ func WriteSingBoxConfig(ctx paths.Context, cfg config.Config) error {
 	sb := singBoxConfig{
 		Log: singBoxLog{Level: "error"},
 		Endpoints: []singBoxEndpoint{{
-			Type:    "wireguard",
-			Tag:     "dxvpn-wg",
-			System:  false,
+			Type: "wireguard",
+			Tag:  "dxvpn-wg",
+			// system=false 走用户态 gVisor 网络栈（免管理员，默认）；
+			// system=true 走系统 wintun TUN（--fast，需管理员，性能更高、延迟更低）。
+			System: systemTUN,
 			// 用户态 gVisor WireGuard 在高延迟链路上对 MTU 敏感：中国移动等
 			// 网络实际 MTU 常低于 1420，大包在 client→Hub 段被丢会导致上传塌陷。
 			// 取 1280（IPv6 最小 MTU）最保守，杜绝分片丢包。
@@ -148,17 +160,24 @@ func hiddenString(data []byte) string {
 	return string(out)
 }
 
-// Start launches the in-process sing-box engine in a detached background
-// child process (this same binary re-executed with EngineCommand) and records
-// its PID so Stop can terminate it later.
-func Start(ctx paths.Context, cfg config.Config) error {
+// Start launches the in-process sing-box engine in a detached background child
+// process (this same binary re-executed with EngineCommand). The engine writes
+// its own PID file. When fast is true the engine needs administrator rights to
+// create the system TUN, so it is launched elevated via UAC.
+func Start(ctx paths.Context, cfg config.Config, fast bool) error {
 	_ = cfg
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
 
-	cmd := exec.Command(exe, EngineCommand)
+	if fast {
+		// System TUN requires admin; elevate the engine (UAC prompt). The
+		// resolved root is passed so the elevated process reads the same paths.
+		return runElevated(exe, fmt.Sprintf(`%s %s "%s"`, EngineCommand, HomeFlag, ctx.Root), false)
+	}
+
+	cmd := exec.Command(exe, EngineCommand, HomeFlag, ctx.Root)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
 		CreationFlags: createNewProcessGroup | createNoWindow,
@@ -166,11 +185,7 @@ func Start(ctx paths.Context, cfg config.Config) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	if err := os.WriteFile(ctx.PIDPath, []byte(strconv.Itoa(cmd.Process.Pid)), 0600); err != nil {
-		_ = cmd.Process.Kill()
-		return err
-	}
-	// Detach: the engine must keep running after this CLI process exits.
+	// Detach: the engine writes its own PID and keeps running after we exit.
 	_ = cmd.Process.Release()
 	return nil
 }
@@ -187,12 +202,27 @@ func Stop(ctx paths.Context) (bool, error) {
 		_ = os.Remove(ctx.PIDPath)
 		return false, nil
 	}
-	cmd := exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/T", "/F")
-	if err := cmd.Run(); err != nil {
-		return false, err
+	// Normal kill — works for the default (non-elevated) gVisor engine.
+	_ = KillPID(pid)
+	if pidRunning(pid) {
+		// Still alive: likely an elevated --fast engine. Retry the kill with
+		// elevation via our own __killpid (so UAC shows the app name).
+		if exe, e := os.Executable(); e == nil {
+			_ = runElevated(exe, fmt.Sprintf("%s %d", KillCommand, pid), true)
+		}
+	}
+	if pidRunning(pid) {
+		return false, errors.New("停止失败，请重试")
 	}
 	_ = os.Remove(ctx.PIDPath)
 	return true, nil
+}
+
+// KillPID force-terminates a process tree by PID. Invoked directly by Stop and,
+// elevated, via the KillCommand subcommand.
+func KillPID(pid int) error {
+	taskkill := filepath.Join(os.Getenv("SystemRoot"), "System32", "taskkill.exe")
+	return exec.Command(taskkill, "/PID", strconv.Itoa(pid), "/T", "/F").Run()
 }
 
 func IsRunning(ctx paths.Context) (bool, int) {
