@@ -45,6 +45,7 @@ dxvpn.exe stop
 ## 关键文档
 
 - [安全与抗封改进 TODO](docs/implementation/TODO_SECURITY.md)
+- [Hub 安全审查报告 2026-06-04](docs/ops/SECURITY_AUDIT_2026-06-04.md)
 - [Hub 授权 API MVP](docs/implementation/AUTH_API_MVP.md)
 - [Hub 授权 API 部署](docs/ops/HUB_API_DEPLOY.md)
 - [运维诊断命令手册](docs/ops/DIAGNOSTICS.md)
