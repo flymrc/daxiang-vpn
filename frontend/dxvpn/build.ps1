@@ -1,4 +1,4 @@
-# 构建大象 VPN Windows 客户端发布包。
+﻿# 构建大象 VPN Windows 客户端发布包。
 #
 # sing-box 以代码库形式编译进 dxvpn.exe（进程内运行），不再内嵌外部 exe。
 # 体积优化：
