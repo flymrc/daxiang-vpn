@@ -70,7 +70,7 @@ frontend/dxvpn/cmd/dxandroid-egress
 
 示例配置见：
 
-- [android-egress-01.yaml.example](../ops/configs/egress/android-egress-01.yaml.example)
+- [android-egress-01.yaml.example](../20-operations/configs/egress/android-egress-01.yaml.example)
 
 核心字段：
 
@@ -101,7 +101,7 @@ go build -o ..\..\dist\dxandroid-egress ./cmd/dxandroid-egress
 
 ```sh
 adb push dist/dxandroid-egress /data/local/tmp/dxandroid-egress
-adb push docs/ops/configs/egress/android-egress-01.yaml.example /data/local/tmp/android-egress.yaml
+adb push docs/20-operations/configs/egress/android-egress-01.yaml.example /data/local/tmp/android-egress.yaml
 
 adb shell su -c 'chmod 755 /data/local/tmp/dxandroid-egress'
 adb shell su -c "/data/local/tmp/dxandroid-egress validate --config /data/local/tmp/android-egress.yaml"
@@ -131,3 +131,4 @@ Android egress agent
 3. 确认代理端口能绑定到 WireGuard 地址。
 4. 从 Hub 上确认该节点握手正常。
 5. 再补后台保活、前台服务和自恢复。
+
