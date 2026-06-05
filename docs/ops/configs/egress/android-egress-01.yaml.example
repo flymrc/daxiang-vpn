@@ -1,0 +1,13 @@
+node:
+  name: jp-android-01
+
+hub:
+  endpoint: 36.50.84.68:51820
+  public_key: HUB_PUBLIC_KEY_HERE
+
+wireguard:
+  address: 10.66.0.100/32
+  private_key: ANDROID_WG_PRIVATE_KEY_HERE
+
+proxy:
+  listen_port: 1080
