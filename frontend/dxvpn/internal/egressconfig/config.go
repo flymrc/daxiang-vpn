@@ -30,6 +30,17 @@ type HubConfig struct {
 type WireGuardConfig struct {
 	Address    string `json:"address" yaml:"address"`
 	PrivateKey string `json:"private_key" yaml:"private_key"`
+	// System 决定 sing-box 用系统 WireGuard（真实 tun 接口，需 root）还是用户态 gVisor 栈。
+	// egress 节点要在 WireGuard 内网地址上暴露代理端口，必须用系统接口，因此默认 true。
+	System *bool `json:"system,omitempty" yaml:"system,omitempty"`
+}
+
+// SystemTun 返回是否使用系统 WireGuard 接口，未配置时默认 true。
+func (w WireGuardConfig) SystemTun() bool {
+	if w.System == nil {
+		return true
+	}
+	return *w.System
 }
 
 type ProxyConfig struct {
@@ -102,6 +113,16 @@ func (c Config) ProxyAddr() (string, error) {
 		return "", err
 	}
 	return net.JoinHostPort(addr, strconv.Itoa(c.Proxy.ListenPort)), nil
+}
+
+// SubnetCIDR 返回 wireguard.address 所在子网，例如 10.66.0.101/24 -> 10.66.0.0/24。
+// 用于在系统 WG 模式下添加策略路由，确保回 Hub 的流量走 wg 接口。
+func (w WireGuardConfig) SubnetCIDR() (string, error) {
+	_, ipnet, err := net.ParseCIDR(strings.TrimSpace(w.Address))
+	if err != nil {
+		return "", fmt.Errorf("wireguard.address 格式错误，应类似 10.66.0.101/24")
+	}
+	return ipnet.String(), nil
 }
 
 func (w WireGuardConfig) AddressIP() (net.IP, error) {

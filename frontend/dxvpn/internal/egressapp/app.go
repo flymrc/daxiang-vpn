@@ -3,7 +3,10 @@ package egressapp
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
+	"os/exec"
+	"time"
 
 	"daxiang-vpn/frontend/dxvpn/internal/egressconfig"
 	"daxiang-vpn/frontend/dxvpn/internal/egressproxy"
@@ -126,9 +129,50 @@ func render(configPath string, workdir string) error {
 }
 
 func run(configPath string, workdir string) error {
+	cfg, err := egressconfig.Load(configPath)
+	if err != nil {
+		return err
+	}
 	if err := render(configPath, workdir); err != nil {
 		return err
 	}
+	if cfg.WireGuard.SystemTun() {
+		go ensureWGRouting(cfg)
+	}
 	fmt.Println("启动出口守护进程（前台）")
 	return proxy.RunEngine(paths.FromRoot(workdir))
+}
+
+// ensureWGRouting 在系统 WG 模式下，等待 wg0 接口就绪后添加一条策略路由规则，
+// 让发往 WG 子网（含 Hub 内网地址）的流量走 main 路由表，从而命中 wg0 的连接路由。
+// Android 使用基于 fwmark 的策略路由，默认不查 main 表，导致回 Hub 的 SYN-ACK
+// 误走蜂窝/WiFi 默认路由而丢失。此规则修复该问题。
+func ensureWGRouting(cfg egressconfig.Config) {
+	subnet, err := cfg.WireGuard.SubnetCIDR()
+	if err != nil {
+		fmt.Printf("警告：无法解析 WG 子网，跳过路由设置：%v\n", err)
+		return
+	}
+	for i := 0; i < 30; i++ {
+		if wgInterfaceReady("wg0") {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	// 幂等：先删除同优先级的旧规则再添加，忽略删除错误。
+	_ = exec.Command("ip", "rule", "del", "to", subnet, "lookup", "main", "pref", "9999").Run()
+	if out, err := exec.Command("ip", "rule", "add", "to", subnet, "lookup", "main", "pref", "9999").CombinedOutput(); err != nil {
+		fmt.Printf("警告：添加 WG 策略路由失败（可能缺少 root 或 ip 工具）：%v %s\n", err, string(out))
+		return
+	}
+	fmt.Printf("已添加 WG 策略路由：to %s lookup main pref 9999\n", subnet)
+}
+
+func wgInterfaceReady(name string) bool {
+	ifi, err := net.InterfaceByName(name)
+	if err != nil {
+		return false
+	}
+	addrs, err := ifi.Addrs()
+	return err == nil && len(addrs) > 0
 }

@@ -13,6 +13,7 @@ import (
 
 type singBoxConfig struct {
 	Log       singBoxLog        `json:"log"`
+	DNS       singBoxDNS        `json:"dns"`
 	Endpoints []singBoxEndpoint `json:"endpoints,omitempty"`
 	Inbounds  []singBoxInbound  `json:"inbounds"`
 	Outbounds []singBoxOutbound `json:"outbounds"`
@@ -21,6 +22,15 @@ type singBoxConfig struct {
 
 type singBoxLog struct {
 	Level string `json:"level"`
+}
+
+type singBoxDNS struct {
+	Servers  []singBoxDNSServer `json:"servers"`
+	Strategy string             `json:"strategy,omitempty"`
+}
+
+type singBoxDNSServer struct {
+	Address string `json:"address"`
 }
 
 type singBoxInbound struct {
@@ -70,10 +80,17 @@ func WriteConfig(ctx paths.Context, cfg egressconfig.Config) error {
 
 	sb := singBoxConfig{
 		Log: singBoxLog{Level: "info"},
+		DNS: singBoxDNS{
+			Servers: []singBoxDNSServer{
+				{Address: "1.1.1.1"},
+				{Address: "8.8.8.8"},
+			},
+			Strategy: "prefer_ipv4",
+		},
 		Endpoints: []singBoxEndpoint{{
 			Type:       "wireguard",
 			Tag:        "dxvpn-wg",
-			System:     false,
+			System:     cfg.WireGuard.SystemTun(),
 			MTU:        1280,
 			Address:    []string{cfg.WireGuard.Address},
 			PrivateKey: cfg.WireGuard.PrivateKey,
