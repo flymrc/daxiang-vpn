@@ -2,6 +2,8 @@ package auth
 
 import (
 	"encoding/json"
+	"log"
+	"net"
 	"net/http"
 	"time"
 )
@@ -48,10 +50,12 @@ func (s *Server) Bootstrap(w http.ResponseWriter, r *http.Request) {
 
 	record, ok := s.store.Resolve(req.Token, time.Now())
 	if !ok {
+		log.Printf("bootstrap 拒绝 src=%s token=%q reason=invalid_token", clientIP(r), maskToken(req.Token))
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_token"})
 		return
 	}
 
+	log.Printf("bootstrap 通过 src=%s token=%q client=%s egress=%s", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name)
 	writeJSON(w, http.StatusOK, bootstrapResponse{
 		Client:     clientResponse{Name: record.ClientName},
 		Hub:        record.Hub,
@@ -59,6 +63,50 @@ func (s *Server) Bootstrap(w http.ResponseWriter, r *http.Request) {
 		LocalProxy: record.LocalProxy,
 		WireGuard:  record.WireGuard,
 	})
+}
+
+// clientIP 优先取反向代理透传的 X-Forwarded-For 首段，否则用 TCP 远端地址。
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if i := indexComma(xff); i >= 0 {
+			return trimSpace(xff[:i])
+		}
+		return trimSpace(xff)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+// maskToken 只保留首尾，避免把完整授权码写进日志。
+func maskToken(t string) string {
+	t = trimSpace(t)
+	if len(t) <= 6 {
+		return "***"
+	}
+	return t[:3] + "***" + t[len(t)-2:]
+}
+
+func indexComma(s string) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == ',' {
+			return i
+		}
+	}
+	return -1
+}
+
+func trimSpace(s string) string {
+	start, end := 0, len(s)
+	for start < end && (s[start] == ' ' || s[start] == '\t') {
+		start++
+	}
+	for end > start && (s[end-1] == ' ' || s[end-1] == '\t') {
+		end--
+	}
+	return s[start:end]
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
