@@ -221,18 +221,24 @@ Hub 上还存在多个 WireGuard peer：
 - `dxandroid-egress` 支持 `wireguard.workers` 配置项。
 - 手机当前实验参数：`mtu: 1200`，`workers: 4`。
 - 重启后 Magisk service 能重新拉起 Android 出口。
+- Hub 已为 Android peer 固化专用路由 MTU：
+  - `ip route replace 10.66.0.101/32 dev wg0 mtu 1280`
+  - 已写入 `/opt/jp-gateway/wireguard/wg0.conf` 和 `/etc/wireguard/wg0.conf` 的 `PostUp`。
 
 复测结果：
 
 - Hub 经 Android WiFi 出口 50MB 下载约 23.8 Mbps。
 - Hub 经 Android WiFi 出口 20MB 多次测试存在波动，约 16-47 Mbps。
 - Windows 本地代理重启后经 Android WiFi 出口约 12.4 Mbps。
+- 新增 `scripts/measure-android-egress.ps1` 用于从 Hub 侧重复测量 Android 出口：
+  - WiFi 场景 3 轮样本曾测得平均约 27.66 Mbps，最小 13.78 Mbps，最大 39.76 Mbps。
 
 判断：
 
 - 当前瓶颈已经不是 Hub 或手机 WiFi 下载能力。
 - 蜂窝场景的低速主要来自手机上行到 Hub。
 - WiFi 场景仍有波动，后续应优先评估替换 Android 侧 WireGuard 承载方式，而不是继续只调 MTU。
+- Hub 侧 MSS 从 `1240` 临时降到 `1160` 对 Windows 同源测试没有明显收益，已恢复 `1240`。
 
 ## 待办
 

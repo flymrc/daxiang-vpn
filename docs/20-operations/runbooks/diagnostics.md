@@ -53,6 +53,18 @@ wg show wg0 transfer            # 每个公钥的收/发字节
 wg show wg0 endpoints           # 每个公钥的对端地址
 ```
 
+Android 出口当前有一条 Hub 侧专用路由 MTU，用来降低 Hub 发往 Android peer 的包尺寸：
+
+```bash
+ip route show 10.66.0.101/32
+```
+
+正常应看到类似：
+
+```text
+10.66.0.101 dev wg0 scope link mtu 1280
+```
+
 ### 1.2 看转发是否开启
 
 ```bash
