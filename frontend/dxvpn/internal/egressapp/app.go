@@ -136,7 +136,7 @@ func run(configPath string, workdir string) error {
 	if err := render(configPath, workdir); err != nil {
 		return err
 	}
-	if cfg.WireGuard.SystemTun() {
+	if !cfg.WireGuard.ExternalMode() && cfg.WireGuard.SystemTun() {
 		go ensureWGRouting(cfg)
 	}
 	fmt.Println("启动出口守护进程（前台）")

@@ -247,6 +247,35 @@ Hub 上还存在多个 WireGuard peer：
 - WiFi 场景仍有波动，后续应优先评估替换 Android 侧 WireGuard 承载方式，而不是继续只调 MTU。
 - Hub 侧 MSS 从 `1240` 临时降到 `1160` 对 Windows 同源测试没有明显收益，已恢复 `1240`。
 
+## Android WireGuard App external 模式验证
+
+已验证上午提出的第一个优化方向：用真实 WireGuard App 隧道替代 sing-box 内置 WireGuard endpoint，只让 `dxandroid-egress` 做代理。
+
+变更：
+
+- 安装 WireGuard 官方 Android App。
+- 导入 `jp-android-01` 隧道。
+- 手机端 `dxandroid-egress` 配置切到 `wireguard.mode: external`。
+- `dxandroid-egress` 新版本在 external 模式下不再渲染 sing-box `wireguard` endpoint，只渲染 `10.66.0.101:1080` mixed 代理。
+- Magisk service 脚本调整为 external 模式下不再添加旧的 `ip rule add to 10.66.0.0/24 lookup main pref 9999`。
+
+验证结果：
+
+- WireGuard App 创建 `tun0`，地址为 `10.66.0.101/24`。
+- `dxandroid-egress` 成功绑定 `10.66.0.101:1080`。
+- Hub 快检全绿，出口 IP 为 `133.106.140.188`。
+- Rakuten 卡场景下，Hub 经 Android 出口 20MB 下载：
+  - 3 轮平均约 `17.06 Mbps`，最小 `14.47 Mbps`，最大 `21.37 Mbps`。
+  - 后续 2 轮平均约 `10.69 Mbps`。
+- 切换到 external 模式后，最近日志未再出现新的 `sendmsg: message too long`。
+
+结论：
+
+- 方案 1 已验证有效。
+- 问题主要不是手机信号本身，而是 sing-box 内置 WireGuard endpoint 在 Android 移动网络上的发包路径。
+- 短期可继续使用 WireGuard App + `dxandroid-egress` proxy-only 模式。
+- 后续若还要冲高速，再评估 Hysteria2 / TUIC / QUIC 或日本侧更近 Hub。
+
 ## 待办
 
 1. 把出口选择产品化：
@@ -270,6 +299,6 @@ Hub 上还存在多个 WireGuard peer：
 6. 完善文档中的当前状态：
    - [服务器访问文档](../../20-operations/runbooks/server-access.md)里的 peer 表需要补上 Android 出口。
 7. 继续优化 Android 出口性能：
-   - 优先验证 Android 原生/内核 WireGuard + sing-box 仅做代理的方案。
+   - Android WireGuard App + sing-box 仅做代理的方案已验证有效。
    - 评估 Hysteria2 / TUIC / QUIC 作为手机到 Hub 的承载协议。
    - 继续追踪 `sendmsg: message too long` 是否来自 sing-box WireGuard endpoint 的 GSO 行为。

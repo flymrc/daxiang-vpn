@@ -28,6 +28,27 @@ func TestConfigValidateWireGuardTuning(t *testing.T) {
 	}
 }
 
+func TestConfigValidateWireGuardMode(t *testing.T) {
+	cfg := validConfig()
+	cfg.WireGuard.Mode = "invalid"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() accepted invalid wireguard.mode")
+	}
+
+	cfg = validConfig()
+	cfg.WireGuard.Mode = "external"
+	cfg.WireGuard.PrivateKey = ""
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() rejected external mode without private key: %v", err)
+	}
+
+	cfg = validConfig()
+	cfg.WireGuard.PrivateKey = ""
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() accepted embedded mode without private key")
+	}
+}
+
 func validConfig() Config {
 	return Config{
 		Node: NodeConfig{Name: "test"},

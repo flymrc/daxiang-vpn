@@ -34,9 +34,15 @@ Android rooted phone = egress agent
 
 它的职责是：
 
-- 连接 Hub。
+- 通过 WireGuard 连接 Hub。
 - 在 WireGuard 内网地址上监听 `1080` 代理端口。
 - 将收到的流量直接从手机卡网络出口发出。
+
+当前推荐运行方式是 `wireguard.mode: external`：
+
+- WireGuard 官方 App 负责 Android 到 Hub 的隧道。
+- `dxandroid-egress` 只负责在 `10.66.0.101:1080` 上提供 mixed 代理。
+- 这样可以避开 sing-box 内置 WireGuard endpoint 在 Android 移动网络上的 `sendmsg: message too long` 问题。
 
 ## 当前实现范围
 
@@ -77,12 +83,15 @@ frontend/dxvpn/cmd/dxandroid-egress
 - `node.name`
 - `hub.endpoint`
 - `hub.public_key`
+- `wireguard.mode`
 - `wireguard.address`
 - `wireguard.private_key`
 - `proxy.listen_port`
 
 默认行为：
 
+- `wireguard.mode` 默认为 `embedded`，也就是由 sing-box 自己创建 WireGuard endpoint。
+- `wireguard.mode: external` 时，外部 WireGuard App/内核隧道负责 `10.66.0.0/24`，程序只渲染 mixed 代理，不再渲染 sing-box WireGuard endpoint。
 - 如果未指定 `proxy.listen_addr`，程序会自动取 `wireguard.address` 里的 IP 作为监听地址。
 - 因此第一版默认只在 WireGuard 内网地址上暴露代理，不直接绑到蜂窝公网接口。
 
@@ -115,20 +124,29 @@ adb shell su -c "/data/local/tmp/dxandroid-egress run --config /data/local/tmp/a
     |
     | WireGuard -> Hub
     v
+Android WireGuard App
+    |
+    | tun0 / 10.66.0.101
+    v
 Android egress agent
     |
-    | mixed/http proxy on 10.66.0.100:1080
+    | mixed/http proxy on 10.66.0.101:1080
     v
 手机卡公网出口
 ```
 
 ## 下一步
 
-今晚设备连上后，优先做这几件事：
+当前已经验证：
 
-1. 确认 `android/arm64` 二进制可运行。
-2. 确认 sing-box 的 wireguard endpoint 在 root 安卓上可启动。
-3. 确认代理端口能绑定到 WireGuard 地址。
-4. 从 Hub 上确认该节点握手正常。
-5. 再补后台保活、前台服务和自恢复。
+1. `android/arm64` 二进制可运行。
+2. `embedded` 模式能启动，但在 Android 移动网络上会反复出现 `sendmsg: message too long`，不适合作为高速出口。
+3. `external` 模式可以由 WireGuard App 创建 `tun0 / 10.66.0.101`，`dxandroid-egress` 成功绑定 `10.66.0.101:1080`。
+4. Hub 侧可以通过 Android 代理访问公网。
+
+后续继续补：
+
+1. Android App/前台服务 UI。
+2. WireGuard App 开机自动拉起验证。
+3. 日志轮转、崩溃重启计数、电量和温度采集。
 

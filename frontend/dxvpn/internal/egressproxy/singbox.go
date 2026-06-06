@@ -73,11 +73,6 @@ func WriteConfig(ctx paths.Context, cfg egressconfig.Config) error {
 	if err != nil {
 		return err
 	}
-	hubHost, hubPortText, err := splitAddr(cfg.Hub.Endpoint)
-	if err != nil {
-		return err
-	}
-	hubPort, _ := strconv.Atoi(hubPortText)
 
 	sb := singBoxConfig{
 		Log: singBoxLog{Level: "info"},
@@ -88,7 +83,26 @@ func WriteConfig(ctx paths.Context, cfg egressconfig.Config) error {
 			},
 			Strategy: "prefer_ipv4",
 		},
-		Endpoints: []singBoxEndpoint{{
+		Inbounds: []singBoxInbound{{
+			Type:       "mixed",
+			Tag:        "egress-proxy-in",
+			Listen:     listenAddr,
+			ListenPort: cfg.Proxy.ListenPort,
+		}},
+		Outbounds: []singBoxOutbound{{
+			Type: "direct",
+			Tag:  "cellular-direct",
+		}},
+		Route: singBoxRoute{Final: "cellular-direct"},
+	}
+
+	if !cfg.WireGuard.ExternalMode() {
+		hubHost, hubPortText, err := splitAddr(cfg.Hub.Endpoint)
+		if err != nil {
+			return err
+		}
+		hubPort, _ := strconv.Atoi(hubPortText)
+		sb.Endpoints = []singBoxEndpoint{{
 			Type:       "wireguard",
 			Tag:        "dxvpn-wg",
 			System:     cfg.WireGuard.SystemTun(),
@@ -103,18 +117,7 @@ func WriteConfig(ctx paths.Context, cfg egressconfig.Config) error {
 				AllowedIPs:                  []string{"10.66.0.0/24"},
 				PersistentKeepaliveInterval: 25,
 			}},
-		}},
-		Inbounds: []singBoxInbound{{
-			Type:       "mixed",
-			Tag:        "egress-proxy-in",
-			Listen:     listenAddr,
-			ListenPort: cfg.Proxy.ListenPort,
-		}},
-		Outbounds: []singBoxOutbound{{
-			Type: "direct",
-			Tag:  "cellular-direct",
-		}},
-		Route: singBoxRoute{Final: "cellular-direct"},
+		}}
 	}
 
 	data, err := json.MarshalIndent(sb, "", "  ")

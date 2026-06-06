@@ -28,6 +28,10 @@ type HubConfig struct {
 }
 
 type WireGuardConfig struct {
+	// Mode:
+	//   embedded: sing-box 自己创建 WireGuard endpoint（默认）
+	//   external: 外部 WireGuard App/内核隧道负责 10.66.0.0/24，dxandroid-egress 只做代理
+	Mode       string `json:"mode,omitempty" yaml:"mode,omitempty"`
 	Address    string `json:"address" yaml:"address"`
 	PrivateKey string `json:"private_key" yaml:"private_key"`
 	MTU        int    `json:"mtu,omitempty" yaml:"mtu,omitempty"`
@@ -43,6 +47,17 @@ func (w WireGuardConfig) SystemTun() bool {
 		return true
 	}
 	return *w.System
+}
+
+func (w WireGuardConfig) ModeOrDefault() string {
+	if strings.TrimSpace(w.Mode) == "" {
+		return "embedded"
+	}
+	return strings.ToLower(strings.TrimSpace(w.Mode))
+}
+
+func (w WireGuardConfig) ExternalMode() bool {
+	return w.ModeOrDefault() == "external"
 }
 
 func (w WireGuardConfig) MTUOrDefault() int {
@@ -86,6 +101,11 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Hub.PublicKey) == "" {
 		return errors.New("hub.public_key 不能为空")
 	}
+	switch c.WireGuard.ModeOrDefault() {
+	case "embedded", "external":
+	default:
+		return errors.New("wireguard.mode 必须是 embedded 或 external")
+	}
 	ip, err := c.WireGuard.AddressIP()
 	if err != nil {
 		return err
@@ -93,7 +113,7 @@ func (c Config) Validate() error {
 	if ip == nil {
 		return errors.New("wireguard.address 必须包含有效 IP")
 	}
-	if strings.TrimSpace(c.WireGuard.PrivateKey) == "" {
+	if !c.WireGuard.ExternalMode() && strings.TrimSpace(c.WireGuard.PrivateKey) == "" {
 		return errors.New("wireguard.private_key 不能为空")
 	}
 	if c.WireGuard.MTU != 0 && (c.WireGuard.MTU < 576 || c.WireGuard.MTU > 9000) {

@@ -196,6 +196,7 @@ cat /usr/local/sbin/dxvpn-sing-box-run.sh
 ## 3. Android 出口节点
 
 > 当前 Android 出口是 root 后由 Magisk service.d 拉起的 `dxandroid-egress`。
+> 当前推荐模式是 WireGuard App 负责隧道，`dxandroid-egress` 只做 `10.66.0.101:1080` mixed 代理。
 
 ### 3.1 Hub 侧验证 Android 出口
 
@@ -253,20 +254,22 @@ $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 & $adb shell su -c "ip route get 36.50.84.68"
 & $adb shell su -c "ps -A | grep dxandroid-egress"
 & $adb shell su -c "tail -80 /data/local/tmp/dxandroid-egress-work/egress.log"
-& $adb shell su -c "grep 'mtu:\|workers:' /data/local/tmp/android-egress.yaml"
+& $adb shell su -c "grep 'mode:\|mtu:\|workers:' /data/local/tmp/android-egress.yaml"
+& $adb shell su -c "ip addr show tun0 | grep 10.66.0.101"
 ```
 
 重点看：
 
 - `ip route get 36.50.84.68` 是走 `rmnet_data*` 还是 `wlan0`。
 - 日志中是否大量出现 `sendmsg: message too long`。
-- 当前实验参数是否为预期值，例如 `mtu: 1200`、`workers: 4`。
+- 当前运行模式是否为预期值，例如 `mode: external`。
+- WireGuard App 是否创建了 `tun0 / 10.66.0.101`。
 
 ### 3.5 当前已知性能判断
 
 - 手机 App 测到的高速下载不等于出口可用下载速度。
 - 作为出口时，电脑下载需要手机把数据上传回 Hub，因此手机上行是关键瓶颈。
-- `sendmsg: message too long` 仍是 Android WireGuard/sing-box 侧的重要优化线索。
+- 若 external 模式后仍大量出现 `sendmsg: message too long`，说明仍有旧 embedded 进程或旧日志干扰，需要先确认 `dxandroid-egress` runtime 配置里没有 `endpoints`。
 
 ---
 
