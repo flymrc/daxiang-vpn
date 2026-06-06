@@ -224,6 +224,8 @@ Hub 上还存在多个 WireGuard peer：
 - Hub 已为 Android peer 固化专用路由 MTU：
   - `ip route replace 10.66.0.101/32 dev wg0 mtu 1280`
   - 已写入 `/opt/jp-gateway/wireguard/wg0.conf` 和 `/etc/wireguard/wg0.conf` 的 `PostUp`。
+  - 已补充对应 `PostDown`：`ip route del 10.66.0.101/32 dev wg0 2>/dev/null || true`。
+- 新增 `scripts/check-android-egress-health.ps1`，用于不依赖 ADB 的 Android 出口快检。
 
 复测结果：
 
@@ -232,6 +234,11 @@ Hub 上还存在多个 WireGuard peer：
 - Windows 本地代理重启后经 Android WiFi 出口约 12.4 Mbps。
 - 新增 `scripts/measure-android-egress.ps1` 用于从 Hub 侧重复测量 Android 出口：
   - WiFi 场景 3 轮样本曾测得平均约 27.66 Mbps，最小 13.78 Mbps，最大 39.76 Mbps。
+- 最新快检结果：
+  - Android 出口在线，公网出口 IP 为 `210.157.194.16`。
+  - Hub 路由为 `10.66.0.101 dev wg0 scope link mtu 1280`。
+  - Hub TCPMSS 规则存在，当前为 `--set-mss 1240`。
+  - Android WireGuard 握手新鲜。
 
 判断：
 
@@ -249,11 +256,9 @@ Hub 上还存在多个 WireGuard peer：
 2. 更新 Hub / token 配置结构：
    - 把出口节点抽象为统一 inventory。
    - token 只引用出口节点名，而不是手写代理地址。
-3. 增加 Android 出口健康检查：
-   - WireGuard 握手时间。
-   - 代理端口可达性。
-   - 当前公网出口 IP。
-   - 进程状态。
+3. 扩展 Android 出口健康检查：
+   - 已完成 Hub 侧 WireGuard 握手时间、代理端口、公网出口 IP、路由 MTU、TCPMSS 快检。
+   - 后续 ADB 恢复后补充手机本机进程、电量、温度、网络类型检查。
 4. 增加 Android 运维能力：
    - 重启后自动验证。
    - 日志轮转。

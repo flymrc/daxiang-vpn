@@ -212,7 +212,28 @@ curl -L --max-time 30 -x http://10.66.0.101:1080 -o /dev/null \
 - 手机卡场景速度主要受手机上行到 Hub 限制。
 - WiFi 场景速度通常明显高于手机卡场景，但仍可能受 Android WireGuard 发包波动影响。
 
-### 3.2 Windows 一键多轮测速
+### 3.2 Windows 一键健康检查
+
+在仓库根目录运行：
+
+```powershell
+.\scripts\check-android-egress-health.ps1
+```
+
+脚本从 Hub 侧检查 Android 出口，不依赖 ADB。重点输出：
+
+- 当前公网出口 IP。
+- Hub 到 Android peer 的专用路由 MTU 是否仍是 `1280`。
+- Hub 侧 TCPMSS 规则是否存在。
+- Android WireGuard peer 最近一次握手是否新鲜。
+
+需要顺手测速时：
+
+```powershell
+.\scripts\check-android-egress-health.ps1 -Benchmark
+```
+
+### 3.3 Windows 一键多轮测速
 
 在仓库根目录运行：
 
@@ -223,7 +244,7 @@ curl -L --max-time 30 -x http://10.66.0.101:1080 -o /dev/null \
 脚本会从 Hub 侧走 `10.66.0.101:1080` 连续测速，并输出平均、最小、最大 Mbps。
 该脚本不依赖 ADB，适合手机不在身边但 Android 出口仍在线时使用。
 
-### 3.3 Android 本机检查
+### 3.4 Android 本机检查
 
 ADB 可用时：
 
@@ -241,7 +262,7 @@ $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 - 日志中是否大量出现 `sendmsg: message too long`。
 - 当前实验参数是否为预期值，例如 `mtu: 1200`、`workers: 4`。
 
-### 3.4 当前已知性能判断
+### 3.5 当前已知性能判断
 
 - 手机 App 测到的高速下载不等于出口可用下载速度。
 - 作为出口时，电脑下载需要手机把数据上传回 Hub，因此手机上行是关键瓶颈。
