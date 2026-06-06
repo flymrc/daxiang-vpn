@@ -221,7 +221,7 @@ Hub 上还存在多个 WireGuard peer：
 - `dxandroid-egress` 支持 `wireguard.workers` 配置项。
 - 手机当前实验参数：`mtu: 1200`，`workers: 4`。
 - 重启后 Magisk service 能重新拉起 Android 出口。
-- Hub 已为 Android peer 固化专用路由 MTU：
+- 早期 embedded 模式下，Hub 曾为 Android peer 固化专用路由 MTU：
   - `ip route replace 10.66.0.101/32 dev wg0 mtu 1280`
   - 已写入 `/opt/jp-gateway/wireguard/wg0.conf` 和 `/etc/wireguard/wg0.conf` 的 `PostUp`。
   - 已补充对应 `PostDown`：`ip route del 10.66.0.101/32 dev wg0 2>/dev/null || true`。
@@ -234,7 +234,7 @@ Hub 上还存在多个 WireGuard peer：
 - Windows 本地代理重启后经 Android WiFi 出口约 12.4 Mbps。
 - 新增 `scripts/measure-android-egress.ps1` 用于从 Hub 侧重复测量 Android 出口：
   - WiFi 场景 3 轮样本曾测得平均约 27.66 Mbps，最小 13.78 Mbps，最大 39.76 Mbps。
-- 最新快检结果：
+- 当时快检结果：
   - Android 出口在线，公网出口 IP 为 `210.157.194.16`。
   - Hub 路由为 `10.66.0.101 dev wg0 scope link mtu 1280`。
   - Hub TCPMSS 规则存在，当前为 `--set-mss 1240`。
@@ -245,7 +245,7 @@ Hub 上还存在多个 WireGuard peer：
 - 当前瓶颈已经不是 Hub 或手机 WiFi 下载能力。
 - 蜂窝场景的低速主要来自手机上行到 Hub。
 - WiFi 场景仍有波动，后续应优先评估替换 Android 侧 WireGuard 承载方式，而不是继续只调 MTU。
-- Hub 侧 MSS 从 `1240` 临时降到 `1160` 对 Windows 同源测试没有明显收益，已恢复 `1240`。
+- 在 embedded 模式下，Hub 侧 MSS 从 `1240` 临时降到 `1160` 对 Windows 同源测试没有明显收益，当时已恢复 `1240`。
 
 ## Android WireGuard App external 模式验证
 
@@ -269,11 +269,27 @@ Hub 上还存在多个 WireGuard peer：
   - 后续 2 轮平均约 `10.69 Mbps`。
 - 切换到 external 模式后，最近日志未再出现新的 `sendmsg: message too long`。
 
+继续测得：
+
+- Android 到 Hub 上行天花板：
+  - 走 WireGuard 内网 `10.66.0.1`：约 `28.79-31.89 Mbps`。
+  - 直连 Hub 公网 `36.50.84.68`：约 `30.75-34.67 Mbps`。
+- 因此当前出口下载不是手机上行只有几 Mbps，而是移动网络波动、TCP、WireGuard、代理链路叠加后的效率损耗。
+- Hub 发往 Android peer 的 route MTU/TCPMSS 做了 external 模式下的二次调优：
+  - `mtu 1160 / MSS 1120`：约 `18.88 Mbps`。
+  - `mtu 1200 / MSS 1160`：约 `17.84 Mbps`。
+  - `mtu 1240 / MSS 1200`：约 `14.45 Mbps`。
+  - `mtu 1080 / MSS 1040`：约 `21.29 Mbps`，但偏激进。
+  - `mtu 1120 / MSS 1080`：约 `21.23 Mbps`，更稳，已作为当前配置。
+- 已把 `/opt/jp-gateway/wireguard/wg0.conf` 和 `/etc/wireguard/wg0.conf` 固化为：
+  - `PostUp = ip route replace 10.66.0.101/32 dev wg0 mtu 1120`
+  - `PostUp = iptables -t mangle -I FORWARD -i wg0 -o wg0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1080`
+
 结论：
 
 - 方案 1 已验证有效。
 - 问题主要不是手机信号本身，而是 sing-box 内置 WireGuard endpoint 在 Android 移动网络上的发包路径。
-- 短期可继续使用 WireGuard App + `dxandroid-egress` proxy-only 模式。
+- 短期可继续使用 WireGuard App + `dxandroid-egress` proxy-only 模式，Hub 侧当前推荐 `mtu 1120 / MSS 1080`。
 - 后续若还要冲高速，再评估 Hysteria2 / TUIC / QUIC 或日本侧更近 Hub。
 
 ## 待办

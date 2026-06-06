@@ -2,7 +2,8 @@ param(
     [string]$Hub = "root@36.50.84.68",
     [string]$Proxy = "http://10.66.0.101:1080",
     [string]$AndroidIP = "10.66.0.101",
-    [int]$ExpectedRouteMtu = 1280,
+    [int]$ExpectedRouteMtu = 1120,
+    [int]$ExpectedMss = 0,
     [int]$StaleHandshakeSeconds = 180,
     [int]$TimeoutSeconds = 10,
     [switch]$Benchmark
@@ -11,6 +12,9 @@ param(
 $ErrorActionPreference = "Stop"
 
 $failed = $false
+if ($ExpectedMss -eq 0) {
+    $ExpectedMss = $ExpectedRouteMtu - 40
+}
 
 function Write-Check([string]$Level, [string]$Message) {
     Write-Host ("[{0}] {1}" -f $Level, $Message)
@@ -58,7 +62,12 @@ if ($route -match "mtu\s+$ExpectedRouteMtu\b") {
 
 $mssRules = Join-Output (Invoke-Hub "iptables -t mangle -S FORWARD 2>/dev/null | grep -- 'TCPMSS' || true")
 if ($mssRules.Length -gt 0) {
-    Write-Check "PASS" ("hub TCPMSS rule present: {0}" -f ($mssRules -replace "`r?`n", " | "))
+    if ($mssRules -match "--set-mss\s+$ExpectedMss\b") {
+        Write-Check "PASS" ("hub TCPMSS rule ok: {0}" -f ($mssRules -replace "`r?`n", " | "))
+    } else {
+        Write-Check "FAIL" ("hub TCPMSS rule unexpected: {0}" -f ($mssRules -replace "`r?`n", " | "))
+        Set-Failed
+    }
 } else {
     Write-Check "WARN" "no hub TCPMSS rule found"
 }

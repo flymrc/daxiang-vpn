@@ -62,7 +62,7 @@ ip route show 10.66.0.101/32
 正常应看到类似：
 
 ```text
-10.66.0.101 dev wg0 scope link mtu 1280
+10.66.0.101 dev wg0 scope link mtu 1120
 ```
 
 ### 1.2 看转发是否开启
@@ -224,8 +224,8 @@ curl -L --max-time 30 -x http://10.66.0.101:1080 -o /dev/null \
 脚本从 Hub 侧检查 Android 出口，不依赖 ADB。重点输出：
 
 - 当前公网出口 IP。
-- Hub 到 Android peer 的专用路由 MTU 是否仍是 `1280`。
-- Hub 侧 TCPMSS 规则是否存在。
+- Hub 到 Android peer 的专用路由 MTU 是否仍是 `1120`。
+- Hub 侧 TCPMSS 规则是否仍是 `--set-mss 1080`。
 - Android WireGuard peer 最近一次握手是否新鲜。
 
 需要顺手测速时：
