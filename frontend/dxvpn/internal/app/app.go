@@ -1,9 +1,12 @@
 package app
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -213,16 +216,20 @@ func start(ctx paths.Context, args []string) error {
 		return err
 	}
 
-	if reachable, _ := netcheck.TCP(cfg.LocalProxy.Addr(), netcheck.ShortTimeout); reachable {
+	running, _ := proxy.IsRunning(ctx)
+	localReachable, _ := netcheck.TCP(cfg.LocalProxy.Addr(), netcheck.ShortTimeout)
+	if running && localReachable && runtimeConfigMatches(ctx, cfg, opts.fast) {
 		fmt.Println("已在运行")
 		printStartSummary(cfg)
 		return nil
 	}
-
-	if running, _ := proxy.IsRunning(ctx); running {
-		fmt.Println("已在运行")
-		printStartSummary(cfg)
-		return nil
+	if running {
+		fmt.Println("检测到运行配置已变化，正在重启代理")
+		if _, err := proxy.Stop(ctx); err != nil {
+			return err
+		}
+	} else if localReachable {
+		return fmt.Errorf("本地代理端口 %s 已被占用，请先关闭旧进程或换端口", cfg.LocalProxy.Addr())
 	}
 
 	if err := proxy.WriteSingBoxConfig(ctx, cfg, opts.fast); err != nil {
@@ -241,6 +248,9 @@ func start(ctx paths.Context, args []string) error {
 	}
 	if !waitForTCP(cfg.LocalProxy.Addr(), timeout) {
 		return errors.New("代理启动失败，请重试")
+	}
+	if err := writeRuntimeFingerprint(ctx, cfg, opts.fast); err != nil {
+		return err
 	}
 
 	fmt.Println("已启动")
@@ -272,12 +282,44 @@ func stop(ctx paths.Context) error {
 	if err != nil {
 		return err
 	}
+	_ = os.Remove(runtimeFingerprintPath(ctx))
 	if stopped {
 		fmt.Println("已停止")
 	} else {
 		fmt.Println("未运行")
 	}
 	return nil
+}
+
+func runtimeConfigMatches(ctx paths.Context, cfg config.Config, fast bool) bool {
+	data, err := os.ReadFile(runtimeFingerprintPath(ctx))
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(data)) == runtimeFingerprint(cfg, fast)
+}
+
+func writeRuntimeFingerprint(ctx paths.Context, cfg config.Config, fast bool) error {
+	return os.WriteFile(runtimeFingerprintPath(ctx), []byte(runtimeFingerprint(cfg, fast)+"\n"), 0600)
+}
+
+func runtimeFingerprintPath(ctx paths.Context) string {
+	return filepath.Join(ctx.RunDir, "runtime.sha256")
+}
+
+func runtimeFingerprint(cfg config.Config, fast bool) string {
+	text := strings.Join([]string{
+		cfg.Hub.Endpoint,
+		cfg.Hub.PublicKey,
+		cfg.Egress.Name,
+		cfg.Egress.ProxyAddr,
+		cfg.LocalProxy.Addr(),
+		cfg.WireGuard.Address,
+		cfg.WireGuard.PrivateKey,
+		strconv.FormatBool(fast),
+	}, "\n")
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])
 }
 
 func status(ctx paths.Context) error {
