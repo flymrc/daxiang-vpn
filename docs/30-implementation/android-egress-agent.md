@@ -4,6 +4,10 @@
 
 为 root 安卓手机准备第一版出口节点客户端。
 
+路线对比文档：
+
+- [Android 客户端三条路线](./android-client-routes.md)
+
 第一版不追求完整 Android App 体验，而是优先满足：
 
 - 设备能主动连接 Hub。
