@@ -3,7 +3,7 @@
 面向日常排查：**客户连不上 / 网速慢 / 出口 IP 不对 / 想确认流量是否在走**。
 命令分 **Hub** 和 **Mac 出口** 两块，每条都标注「看什么、怎么判断」。
 
-> 登录凭据（IP / 用户 / 密码）见 [SERVER_ACCESS.md](SERVER_ACCESS.md)，本文不重复抄密码。
+> 登录凭据（IP / 用户 / 密码）见 [服务器访问文档](server-access.md)，本文不重复抄密码。
 >
 > 标 ⚠️ 的是会改状态的命令（重载 / 重启），平时排查用不到，确认要改再用。
 
@@ -218,4 +218,4 @@ tail -n 50 /usr/local/var/log/dxvpn/*.log
 - Hub `net.ipv4.ip_forward = 1`。
 - Hub `curl -x http://10.66.0.100:1080 https://api.ipify.org` → `118.158.252.9`。
 
-> 提示：`SERVER_ACCESS.md` 里的 Peer 表（只列了 `10.66.0.10` 和 `mac-mini`）已过时，当前活跃客户是 `10.66.0.20`。
+> 提示：服务器访问文档里的 Peer 表可能滞后，排查时以 `wg show wg0` 的实时结果为准。
