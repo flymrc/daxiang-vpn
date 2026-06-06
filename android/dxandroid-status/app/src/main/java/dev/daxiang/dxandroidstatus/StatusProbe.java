@@ -18,20 +18,37 @@ final class StatusProbe {
         StatusSnapshot s = new StatusSnapshot();
         s.checkedAt = new SimpleDateFormat("HH:mm:ss", Locale.JAPAN).format(new Date());
 
-        String root = run("id");
+        String output = run(String.join("\n",
+                "echo __DX_ROOT__",
+                "id",
+                "echo __DX_PID__",
+                "pidof dxandroid-egress 2>/dev/null || true",
+                "echo __DX_ROUTE__",
+                "ip route get 8.8.8.8 2>&1 | head -1",
+                "echo __DX_LISTEN__",
+                "ss -lntp 2>/dev/null | grep 10.66.0.101:1080 || true",
+                "echo __DX_WG__",
+                "ip -4 addr show wg0 2>/dev/null | grep 'inet ' || true",
+                "echo __DX_SERVICE_LOG__",
+                "tail -8 /data/local/tmp/dxandroid-egress-work/service.log 2>/dev/null || true",
+                "echo __DX_EGRESS_LOG__",
+                "tail -14 /data/local/tmp/dxandroid-egress-work/egress.log 2>/dev/null || true"
+        ));
+
+        String root = section(output, "__DX_ROOT__", "__DX_PID__");
         s.rootOk = root.contains("uid=0");
         if (!s.rootOk) {
-            s.egressLog = root.trim();
+            s.egressLog = output.trim();
             return s;
         }
 
-        s.pid = firstLine(run("pidof dxandroid-egress || true"));
+        s.pid = firstLine(section(output, "__DX_PID__", "__DX_ROUTE__"));
         s.egressRunning = !s.pid.isEmpty();
-        s.route = run("ip route get 8.8.8.8 2>&1 | head -1");
-        s.listen = run("ss -lntp 2>/dev/null | grep 10.66.0.101:1080 || true");
-        s.wg = run("ip -4 addr show wg0 2>/dev/null | grep 'inet ' || true");
-        s.serviceLog = run("tail -8 /data/local/tmp/dxandroid-egress-work/service.log 2>/dev/null || true");
-        s.egressLog = run("tail -14 /data/local/tmp/dxandroid-egress-work/egress.log 2>/dev/null || true");
+        s.route = section(output, "__DX_ROUTE__", "__DX_LISTEN__");
+        s.listen = section(output, "__DX_LISTEN__", "__DX_WG__");
+        s.wg = section(output, "__DX_WG__", "__DX_SERVICE_LOG__");
+        s.serviceLog = section(output, "__DX_SERVICE_LOG__", "__DX_EGRESS_LOG__");
+        s.egressLog = sectionAfter(output, "__DX_EGRESS_LOG__");
         return s;
     }
 
@@ -41,6 +58,27 @@ final class StatusProbe {
             value = value.substring(0, idx);
         }
         return value.trim();
+    }
+
+    private static String section(String output, String start, String end) {
+        int startIdx = output.indexOf(start);
+        if (startIdx < 0) {
+            return "";
+        }
+        startIdx += start.length();
+        int endIdx = output.indexOf(end, startIdx);
+        if (endIdx < 0) {
+            endIdx = output.length();
+        }
+        return output.substring(startIdx, endIdx).trim();
+    }
+
+    private static String sectionAfter(String output, String start) {
+        int startIdx = output.indexOf(start);
+        if (startIdx < 0) {
+            return "";
+        }
+        return output.substring(startIdx + start.length()).trim();
     }
 
     private static String run(String command) {

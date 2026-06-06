@@ -59,6 +59,7 @@ Hub: 36.50.84.68 / 10.66.0.1
 - [Hub 授权 API MVP](30-implementation/auth-api-mvp.md)
 - [CLI MVP 实现](30-implementation/cli-mvp-implementation.md)
 - [dxvpn.exe 实现](30-implementation/dxvpn-exe-implementation.md)
+- [dxvpn.exe 本地单例实现计划](30-implementation/client-singleton-plan.md)
 - [服务端托管客户端配置](30-implementation/server-managed-client.md)
 
 ## 40 Security
@@ -69,4 +70,3 @@ Hub: 36.50.84.68 / 10.66.0.1
 ## 90 History
 
 - [2026-06-06 Android 出口节点上线](90-history/worklogs/2026-06-06-android-egress.md)
-

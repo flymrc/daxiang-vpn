@@ -25,7 +25,7 @@ public class StatusService extends Service {
         @Override
         public void run() {
             refresh();
-            handler.postDelayed(this, 30_000);
+            handler.postDelayed(this, 120_000);
         }
     };
 
