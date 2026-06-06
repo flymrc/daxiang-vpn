@@ -201,6 +201,39 @@ Hub 上还存在多个 WireGuard peer：
 
 其中部分 peer 暂未在本地 token 文件里产品化管理。
 
+## WiFi 对照与出口性能优化
+
+手机拔出 SIM 后切到 WiFi，Android 出口仍可工作：
+
+- 手机到 Hub 的路由切到 `wlan0`。
+- Hub 看到 Android peer endpoint 变为 WiFi 公网地址。
+- Windows 客户端出口 IP 也变为 WiFi 公网地址。
+
+对照结果：
+
+- UQ 手机卡直连手机下载很快，但作为出口时速度受手机上行回 Hub 影响。
+- WiFi 下 Hub 直连 Android 代理明显快于 UQ 蜂窝链路，说明 UQ 蜂窝上行/移动网络路径是主要瓶颈。
+- Android 日志仍会出现 `sendmsg: message too long`，说明 sing-box WireGuard system endpoint 在 Android 上仍有 MTU/GSO 相关问题。
+
+已完成的最小优化：
+
+- `dxandroid-egress` 支持 `wireguard.mtu` 配置项。
+- `dxandroid-egress` 支持 `wireguard.workers` 配置项。
+- 手机当前实验参数：`mtu: 1200`，`workers: 4`。
+- 重启后 Magisk service 能重新拉起 Android 出口。
+
+复测结果：
+
+- Hub 经 Android WiFi 出口 50MB 下载约 23.8 Mbps。
+- Hub 经 Android WiFi 出口 20MB 多次测试存在波动，约 16-47 Mbps。
+- Windows 本地代理重启后经 Android WiFi 出口约 12.4 Mbps。
+
+判断：
+
+- 当前瓶颈已经不是 Hub 或手机 WiFi 下载能力。
+- 蜂窝场景的低速主要来自手机上行到 Hub。
+- WiFi 场景仍有波动，后续应优先评估替换 Android 侧 WireGuard 承载方式，而不是继续只调 MTU。
+
 ## 待办
 
 1. 把出口选择产品化：
@@ -225,4 +258,7 @@ Hub 上还存在多个 WireGuard peer：
    - 启动脚本已临时清理，后续应在程序内处理。
 6. 完善文档中的当前状态：
    - [服务器访问文档](../../20-operations/runbooks/server-access.md)里的 peer 表需要补上 Android 出口。
-   - `android-egress-01.yaml.example` 应避免继续使用 `10.66.0.100/32`，以免和 Mac 出口冲突。
+7. 继续优化 Android 出口性能：
+   - 优先验证 Android 原生/内核 WireGuard + sing-box 仅做代理的方案。
+   - 评估 Hysteria2 / TUIC / QUIC 作为手机到 Hub 的承载协议。
+   - 继续追踪 `sendmsg: message too long` 是否来自 sing-box WireGuard endpoint 的 GSO 行为。

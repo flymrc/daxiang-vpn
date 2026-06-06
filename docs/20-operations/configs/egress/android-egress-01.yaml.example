@@ -6,8 +6,10 @@ hub:
   public_key: HUB_PUBLIC_KEY_HERE
 
 wireguard:
-  address: 10.66.0.100/32
+  address: 10.66.0.101/24
   private_key: ANDROID_WG_PRIVATE_KEY_HERE
+  mtu: 1280
+  workers: 0
 
 proxy:
   listen_port: 1080

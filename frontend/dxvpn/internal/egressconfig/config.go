@@ -30,6 +30,8 @@ type HubConfig struct {
 type WireGuardConfig struct {
 	Address    string `json:"address" yaml:"address"`
 	PrivateKey string `json:"private_key" yaml:"private_key"`
+	MTU        int    `json:"mtu,omitempty" yaml:"mtu,omitempty"`
+	Workers    int    `json:"workers,omitempty" yaml:"workers,omitempty"`
 	// System 决定 sing-box 用系统 WireGuard（真实 tun 接口，需 root）还是用户态 gVisor 栈。
 	// egress 节点要在 WireGuard 内网地址上暴露代理端口，必须用系统接口，因此默认 true。
 	System *bool `json:"system,omitempty" yaml:"system,omitempty"`
@@ -41,6 +43,13 @@ func (w WireGuardConfig) SystemTun() bool {
 		return true
 	}
 	return *w.System
+}
+
+func (w WireGuardConfig) MTUOrDefault() int {
+	if w.MTU == 0 {
+		return 1280
+	}
+	return w.MTU
 }
 
 type ProxyConfig struct {
@@ -86,6 +95,12 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.WireGuard.PrivateKey) == "" {
 		return errors.New("wireguard.private_key 不能为空")
+	}
+	if c.WireGuard.MTU != 0 && (c.WireGuard.MTU < 576 || c.WireGuard.MTU > 9000) {
+		return errors.New("wireguard.mtu 必须在 576-9000 之间")
+	}
+	if c.WireGuard.Workers < 0 || c.WireGuard.Workers > 128 {
+		return errors.New("wireguard.workers 必须在 0-128 之间")
 	}
 	if c.Proxy.ListenPort < 1 || c.Proxy.ListenPort > 65535 {
 		return errors.New("proxy.listen_port 必须在 1-65535 之间")

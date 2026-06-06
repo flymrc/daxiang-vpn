@@ -45,6 +45,7 @@ type singBoxEndpoint struct {
 	Tag        string          `json:"tag"`
 	System     bool            `json:"system"`
 	MTU        int             `json:"mtu,omitempty"`
+	Workers    int             `json:"workers,omitempty"`
 	Address    []string        `json:"address"`
 	PrivateKey string          `json:"private_key"`
 	Peers      []singBoxWGPeer `json:"peers"`
@@ -91,7 +92,8 @@ func WriteConfig(ctx paths.Context, cfg egressconfig.Config) error {
 			Type:       "wireguard",
 			Tag:        "dxvpn-wg",
 			System:     cfg.WireGuard.SystemTun(),
-			MTU:        1280,
+			MTU:        cfg.WireGuard.MTUOrDefault(),
+			Workers:    cfg.WireGuard.Workers,
 			Address:    []string{cfg.WireGuard.Address},
 			PrivateKey: cfg.WireGuard.PrivateKey,
 			Peers: []singBoxWGPeer{{
