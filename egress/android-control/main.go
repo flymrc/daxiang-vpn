@@ -56,11 +56,14 @@ func main() {
 		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 			authorized, err := loadAuthorizedKeys(*authPath) // 每次连接时读,改公钥免重启
 			if err != nil {
+				log.Printf("authkeys read error: %v", err)
 				return nil, fmt.Errorf("read authorized_keys: %w", err)
 			}
 			if authorized[string(key.Marshal())] {
+				log.Printf("accept key type=%s fp=%s from %s", key.Type(), ssh.FingerprintSHA256(key), conn.RemoteAddr())
 				return &ssh.Permissions{Extensions: map[string]string{"pubkey-fp": ssh.FingerprintSHA256(key)}}, nil
 			}
+			log.Printf("reject key type=%s fp=%s from %s (%d authorized)", key.Type(), ssh.FingerprintSHA256(key), conn.RemoteAddr(), len(authorized))
 			return nil, fmt.Errorf("unauthorized key from %s", conn.RemoteAddr())
 		},
 	}

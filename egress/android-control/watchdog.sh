@@ -12,6 +12,9 @@
 
 BASE=/data/adb/dxandroid
 CONTROL_BIN=$BASE/bin/dxandroid-control
+# 监听地址:绑隧道 IP。端口 2022 是为了与既有 dropbear(:22)共存;
+# 退役 dropbear 后可改回 :22。
+CONTROL_LISTEN=10.66.0.101:2022
 INTERVAL=30
 
 EGRESS_NAME=dxandroid-egress
@@ -30,8 +33,8 @@ egress_up()  { pgrep -f "$EGRESS_NAME"  >/dev/null 2>&1; }
 
 start_control() {
     if [ -x "$CONTROL_BIN" ]; then
-        "$CONTROL_BIN" >> "$LOG" 2>&1 &
-        log "started dxandroid-control"
+        "$CONTROL_BIN" -listen "$CONTROL_LISTEN" >> "$LOG" 2>&1 &
+        log "started dxandroid-control on $CONTROL_LISTEN"
     else
         log "WARN $CONTROL_BIN missing or not executable"
     fi
