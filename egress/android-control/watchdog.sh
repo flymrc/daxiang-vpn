@@ -29,7 +29,9 @@ STAMP=$BASE/.last-reboot-day
 log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
 
 control_up() { pgrep -f "$CONTROL_BIN" >/dev/null 2>&1; }
-egress_up()  { pgrep -f "$EGRESS_NAME"  >/dev/null 2>&1; }
+# 看的是 egress 监督脚本(99-dxandroid-egress.sh,自带 while 循环保活 binary)
+# 在不在,而不是 binary 本身——避免在 binary 短暂缺失时重复拉起多个监督循环。
+egress_up()  { pgrep -f 99-dxandroid-egress >/dev/null 2>&1; }
 
 start_control() {
     if [ -x "$CONTROL_BIN" ]; then
@@ -41,9 +43,11 @@ start_control() {
 }
 
 start_egress() {
-    if [ -x "$EGRESS_LAUNCH" ]; then
-        sh "$EGRESS_LAUNCH" >> "$LOG" 2>&1 &
-        log "relaunched $EGRESS_NAME via $EGRESS_LAUNCH"
+    # 用 [ -f ] + sh 执行,不依赖脚本的可执行位(adb push 常丢 +x,曾导致重启后
+    # Magisk 与本看门狗都拉不起 egress)。setsid 脱离会话常驻。
+    if [ -f "$EGRESS_LAUNCH" ]; then
+        setsid sh "$EGRESS_LAUNCH" >/dev/null 2>&1 </dev/null &
+        log "relaunched egress supervisor via $EGRESS_LAUNCH"
     else
         log "WARN $EGRESS_LAUNCH missing, cannot relaunch egress"
     fi
