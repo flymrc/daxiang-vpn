@@ -15,6 +15,7 @@
 | `service.d/98-dxandroid-control.sh` | `/data/adb/service.d/98-dxandroid-control.sh` | Magisk 开机自启,拉起看门狗 |
 | `authorized_keys.example` | `/data/adb/dxandroid/.ssh/authorized_keys`(填真实公钥) | 允许登录的 Hub 公钥 |
 | `rotate-ip.sh` | `/data/adb/dxandroid/rotate-ip.sh` | 切换出口公网 IP(飞行模式重注册,脱离会话执行) |
+| `sim-info.sh` | `/data/adb/dxandroid/sim-info.sh` | 一览 SIM/蜂窝状态(运营商/APN/网络模式/SNR/频段/出口 IP),换卡或排查慢速时用 |
 
 配套 Hub 侧被动存活探针:[scripts/watch-android-egress-liveness.sh](../../scripts/watch-android-egress-liveness.sh)。
 
