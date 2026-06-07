@@ -180,7 +180,7 @@ adb shell su -c /data/local/tmp/script.sh
 
 ## 当前 Token 状况
 
-本地 `backend/dxhub/config/tokens.yaml` 中目前看到的实际 token：
+本地 `hub/config/tokens.yaml` 中目前看到的实际 token：
 
 - `DX-JP-TEST-001`
 
