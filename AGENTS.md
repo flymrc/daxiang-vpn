@@ -31,7 +31,7 @@
 
 - `clients/` — **客户端**(终端用户侧)。`clients/cli/` = CLI 客户端;`clients/desktop-gui/` = mac/windows PC 单一跨平台 GUI(🅿️ 预留)。
 - `hub/` — **Hub 服务端**(授权 API)。
-- `egress/` — **出口节点**(基础设施侧,非终端客户端)。`egress/proxy/` = 跨平台 Go 出口代理(linux-arm64 即安卓 `dxandroid-egress`,darwin/windows 即 Mac/PC 出口,🅿️ 预留);`egress/android-status/` = 安卓出口监控 App。
+- `egress/` — **出口节点**(基础设施侧,非终端客户端)。`egress/proxy/` = 跨平台 Go 出口代理(linux-arm64 即安卓 `dxandroid-egress`,darwin/windows 即 Mac/PC 出口,🅿️ 预留);`egress/android-status/` = 安卓出口监控 App;`egress/android-control/` = 安卓出口远程控制+自愈(dropbear over 隧道 + 看门狗,配套 Hub 探针 `scripts/watch-android-egress-liveness.sh`)。
 - `shared/` — 客户端与出口共用的 Go 包(`config`、`paths`、`proxy`)。
 - `scripts/` — 运维脚本(如 `check-android-egress-health.ps1`、`measure-android-egress.ps1`)。
 

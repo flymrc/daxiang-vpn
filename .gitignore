@@ -5,6 +5,11 @@ docs/ops/SERVER_ACCESS.md
 docs/ops/TOKENS_*.md
 *.log
 
+# 远程控制私钥 / 真实授权公钥,绝不入库
+egress/android-control/authorized_keys
+**/dxandroid_control
+**/dxandroid_control.pub
+
 # Android local build output
 egress/android-status/**/.gradle/
 egress/android-status/**/build/

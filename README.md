@@ -19,6 +19,7 @@ egress/               出口节点(基础设施侧，非终端客户端)
   proxy/              跨平台 Go 出口代理（基于 sing-box）
                       linux-arm64=安卓 dxandroid-egress；darwin/windows=Mac/PC 出口(🅿️ 预留)
   android-status/     安卓出口监控 App（原 android/dxandroid-status）
+  android-control/    安卓出口远程控制+自愈（dropbear over 隧道 + 看门狗）
 
 shared/               客户端与出口共用的 Go 包
   config/  paths/  proxy/

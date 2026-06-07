@@ -1,0 +1,14 @@
+# 把允许从 Hub 远程登录出口手机的【公钥】放进真实的 authorized_keys。
+# 真实文件不要进仓库(见 .gitignore),仅本地/部署时生成。
+#
+# 在 Hub 上生成一对专用密钥(私钥留在 Hub,公钥贴到这里):
+#   ssh-keygen -t ed25519 -f ~/.ssh/dxandroid_control -C "hub->android-egress"
+# 然后把 ~/.ssh/dxandroid_control.pub 的内容(一行)粘到部署后的:
+#   /data/adb/dxandroid/authorized_keys
+#
+# 从 Hub 连接:
+#   ssh -i ~/.ssh/dxandroid_control -p 22 root@10.66.0.101
+#
+# 仅密钥登录,dropbear 已用 -s -g 关闭密码登录。
+
+ssh-ed25519 AAAA...REPLACE_WITH_YOUR_PUBLIC_KEY... hub->android-egress
