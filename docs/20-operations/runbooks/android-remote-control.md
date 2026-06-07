@@ -12,7 +12,7 @@
 ssh -i ~/.ssh/dxandroid_control -p 2022 root@10.66.0.101
 ```
 
-- **端口 2022**:与既有 dropbear(`:22`)共存。退役 dropbear 后可改回 `:22`(改 [watchdog.sh](../../../egress/android-control/watchdog.sh) 的 `CONTROL_LISTEN`)。
+- **端口 2022**:当前生产控制面端口,由 [watchdog.sh](../../../egress/android-control/watchdog.sh) 的 `CONTROL_LISTEN` 固定。
 - **仅公钥登录**,无密码。登录即 **root**,支持交互式 PTY 与 `ssh ... "一次性命令"`。
 - 私钥当前在管理机 `~/.ssh/dxandroid_control`(**无 passphrase**)。要从 Hub 连,需先 `scp` 私钥到 Hub。
 
@@ -21,7 +21,6 @@ ssh -i ~/.ssh/dxandroid_control -p 2022 root@10.66.0.101
 | 项 | 值 |
 | --- | --- |
 | 控制 SSH(Go) | `10.66.0.101:2022` |
-| 既有 dropbear | `10.66.0.101:22` |
 | 出口代理 | `10.66.0.101:1080` |
 | 二进制 | `/data/adb/dxandroid/bin/dxandroid-control` |
 | 看门狗 | `/data/adb/dxandroid/watchdog.sh` |

@@ -42,25 +42,25 @@ Go module 移到仓库根目录，module 名为 `daxiang-vpn`。
 
 ## Android 出口远程控制方案
 
-确定采用 root/dropbear/sshd 路线：在 Android 出口手机上通过 Magisk `service.d` 拉起 watchdog，watchdog 负责保证 dropbear 只监听 WireGuard 内网 `10.66.0.101:22`，并通过 SSH key 登录获得 root shell。
+最终采用自研 Go SSH 控制面 `dxandroid-control` 路线：在 Android 出口手机上通过 Magisk `service.d` 拉起 watchdog，watchdog 负责保证控制面只监听 WireGuard 内网 `10.66.0.101:2022`，并通过 SSH key 登录获得 root shell。
 
 配套文件在 `egress/android-control/`：
 
 - `service.d/98-dxandroid-control.sh`：开机拉起 watchdog。
-- `watchdog.sh`：等待 `tun0 / 10.66.0.101` 就绪，拉起 dropbear，必要时重拉 `dxandroid-egress`。
+- `watchdog.sh`：保证 `dxandroid-control` 和 `dxandroid-egress` 在跑，必要时本地重拉。
 - `authorized_keys.example`：真实公钥模板，真实 `authorized_keys` 不入库。
 
 连接方式：
 
 ```bash
-ssh -i ~/.ssh/dxandroid_control_nopass -p 22 root@10.66.0.101
+ssh -i ~/.ssh/dxandroid_control -p 2022 root@10.66.0.101
 ```
 
 实测结果：
 
 - Windows 通过 `dxvpn.exe start --fast` 获得 `sing-tun` 接口 `10.66.0.30/24`。
-- `Test-NetConnection 10.66.0.101 -Port 22` 成功。
-- 使用 `~/.ssh/dxandroid_control_nopass` 直连 `root@10.66.0.101` 成功，返回 `uid=0(root)`。
+- `Test-NetConnection 10.66.0.101 -Port 2022` 成功。
+- 使用 `~/.ssh/dxandroid_control` 直连 `root@10.66.0.101:2022` 成功，返回 `uid=0(root)`。
 
 ## 文档同步
 

@@ -22,12 +22,12 @@
 
 - **工具链现成且已验证**:`dxandroid-egress` 就是同样 `GOOS=linux GOARCH=arm64 go build` 交叉编译后跑在这台手机上的,无需 NDK/WSL/dropbear 源码。
 - **自己的代码,可审计**,不引入外部二进制(供应链更干净)。
-- **天生只绑隧道 IP**:daemon 直接 `Listen("10.66.0.101:22")`,公网网卡上不开端口——dropbear 的核心优点它也有。
+- **天生只绑隧道 IP**:生产 watchdog 以 `-listen 10.66.0.101:2022` 启动,公网网卡上不开端口——dropbear 的核心优点它也有。
 - **依赖已在仓库**:`golang.org/x/crypto/ssh` 早已是 go.mod 间接依赖,只新增 `github.com/creack/pty`(PTY 支持)。
 
 ## 关键设计
 
-- **只绑隧道 IP**:默认 `-listen 10.66.0.101:22`。`10.66.0.101` 是配置钉死的(WireGuard App `Address` + Hub `AllowedIPs`),永不变,不存在绑错值。
+- **只绑隧道 IP**:生产监听 `10.66.0.101:2022`。`10.66.0.101` 是配置钉死的(WireGuard App `Address` + Hub `AllowedIPs`),永不变,不存在绑错值。
 - **绑定时机**:用 `IP_FREEBIND` 允许在 tun0/地址尚未就绪时也能 bind,开机即可监听,隧道一通立即可用;watchdog 再兜底保活。
 - **仅公钥认证**:每次连接重新读 `authorized_keys`,改公钥免重启;无密码登录。
 - **root shell**:进程由 Magisk 以 root 拉起,登录即 root。支持交互式 PTY(top/vi 可用)与 `ssh host "cmd"` 一次性执行。
@@ -62,10 +62,10 @@ $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 & $adb shell su -c "sh /data/adb/dxandroid/watchdog.sh &"
 ```
 
-从 Hub 连接:
+从已进入 VPN/WireGuard 内网的管理机连接:
 
 ```bash
-ssh -i ~/.ssh/dxandroid_control -p 22 root@10.66.0.101
+ssh -i ~/.ssh/dxandroid_control -p 2022 root@10.66.0.101
 ```
 
 ## TODO

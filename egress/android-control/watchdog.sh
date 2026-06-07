@@ -4,7 +4,7 @@
 # 部署目标:/data/adb/dxandroid/watchdog.sh,由 Magisk service.d 在开机后拉起。
 # 负责:
 #   1. 保证 dxandroid-control(Go SSH 服务)在跑 —— 它用 IP_FREEBIND 绑
-#      10.66.0.101:22,无需等隧道就绪即可启动,隧道一通即可连。
+#      10.66.0.101:2022,无需等隧道就绪即可启动,隧道一通即可连。
 #   2. 保证 dxandroid-egress 代理进程在跑,挂了用原启动脚本重拉。
 #   3. (可选)每日定时重启,清理长期运行的内存/状态泄漏。
 #
@@ -12,8 +12,7 @@
 
 BASE=/data/adb/dxandroid
 CONTROL_BIN=$BASE/bin/dxandroid-control
-# 监听地址:绑隧道 IP。端口 2022 是为了与既有 dropbear(:22)共存;
-# 退役 dropbear 后可改回 :22。
+# 监听地址:绑隧道 IP。端口 2022 是当前生产控制面端口。
 CONTROL_LISTEN=10.66.0.101:2022
 INTERVAL=30
 

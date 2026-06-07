@@ -247,18 +247,18 @@ curl -L --max-time 30 -x http://10.66.0.101:1080 -o /dev/null \
 
 ### 3.4 不用 ADB 远程控制 Android
 
-目标方案见 [egress/android-control](../../../egress/android-control/README.md)：手机端由 Magisk `service.d` 拉起 watchdog，watchdog 保证 dropbear 只监听 WireGuard 内网 `10.66.0.101:22`，并且只允许密钥登录。
+目标方案见 [egress/android-control](../../../egress/android-control/README.md)：手机端由 Magisk `service.d` 拉起 watchdog，watchdog 保证 Go SSH 控制面 `dxandroid-control` 只监听 WireGuard 内网 `10.66.0.101:2022`，并且只允许密钥登录。
 
 从已经通过 VPN/WireGuard 进入 `10.66.0.0/24` 的管理机直连手机：
 
 ```powershell
-ssh -i $env:USERPROFILE\.ssh\dxandroid_control_nopass -p 22 root@10.66.0.101
+ssh -i $env:USERPROFILE\.ssh\dxandroid_control -p 2022 root@10.66.0.101
 ```
 
 从 Hub 侧也可以连，但 Hub 只是 WireGuard 路由/中转节点，不是日常必需跳板：
 
 ```bash
-ssh -i ~/.ssh/dxandroid_control_nopass -p 22 root@10.66.0.101
+ssh -i ~/.ssh/dxandroid_control -p 2022 root@10.66.0.101
 ```
 
 登录后常用控制命令：
@@ -272,7 +272,7 @@ tail -80 /data/local/tmp/dxandroid-control.log
 
 安全边界：
 
-- dropbear 必须只绑定 `10.66.0.101:22`，不要监听 `0.0.0.0`。
+- `dxandroid-control` 必须只绑定 `10.66.0.101:2022`，不要监听 `0.0.0.0`。
 - 只用 SSH key 登录，禁止密码登录。
 - 带内控制依赖 WireGuard 隧道在线；手机没电、关机、无网、隧道未起时仍需要物理接触或 ADB 兜底。
 

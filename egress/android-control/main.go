@@ -1,7 +1,7 @@
 // dxandroid-control: 出口手机上的极简 SSH 服务,用于脱离 ADB 的远程控制。
 //
 // 设计要点:
-//   - 默认只绑定 WireGuard 隧道 IP 10.66.0.101:22,公网网卡上不可见;
+//   - 默认只绑定 WireGuard 隧道 IP 10.66.0.101:2022,公网网卡上不可见;
 //     只有进入隧道(10.66.0.0/24)的 peer 能连,配合 Hub 侧可再用 iptables 收紧。
 //   - 仅公钥认证(读 authorized_keys),不支持密码。
 //   - 用 IP_FREEBIND 允许在 tun0/地址尚未就绪时也能绑定,解决开机时序问题;
@@ -38,7 +38,7 @@ func envOr(key, def string) string {
 }
 
 func main() {
-	listenAddr := flag.String("listen", envOr("DXCTL_LISTEN", "10.66.0.101:22"), "监听地址(默认仅隧道 IP)")
+	listenAddr := flag.String("listen", envOr("DXCTL_LISTEN", "10.66.0.101:2022"), "监听地址(默认仅隧道 IP)")
 	hostKeyPath := flag.String("hostkey", envOr("DXCTL_HOSTKEY", "/data/adb/dxandroid/keys/ssh_host_ed25519_key"), "主机私钥路径(不存在则生成)")
 	authPath := flag.String("authorized", envOr("DXCTL_AUTHORIZED", "/data/adb/dxandroid/.ssh/authorized_keys"), "授权公钥文件")
 	shellPath := flag.String("shell", envOr("DXCTL_SHELL", "/system/bin/sh"), "登录 shell")
