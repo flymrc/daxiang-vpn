@@ -245,7 +245,38 @@ curl -L --max-time 30 -x http://10.66.0.101:1080 -o /dev/null \
 脚本会从 Hub 侧走 `10.66.0.101:1080` 连续测速，并输出平均、最小、最大 Mbps。
 该脚本不依赖 ADB，适合手机不在身边但 Android 出口仍在线时使用。
 
-### 3.4 Android 本机检查
+### 3.4 不用 ADB 远程控制 Android
+
+目标方案见 [egress/android-control](../../../egress/android-control/README.md)：手机端由 Magisk `service.d` 拉起 watchdog，watchdog 保证 dropbear 只监听 WireGuard 内网 `10.66.0.101:22`，并且只允许密钥登录。
+
+从已经通过 VPN/WireGuard 进入 `10.66.0.0/24` 的管理机直连手机：
+
+```powershell
+ssh -i $env:USERPROFILE\.ssh\dxandroid_control_nopass -p 22 root@10.66.0.101
+```
+
+从 Hub 侧也可以连，但 Hub 只是 WireGuard 路由/中转节点，不是日常必需跳板：
+
+```bash
+ssh -i ~/.ssh/dxandroid_control_nopass -p 22 root@10.66.0.101
+```
+
+登录后常用控制命令：
+
+```sh
+ps -A | grep dxandroid-egress
+tail -80 /data/local/tmp/dxandroid-egress-work/egress.log
+sh /data/adb/service.d/99-dxandroid-egress.sh
+tail -80 /data/local/tmp/dxandroid-control.log
+```
+
+安全边界：
+
+- dropbear 必须只绑定 `10.66.0.101:22`，不要监听 `0.0.0.0`。
+- 只用 SSH key 登录，禁止密码登录。
+- 带内控制依赖 WireGuard 隧道在线；手机没电、关机、无网、隧道未起时仍需要物理接触或 ADB 兜底。
+
+### 3.5 Android 本机检查
 
 ADB 可用时：
 
@@ -265,7 +296,7 @@ $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 - 当前运行模式是否为预期值，例如 `mode: external`。
 - WireGuard App 是否创建了 `tun0 / 10.66.0.101`。
 
-### 3.5 当前已知性能判断
+### 3.6 当前已知性能判断
 
 - 手机 App 测到的高速下载不等于出口可用下载速度。
 - 作为出口时，电脑下载需要手机把数据上传回 Hub，因此手机上行是关键瓶颈。

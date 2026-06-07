@@ -52,6 +52,7 @@ Hub: 36.50.84.68 / 10.66.0.1
 - [Hub API 部署](20-operations/runbooks/hub-api-deploy.md)
 - [客户端配置示例](20-operations/configs/client/cn-client-01.yaml.example)
 - [Android 出口配置示例](20-operations/configs/egress/android-egress-01.yaml.example)
+- [Android 出口远程控制](../egress/android-control/README.md)
 
 ## 30 Implementation
 

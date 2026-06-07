@@ -19,10 +19,13 @@ INTERVAL=30
 BASE=/data/adb/dxandroid
 BIN=$BASE/bin
 KEYS=$BASE/keys
+PERSIST_SSH_DIR=$BASE/.ssh
+SSH_DIR=/dev/dxandroid/.ssh
 DROPBEAR=$BIN/dropbear
 DROPBEARKEY=$BIN/dropbearkey
 HOSTKEY=$KEYS/dropbear_ed25519_host_key
-AUTHKEYS=$BASE/authorized_keys
+AUTHKEYS=$SSH_DIR/authorized_keys
+PERSIST_AUTHKEYS=$PERSIST_SSH_DIR/authorized_keys
 
 EGRESS_NAME=dxandroid-egress
 EGRESS_LAUNCH=/data/adb/service.d/99-dxandroid-egress.sh
@@ -43,10 +46,25 @@ ensure_hostkey() {
     fi
 }
 
+ensure_authorized_keys() {
+    [ -d "$SSH_DIR" ] || mkdir -p "$SSH_DIR"
+    chmod 700 /dev/dxandroid "$SSH_DIR" 2>/dev/null || true
+    if [ -s "$PERSIST_AUTHKEYS" ]; then
+        tr -d '\r' < "$PERSIST_AUTHKEYS" > "$AUTHKEYS"
+    fi
+    if [ ! -s "$AUTHKEYS" ]; then
+        log "WARN $PERSIST_AUTHKEYS missing or empty, dropbear will not accept key login"
+        return 1
+    fi
+    chmod 600 "$AUTHKEYS" 2>/dev/null || true
+    return 0
+}
+
 start_dropbear() {
     # -s 禁止密码登录;-g 禁止 root 用密码;-E 日志到 stderr;-p 仅绑 WG IP。
-    # 授权公钥取自 $AUTHKEYS(见 README 的 -U/HOME 说明,按设备实测确定路径)。
-    HOME="$BASE" "$DROPBEAR" -p "${WG_IP}:${SSH_PORT}" -r "$HOSTKEY" -s -g -E >> "$LOG" 2>&1 &
+    # 授权公钥显式取自 $SSH_DIR/authorized_keys。
+    ensure_authorized_keys || return 1
+    HOME="$BASE" "$DROPBEAR" -p "${WG_IP}:${SSH_PORT}" -r "$HOSTKEY" -D "$SSH_DIR" -s -g -E >> "$LOG" 2>&1 &
     log "started dropbear on ${WG_IP}:${SSH_PORT}"
 }
 

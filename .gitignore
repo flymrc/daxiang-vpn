@@ -9,6 +9,8 @@ docs/ops/TOKENS_*.md
 egress/android-control/authorized_keys
 **/dxandroid_control
 **/dxandroid_control.pub
+**/dxandroid_control_nopass
+**/dxandroid_control_nopass.pub
 
 # Android local build output
 egress/android-status/**/.gradle/
