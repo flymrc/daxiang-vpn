@@ -13,7 +13,8 @@
 | `main.go` + `freebind_*.go` | 编译产物 `/data/adb/dxandroid/bin/dxandroid-control` | Go SSH 服务:绑隧道 IP、仅公钥、PTY shell |
 | `watchdog.sh` | `/data/adb/dxandroid/watchdog.sh` | 本地自检:保证 control/egress 在跑,(可选)每日重启 |
 | `service.d/98-dxandroid-control.sh` | `/data/adb/service.d/98-dxandroid-control.sh` | Magisk 开机自启,拉起看门狗 |
-| `authorized_keys.example` | `/data/adb/dxandroid/authorized_keys`(填真实公钥) | 允许登录的 Hub 公钥 |
+| `authorized_keys.example` | `/data/adb/dxandroid/.ssh/authorized_keys`(填真实公钥) | 允许登录的 Hub 公钥 |
+| `rotate-ip.sh` | `/data/adb/dxandroid/rotate-ip.sh` | 切换出口公网 IP(飞行模式重注册,脱离会话执行) |
 
 配套 Hub 侧被动存活探针:[scripts/watch-android-egress-liveness.sh](../../scripts/watch-android-egress-liveness.sh)。
 

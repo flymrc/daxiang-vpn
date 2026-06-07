@@ -78,7 +78,25 @@ $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 - **`adb forward` 只能连设备 `127.0.0.1`**:测绑在 `10.66.0.101` 的生产实例时用 forward 会 EOF/连不上;要么起一个绑 `127.0.0.1` 的临时实例测,要么从隧道内(Hub)直接连。
 - **后台进程要 `setsid` + 重定向**:`su -c` 里直接 `&` 起的进程会随该 shell 退出被挂断;`setsid ... >/dev/null 2>&1 </dev/null &` 才常驻、且不挂住 adb。
 
-## 7. 电池(待办)
+## 7. 切换出口公网 IP(不重启)
+
+让蜂窝无线电向运营商重注册,通常会拿到新公网 IP;隧道 IP `10.66.0.101` 不变,切换后 WireGuard 自动重握手恢复。脚本:[egress/android-control/rotate-ip.sh](../../../egress/android-control/rotate-ip.sh)(部署在 `/data/adb/dxandroid/rotate-ip.sh`)。
+
+```bash
+# 触发换 IP(脚本内部用 setsid 脱离会话,避免切换瞬间断链把自己锁死)
+ssh -i ~/.ssh/dxandroid_control -p 2022 root@10.66.0.101 'sh /data/adb/dxandroid/rotate-ip.sh'
+ssh ... 'sh /data/adb/dxandroid/rotate-ip.sh 12'   # 自定义断网秒数(默认 8)
+
+# 等 ~20-40s 重连后核对新出口 IP
+curl.exe -s -x http://10.66.0.101:1080 https://api.ipify.org
+# 或 ./scripts/check-android-egress-health.ps1 看 egress_ip
+```
+
+⚠️ **绝不能在前台 SSH 里直接敲飞行模式开关**——"开飞行"会当场切断你的会话,"关飞行"还没跑手机就一直离线、把你锁在外面。务必走 `rotate-ip.sh`(它 `setsid` 脱离执行,断线也会自动把网络恢复)。
+
+注意:运营商可能仍返回相同/粘性 IP,不保证每次都变(多切几次或加大断网秒数);切换瞬间出口中断十几秒。实测一次:`133.106.140.188` → `133.106.35.50`。
+
+## 8. 电池(待办)
 
 `/sys/class/power_supply/battery/charge_control_limit` 是 **0–11 充电电流档位**(限流/降温),**不是 SoC 百分比上限**;本机无充电开关/SoC 封顶节点。
 作为 24/7 出口需插**独立墙充**(用 PC 的 USB 口供电可能不足以覆盖运行消耗,会净放电)。
