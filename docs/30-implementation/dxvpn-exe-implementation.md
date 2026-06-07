@@ -498,7 +498,7 @@ go build -tags with_gvisor -trimpath -ldflags "-s -w" -o dist\windows-amd64\dxvp
 如果在非 Windows 系统交叉编译：
 
 ```bash
-GOOS=windows GOARCH=amd64 go build -tags with_gvisor -trimpath -ldflags "-s -w" -o dist/windows-amd64/dxvpn.exe ./cmd/dxvpn
+GOOS=windows GOARCH=amd64 go build -tags with_gvisor -trimpath -ldflags "-s -w" -o dist/windows-amd64/dxvpn.exe ./clients/cli
 ```
 
 > 体积：内嵌外部 sing-box.exe 时约 50MB；改为库化 + 只注册用到的协议

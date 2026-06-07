@@ -5,10 +5,10 @@
 在本机仓库执行：
 
 ```powershell
-cd backend/dxhub
+cd c:\Users\xuotq\daxiang-vpn
 $env:GOOS="linux"
 $env:GOARCH="amd64"
-go build -o dist/linux-amd64/dxhub ./cmd/dxhub
+go build -o dist/linux-amd64/dxhub ./hub
 Remove-Item Env:\GOOS, Env:\GOARCH
 ```
 

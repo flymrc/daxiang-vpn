@@ -4,12 +4,24 @@
 
 ## 目录
 
-```text
-backend/
-  dxhub/              Hub 授权 API
+> 注:`clients/` 是终端用户客户端,`egress/` 是出口节点(基础设施侧)。安卓相关都在 `egress/` 下,**不是**终端客户端。
 
-frontend/
-  dxvpn/              Windows 客户端 CLI
+按角色分顶层(client / hub / egress),Go 代码统一在根 module `daxiang-vpn` 下。
+
+```text
+clients/              客户端(终端用户侧)
+  cli/                CLI 客户端（原 frontend/dxvpn）
+  desktop-gui/        🅿️ 预留：mac/windows PC 单一跨平台 GUI 客户端
+
+hub/                  Hub 服务端（授权 API，原 backend/dxhub）
+
+egress/               出口节点(基础设施侧，非终端客户端)
+  proxy/              跨平台 Go 出口代理（基于 sing-box）
+                      linux-arm64=安卓 dxandroid-egress；darwin/windows=Mac/PC 出口(🅿️ 预留)
+  android-status/     安卓出口监控 App（原 android/dxandroid-status）
+
+shared/               客户端与出口共用的 Go 包
+  config/  paths/  proxy/
 
 docs/
   README.md           文档总入口
@@ -23,6 +35,17 @@ docs/
 dist/
   windows-amd64/      Windows x64 客户端发布包
   windows-arm64/      Windows ARM64 客户端发布包
+```
+
+## 构建
+
+```powershell
+# Windows 客户端
+clients/cli/build.ps1
+# Hub 服务端
+go build -o dist/hub ./hub
+# 安卓出口代理（arm64）
+$env:GOOS="linux"; $env:GOARCH="arm64"; go build -tags with_gvisor -o dist/dxandroid-egress ./egress/proxy
 ```
 
 ## 当前 MVP

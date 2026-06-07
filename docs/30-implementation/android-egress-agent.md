@@ -53,7 +53,7 @@ Android rooted phone = egress agent
 已新增一个新的命令入口：
 
 ```text
-frontend/dxvpn/cmd/dxandroid-egress
+egress/proxy
 ```
 
 第一版支持：
@@ -72,9 +72,12 @@ frontend/dxvpn/cmd/dxandroid-egress
 
 - Android 前台服务。
 - 开机自启。
-- 自动 daemonize。
 - iptables 策略路由增强。
 - Hub 侧 egress token/bootstrap。
+
+出口端到 Hub 的保活由 WireGuard keepalive 承担：`egress/proxy/internal/egressproxy/singbox.go` 渲染 WireGuard peer 时设置 `persistent_keepalive_interval: 25`，也就是 embedded/sing-box WireGuard 模式下 Android 出口每 25 秒向 Hub peer 发一次 WireGuard keepalive，供 Hub 侧维持 NAT 映射和判断出口是否仍在线。
+当前推荐的 `wireguard.mode: external` 由 WireGuard App/系统隧道负责这层保活；`dxandroid-egress` 在 external 模式只运行代理，不渲染 WireGuard endpoint。
+安卓状态 App 仍只提供前台通知和本机状态观察，不直接托管 `dxandroid-egress` 进程生命周期。
 
 ## 配置模型
 
@@ -104,10 +107,10 @@ frontend/dxvpn/cmd/dxandroid-egress
 本地 Windows 开发机构建：
 
 ```powershell
-cd frontend\dxvpn
+cd c:\Users\xuotq\daxiang-vpn
 $env:GOOS="android"
 $env:GOARCH="arm64"
-go build -o ..\..\dist\dxandroid-egress ./cmd/dxandroid-egress
+go build -tags with_gvisor -o dist\dxandroid-egress ./egress/proxy
 ```
 
 拿到 root 安卓机后，预期运行方式：
@@ -153,4 +156,3 @@ Android egress agent
 1. Android App/前台服务 UI。
 2. WireGuard App 开机自动拉起验证。
 3. 日志轮转、崩溃重启计数、电量和温度采集。
-

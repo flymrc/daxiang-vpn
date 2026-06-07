@@ -17,16 +17,20 @@ dxvpn.exe login <授权码>
 ## 目录
 
 ```text
-backend/dxhub
-  cmd/dxhub
+hub
+  main.go
   internal/auth
   config/tokens.example.yaml
 
-frontend/dxvpn
-  cmd/dxvpn
+clients/cli
+  main.go
   internal/bootstrap
   internal/app
-  internal/proxy
+
+shared
+  config
+  paths
+  proxy
 ```
 
 ## Hub API
@@ -70,7 +74,7 @@ POST /api/client/bootstrap
 真实授权文件：
 
 ```text
-backend/dxhub/config/tokens.yaml
+hub/config/tokens.yaml
 ```
 
 这个文件是服务端私有文件，不提交、不交付客户。
@@ -78,7 +82,7 @@ backend/dxhub/config/tokens.yaml
 示例文件：
 
 ```text
-backend/dxhub/config/tokens.example.yaml
+hub/config/tokens.example.yaml
 ```
 
 禁用客户：

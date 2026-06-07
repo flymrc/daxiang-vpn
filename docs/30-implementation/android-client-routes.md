@@ -206,7 +206,7 @@ Kotlin/Java Android App
 当前仓库已经为路线一准备了第一版入口：
 
 ```text
-frontend/dxvpn/cmd/dxandroid-egress
+egress/proxy
 ```
 
 相关文档：
@@ -217,7 +217,7 @@ frontend/dxvpn/cmd/dxandroid-egress
 
 1. 继续完善 `dxandroid-egress`
 2. 在 rooted 安卓机上完成联机验证
-3. 补后台保活与自恢复
+3. 基于 Android 出口到 Hub 的 25 秒 WireGuard keepalive 继续补自恢复
 4. 需要时再加 Android 外壳
 
 ## 一句话结论
