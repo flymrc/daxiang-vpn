@@ -19,7 +19,7 @@ egress/               出口节点(基础设施侧，非终端客户端)
   proxy/              跨平台 Go 出口代理（基于 sing-box）
                       linux-arm64=安卓 dxandroid-egress；darwin/windows=Mac/PC 出口(🅿️ 预留)
   android-status/     安卓出口监控 App（原 android/dxandroid-status）
-  android-control/    安卓出口远程控制+自愈（dropbear over 隧道 + 看门狗）
+  android-control/    安卓出口远程控制+自愈（Go SSH 服务绑隧道 IP + 看门狗）
 
 shared/               客户端与出口共用的 Go 包
   config/  paths/  proxy/
@@ -77,6 +77,7 @@ dxvpn.exe stop
 - [总体架构](docs/10-architecture/system-architecture.md)
 - [出口方案选型](docs/10-architecture/egress-strategy.md)
 - [运维诊断命令手册](docs/20-operations/runbooks/diagnostics.md)
+- [Android 出口远程控制操作手册](docs/20-operations/runbooks/android-remote-control.md)
 - [服务器访问与当前状态](docs/20-operations/runbooks/server-access.md)
 - [安全与抗封改进 TODO](docs/40-security/security-todo.md)
 - [Hub 安全审查报告 2026-06-04](docs/40-security/security-audit-2026-06-04.md)

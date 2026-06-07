@@ -9,6 +9,6 @@
 # 从已进入 VPN/WireGuard 内网的管理机连接:
 #   ssh -i ~/.ssh/dxandroid_control_nopass -p 22 root@10.66.0.101
 #
-# 仅密钥登录,dropbear 已用 -s -g 关闭密码登录。
+# 仅密钥登录:dxandroid-control(Go SSH 服务)只做公钥认证,无密码登录。
 
 ssh-ed25519 AAAA...REPLACE_WITH_YOUR_PUBLIC_KEY... hub->android-egress
