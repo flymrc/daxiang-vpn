@@ -16,3 +16,6 @@ egress/android-control/authorized_keys
 egress/android-status/**/.gradle/
 egress/android-status/**/build/
 egress/android-status/**/local.properties
+
+# 误产生的主机编译产物
+*.exe
