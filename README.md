@@ -77,6 +77,7 @@ dxvpn.exe stop
 - [总体架构](docs/10-architecture/system-architecture.md)
 - [出口方案选型](docs/10-architecture/egress-strategy.md)
 - [运维诊断命令手册](docs/20-operations/runbooks/diagnostics.md)
+- [Android 出口远程控制操作手册](docs/20-operations/runbooks/android-remote-control.md)
 - [服务器访问与当前状态](docs/20-operations/runbooks/server-access.md)
 - [安全与抗封改进 TODO](docs/40-security/security-todo.md)
 - [Hub 安全审查报告 2026-06-04](docs/40-security/security-audit-2026-06-04.md)
