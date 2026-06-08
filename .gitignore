@@ -1,4 +1,5 @@
 dist/
+local/
 hub/config/tokens.yaml
 docs/ops/SERVER_ACCESS.md
 # 含 WireGuard 私钥 / token 归属，敏感，仅本地留存

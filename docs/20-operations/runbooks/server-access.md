@@ -119,6 +119,7 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 | --- | --- | --- |
 | `windows-client-1` | `10.66.0.10/32` | 之前有握手记录，当前无法 ping 通 |
 | `mac-mini` | `10.66.0.100/32` | 已握手，Hub 可 ping 通 |
+| `admin-innernet` | `10.66.0.40/32` | 管理专用内网 peer,只路由 `10.66.0.0/24`,不承载公网出口流量 |
 
 ## 当前模式
 

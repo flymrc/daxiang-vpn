@@ -45,12 +45,13 @@ nc -z -v 10.66.0.101 1080                          # 应 succeeded
 
 ## 4. 自愈机制
 
-- `watchdog.sh` 每 30s 自检:`dxandroid-control` 或 `dxandroid-egress` 挂了就本地重拉。
+- `watchdog.sh` 每 30s 自检:若 `10.66.0.101` 地址缺失,会通过 WireGuard App 的 `SET_TUNNEL_UP` broadcast intent 请求拉起 `jp-android-01` 隧道;若地址存在但 Hub 内网 `10.66.0.1` 不可达,会先 `SET_TUNNEL_DOWN` 再 `SET_TUNNEL_UP` 强制重拨;`dxandroid-control` 或 `dxandroid-egress` 挂了也会本地重拉。
+- WireGuard App intent 有 120s 冷却,避免无网/无权限时刷屏。
 - `service.d/98` 开机由 Magisk 拉起看门狗。
 - daemon 用 `IP_FREEBIND` 绑定,隧道 IP 未就绪时也能先监听,隧道一通即可用。
 - 可选每日定时重启:把 watchdog 的 `REBOOT_HOUR` 设为如 `"04"`(默认空=关闭)。
 
-边界:**隧道断了(手机没网 / WireGuard App 被 Doze 冻死 / 关机)就连不上**——带内控制的固有限制,靠本地看门狗兜底。
+边界:**隧道断了以后带内 SSH 仍连不上**。watchdog 会在手机本机尝试重拉隧道,但手机无网、关机、没电、WireGuard App 被系统策略拦截时,仍需要物理接触或 ADB 兜底。
 
 ## 5. 部署 / 更新(需 ADB,改动线上前确认)
 

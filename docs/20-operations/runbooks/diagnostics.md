@@ -295,6 +295,7 @@ $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 - 日志中是否大量出现 `sendmsg: message too long`。
 - 当前运行模式是否为预期值，例如 `mode: external`。
 - WireGuard App 是否创建了 `tun0 / 10.66.0.101`。
+- 若 `tun0` 缺失,watchdog 会最多每 120s 发一次 WireGuard App `SET_TUNNEL_UP` intent;若 `tun0` 存在但 Hub 内网 ping 失败,watchdog 会 `SET_TUNNEL_DOWN` 后再 `SET_TUNNEL_UP` 强制重拨。可看 `/data/local/tmp/dxandroid-control.log` 中的 `wireguard unhealthy` 记录。
 
 ### 3.6 当前已知性能判断
 

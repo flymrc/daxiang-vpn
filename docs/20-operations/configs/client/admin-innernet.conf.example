@@ -1,0 +1,13 @@
+# Daxiang VPN admin innernet client.
+# Only routes the WireGuard management subnet into the tunnel.
+# It does not install a default route and should not carry public egress traffic.
+
+[Interface]
+PrivateKey = ADMIN_INNERNET_CLIENT_PRIVATE_KEY
+Address = 10.66.0.40/24
+
+[Peer]
+PublicKey = HUB_WIREGUARD_PUBLIC_KEY
+Endpoint = 36.50.84.68:51820
+AllowedIPs = 10.66.0.0/24
+PersistentKeepalive = 25

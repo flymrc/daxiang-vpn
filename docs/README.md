@@ -49,19 +49,23 @@ Hub: 36.50.84.68 / 10.66.0.1
 - [运维诊断命令](20-operations/runbooks/diagnostics.md)
 - [CLI 使用说明](20-operations/runbooks/cli-usage.md)
 - [客户端 token 管理](20-operations/runbooks/client-tokens.md)
+- [管理内网专用客户端](20-operations/runbooks/admin-innernet-client.md)
 - [Hub API 部署](20-operations/runbooks/hub-api-deploy.md)
 - [客户端配置示例](20-operations/configs/client/cn-client-01.yaml.example)
+- [管理内网客户端配置示例](20-operations/configs/client/admin-innernet.conf.example)
 - [Android 出口配置示例](20-operations/configs/egress/android-egress-01.yaml.example)
 - [Android 出口远程控制](../egress/android-control/README.md)
 
 ## 30 Implementation
 
 - [Android 出口节点实现](30-implementation/android-egress-agent.md)
+- [Android 出口极致加速研究](30-implementation/android-egress-performance-acceleration.md)
 - [Hub 授权 API MVP](30-implementation/auth-api-mvp.md)
 - [CLI MVP 实现](30-implementation/cli-mvp-implementation.md)
 - [dxvpn.exe 实现](30-implementation/dxvpn-exe-implementation.md)
 - [dxvpn.exe 本地单例实现计划](30-implementation/client-singleton-plan.md)
 - [服务端托管客户端配置](30-implementation/server-managed-client.md)
+- [管理内网状态栏工具](../clients/admin-menubar/README.md)
 
 ## 40 Security
 

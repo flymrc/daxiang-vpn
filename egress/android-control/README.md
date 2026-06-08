@@ -11,7 +11,7 @@
 | 文件 | 部署到手机 | 作用 |
 | --- | --- | --- |
 | `main.go` + `freebind_*.go` | 编译产物 `/data/adb/dxandroid/bin/dxandroid-control` | Go SSH 服务:绑隧道 IP、仅公钥、PTY shell |
-| `watchdog.sh` | `/data/adb/dxandroid/watchdog.sh` | 本地自检:保证 control/egress 在跑,(可选)每日重启 |
+| `watchdog.sh` | `/data/adb/dxandroid/watchdog.sh` | 本地自检:尝试拉起 WireGuard App 隧道,保证 control/egress 在跑,(可选)每日重启 |
 | `service.d/98-dxandroid-control.sh` | `/data/adb/service.d/98-dxandroid-control.sh` | Magisk 开机自启,拉起看门狗 |
 | `authorized_keys.example` | `/data/adb/dxandroid/.ssh/authorized_keys`(填真实公钥) | 允许登录的 Hub 公钥 |
 | `rotate-ip.sh` | `/data/adb/dxandroid/rotate-ip.sh` | 切换出口公网 IP(飞行模式重注册,脱离会话执行) |
@@ -30,12 +30,13 @@
 
 - **只绑隧道 IP**:生产监听 `10.66.0.101:2022`。`10.66.0.101` 是配置钉死的(WireGuard App `Address` + Hub `AllowedIPs`),永不变,不存在绑错值。
 - **绑定时机**:用 `IP_FREEBIND` 允许在 tun0/地址尚未就绪时也能 bind,开机即可监听,隧道一通立即可用;watchdog 再兜底保活。
+- **WG 自愈**:watchdog 检查 `10.66.0.101` 地址和 Hub 内网 `10.66.0.1` 可达性;地址缺失时通过 WireGuard Android 官方 broadcast intent 请求拉起 `jp-android-01` 隧道,地址存在但 Hub 不通时先 DOWN 再 UP 强制重拨,并用 120 秒冷却避免反复刷屏。
 - **仅公钥认证**:每次连接重新读 `authorized_keys`,改公钥免重启;无密码登录。
 - **root shell**:进程由 Magisk 以 root 拉起,登录即 root。支持交互式 PTY(top/vi 可用)与 `ssh host "cmd"` 一次性执行。
 
 ## 边界(务必知道)
 
-- **依赖隧道在线**:隧道断了(手机没网 / WireGuard App 被杀 / Doze 冻死)就连不上——这正是最需要控制的时刻。watchdog 的本地自愈是关键兜底。
+- **依赖隧道在线**:隧道断了(手机没网 / WireGuard App 被杀 / Doze 冻死)就连不上。watchdog 会尝试通过 WireGuard App intent 自愈,但若手机无网、关机、没电、App 权限/后台策略拦截,仍只能物理接触或 ADB 兜底。
 - **关机 / 没电 / 彻底离线**:任何带内方案都无解,只能物理接触。
 - **shell ≠ 触屏**:UI 点按需 `input`/uiautomator;刷机/bootloader 级操作脱离 shell。
 
@@ -71,7 +72,6 @@ ssh -i ~/.ssh/dxandroid_control -p 2022 root@10.66.0.101
 
 ## TODO
 
-- **WG 隧道自愈**:external 模式下隧道由 WireGuard App 拥有,shell 难以可靠重建;
-  可评估 intent 触发 App 重连,或改内核 WG + `wg-quick` 由 root 直管。
+- **WG 隧道自愈强化**:当前已通过 WireGuard App intent 做第一层自愈;若实测仍被 Android 后台限制拦截,再评估改为内核 WG + `wg-quick` 由 root 直管。
 - **Hub 侧 iptables**(可选加固):即便已只绑隧道 IP,仍可在 Hub 进一步限制只放行特定来源。
 - **告警接入**:Hub 探针 `alert()` 钩子目前只打印,接 webhook/邮件。
