@@ -22,17 +22,17 @@ final class StatusProbe {
                 "echo __DX_ROOT__",
                 "id",
                 "echo __DX_PID__",
-                "pidof dxandroid-egress 2>/dev/null || true",
+                "pidof dxreverse 2>/dev/null || pgrep -f 'dxreverse client' 2>/dev/null || true",
                 "echo __DX_ROUTE__",
                 "ip route get 8.8.8.8 2>&1 | head -1",
                 "echo __DX_LISTEN__",
-                "ss -lntp 2>/dev/null | grep 10.66.0.101:1080 || true",
+                "ss -untp 2>/dev/null | grep dxreverse || true",
                 "echo __DX_WG__",
-                "ip -4 addr show wg0 2>/dev/null | grep 'inet ' || true",
+                "ip -4 addr 2>/dev/null | grep '10.66.0.101' || true",
                 "echo __DX_SERVICE_LOG__",
-                "tail -8 /data/local/tmp/dxandroid-egress-work/service.log 2>/dev/null || true",
+                "tail -8 /data/local/tmp/dxandroid-control.log 2>/dev/null || true",
                 "echo __DX_EGRESS_LOG__",
-                "tail -14 /data/local/tmp/dxandroid-egress-work/egress.log 2>/dev/null || true"
+                "tail -14 /data/local/tmp/dxreverse-egress.log 2>/dev/null || true"
         ));
 
         String root = section(output, "__DX_ROOT__", "__DX_PID__");

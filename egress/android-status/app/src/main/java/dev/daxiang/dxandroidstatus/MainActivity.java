@@ -119,7 +119,7 @@ public class MainActivity extends Activity {
                         + "进程\n" + (s.egressRunning ? s.pid : "未运行") + "\n\n"
                         + "公网路由\n" + empty(s.route) + "\n\n"
                         + "WireGuard\n" + empty(s.wg) + "\n\n"
-                        + "监听端口\n" + empty(s.listen) + "\n\n"
+                        + "反连会话\n" + empty(s.listen) + "\n\n"
                         + "守护日志\n" + empty(s.serviceLog) + "\n\n"
                         + "出口日志\n" + empty(s.egressLog)
         );

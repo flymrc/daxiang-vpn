@@ -1,6 +1,6 @@
 param(
     [string]$Hub = "root@36.50.84.68",
-    [string]$Proxy = "http://10.66.0.101:1080",
+    [string]$Proxy = "http://127.0.0.1:18081",
     [string]$AndroidIP = "10.66.0.101",
     [int]$ExpectedRouteMtu = 1120,
     [int]$ExpectedMss = 0,

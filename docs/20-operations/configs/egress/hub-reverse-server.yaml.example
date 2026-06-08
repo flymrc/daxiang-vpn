@@ -1,0 +1,11 @@
+server:
+  # Public UDP listener for Android reverse clients.
+  listen: 0.0.0.0:39093
+  # Hub-side HTTP CONNECT proxy exposed to the egress router/client layer.
+  proxy: 127.0.0.1:18081
+  # Store the real token in this file, mode 600. Do not commit it.
+  token_file: /etc/daxiang/dxreverse/token
+  transport: quic
+  # server = Hub resolves target hostnames before sending IP:port to Android.
+  # client = Android resolves target hostnames through the public DNS fallback.
+  resolve: server

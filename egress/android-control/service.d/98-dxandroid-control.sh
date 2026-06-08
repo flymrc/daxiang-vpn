@@ -2,7 +2,7 @@
 # Magisk service.d 启动项:开机(late_start)后拉起 dxandroid-control 看门狗。
 # 部署目标:/data/adb/service.d/98-dxandroid-control.sh(需可执行)。
 #
-# 编号 98 早于 99-dxandroid-egress.sh,但 watchdog 自己会等隧道就绪、
+# 编号 98 早于 99-dxreverse-egress.sh,但 watchdog 自己会等隧道就绪、
 # 并负责把 egress 拉起,二者先后无强依赖。
 
 BASE=/data/adb/dxandroid

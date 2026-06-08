@@ -79,6 +79,50 @@ curl -x http://10.66.0.100:1080 https://api.ipify.org
 curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 ```
 
+## Android 手机出口节点
+
+- 角色：日本手机卡出口节点
+- 控制面 WireGuard IP：`10.66.0.101`
+- 控制面 SSH：`10.66.0.101:2022`
+- 数据面：`dxreverse` 反向 QUIC
+- Hub 侧代理入口：`127.0.0.1:18081`
+- Hub reverse UDP 监听：`0.0.0.0:39093/udp`
+- Android reverse endpoint：Android 主动连 Hub,无手机入站端口
+- 旧代理：`10.66.0.101:1080` / `dxandroid-egress` 已退为回滚路径
+
+当前部署：
+
+| 项 | 路径 |
+| --- | --- |
+| Hub binary | `/opt/daxiang/dxreverse/dxreverse` |
+| Hub config | `/etc/daxiang/dxreverse/server.yaml` |
+| Hub token | `/etc/daxiang/dxreverse/token` |
+| Hub service | `/etc/systemd/system/dxreverse-hub.service` |
+| Android binary | `/data/adb/dxreverse/bin/dxreverse` |
+| Android config | `/data/adb/dxreverse/client.yaml` |
+| Android token | `/data/adb/dxreverse/token` |
+| Android service | `/data/adb/service.d/99-dxreverse-egress.sh` |
+| Legacy backup | `/data/adb/service.d/99-dxandroid-egress.sh.disabled` |
+
+当前验证结果：
+
+- `dxreverse-hub.service` 已启用并运行。
+- Hub 监听 `39093/udp` 和 `127.0.0.1:18081`。
+- Hub 日志显示 Android 4 条 QUIC reverse session 已连接。
+- Android 当前仅运行 `99-dxreverse-egress.sh` supervisor 和 `dxreverse client`。
+- Hub 经 reverse proxy 出口 IP：`59.132.8.186`。
+
+常用检查命令：
+
+```bash
+systemctl status dxreverse-hub.service
+journalctl -u dxreverse-hub.service -n 50 --no-pager
+scripts/check-android-reverse-egress.sh
+curl --proxy http://127.0.0.1:18081 https://api.ipify.org
+ssh -i ~/.ssh/dxandroid_control_local -p 2022 root@10.66.0.101 \
+  'ps -A -o PID,PPID,ARGS | grep -E "dxreverse|dxandroid-egress|99-dx" | grep -v grep || true'
+```
+
 ## 当前服务器状态
 
 检查日期：2026-06-03。

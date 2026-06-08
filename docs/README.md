@@ -17,10 +17,10 @@ Hub: 36.50.84.68 / 10.66.0.1
   |
   +-- mac-mini       10.66.0.100:1080 -> 日本住宅出口
   |
-  +-- jp-android-01  10.66.0.101:1080 -> 日本手机卡出口
+  +-- jp-android-01  dxreverse -> Hub 127.0.0.1:18081 -> 日本手机卡出口
 ```
 
-当前两个出口都已验证 HTTP 和 SOCKS5 mixed 代理可用。
+Mac 出口仍是远端 mixed 代理。Android 出口数据面已迁到 `dxreverse` 反向 QUIC,旧 `10.66.0.101:1080` 仅作为回滚/历史路径。
 
 ## 目录说明
 
@@ -53,7 +53,8 @@ Hub: 36.50.84.68 / 10.66.0.1
 - [Hub API 部署](20-operations/runbooks/hub-api-deploy.md)
 - [客户端配置示例](20-operations/configs/client/cn-client-01.yaml.example)
 - [管理内网客户端配置示例](20-operations/configs/client/admin-innernet.conf.example)
-- [Android 出口配置示例](20-operations/configs/egress/android-egress-01.yaml.example)
+- [Android reverse client 配置示例](20-operations/configs/egress/android-reverse-client.yaml.example)
+- [Hub reverse server 配置示例](20-operations/configs/egress/hub-reverse-server.yaml.example)
 - [Android 出口远程控制](../egress/android-control/README.md)
 
 ## 30 Implementation

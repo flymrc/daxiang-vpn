@@ -21,23 +21,27 @@ ssh -i ~/.ssh/dxandroid_control -p 2022 root@10.66.0.101
 | 项 | 值 |
 | --- | --- |
 | 控制 SSH(Go) | `10.66.0.101:2022` |
-| 出口代理 | `10.66.0.101:1080` |
+| Android 出口数据面 | `dxreverse client` 主动反连 Hub |
+| Hub 侧出口代理 | `127.0.0.1:18081` |
 | 二进制 | `/data/adb/dxandroid/bin/dxandroid-control` |
+| 反向出口二进制 | `/data/adb/dxreverse/bin/dxreverse` |
 | 看门狗 | `/data/adb/dxandroid/watchdog.sh` |
 | 开机自启 | `/data/adb/service.d/98-dxandroid-control.sh` |
+| 出口自启 | `/data/adb/service.d/99-dxreverse-egress.sh` |
 | 授权公钥 | `/data/adb/dxandroid/.ssh/authorized_keys` |
 | 主机私钥(daemon 自生成) | `/data/adb/dxandroid/keys/ssh_host_ed25519_key` |
 | 运行日志 | `/data/local/tmp/dxandroid-control.log` |
+| 出口日志 | `/data/local/tmp/dxreverse-egress.log` |
 
 ## 3. 从 Hub 验证(不依赖 ADB)
 
 ```bash
-# 出口 + 隧道整体健康(Windows 管理机上跑)
-./scripts/check-android-egress-health.ps1
+# 出口数据面健康(在 Hub 上跑)
+./scripts/check-android-reverse-egress.sh
 
 # 控制面 / 出口端口是否经隧道可达(在 Hub 上)
 echo | timeout 3 nc 10.66.0.101 2022 | head -1     # 应回 SSH-2.0-Go
-nc -z -v 10.66.0.101 1080                          # 应 succeeded
+curl --proxy http://127.0.0.1:18081 https://api.ipify.org
 ```
 
 被动存活探针(读 wg RX 增量,Hub 上长期跑):
@@ -45,7 +49,7 @@ nc -z -v 10.66.0.101 1080                          # 应 succeeded
 
 ## 4. 自愈机制
 
-- `watchdog.sh` 每 30s 自检:若 `10.66.0.101` 地址缺失,会通过 WireGuard App 的 `SET_TUNNEL_UP` broadcast intent 请求拉起 `jp-android-01` 隧道;若地址存在但 Hub 内网 `10.66.0.1` 不可达,会先 `SET_TUNNEL_DOWN` 再 `SET_TUNNEL_UP` 强制重拨;`dxandroid-control` 或 `dxandroid-egress` 挂了也会本地重拉。
+- `watchdog.sh` 每 30s 自检:若 `10.66.0.101` 地址缺失,会通过 WireGuard App 的 `SET_TUNNEL_UP` broadcast intent 请求拉起 `jp-android-01` 隧道;若地址存在但 Hub 内网 `10.66.0.1` 不可达,会先 `SET_TUNNEL_DOWN` 再 `SET_TUNNEL_UP` 强制重拨;`dxandroid-control` 或 `dxreverse` 挂了也会本地重拉。
 - WireGuard App intent 有 120s 冷却,避免无网/无权限时刷屏。
 - `service.d/98` 开机由 Magisk 拉起看门狗。
 - daemon 用 `IP_FREEBIND` 绑定,隧道 IP 未就绪时也能先监听,隧道一通即可用。
@@ -98,7 +102,7 @@ ssh -i ~/.ssh/dxandroid_control -p 2022 root@10.66.0.101 'sh /data/adb/dxandroid
 ssh ... 'sh /data/adb/dxandroid/rotate-ip.sh 12'   # 自定义断网秒数(默认 8)
 
 # 等 ~20-40s 重连后核对新出口 IP
-curl.exe -s -x http://10.66.0.101:1080 https://api.ipify.org
+ssh root@36.50.84.68 'curl -s -x http://127.0.0.1:18081 https://api.ipify.org'
 # 或 ./scripts/check-android-egress-health.ps1 看 egress_ip
 ```
 

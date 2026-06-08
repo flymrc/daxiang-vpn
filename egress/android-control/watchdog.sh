@@ -6,7 +6,7 @@
 #   1. 保证 dxandroid-control(Go SSH 服务)在跑 —— 它用 IP_FREEBIND 绑
 #      10.66.0.101:2022,无需等隧道就绪即可启动,隧道一通即可连。
 #   2. external 模式下尝试拉起 WireGuard App 隧道。
-#   3. 保证 dxandroid-egress 代理进程在跑,挂了用原启动脚本重拉。
+#   3. 保证 dxreverse 反向出口数据面在跑,挂了用新版启动脚本重拉。
 #   4. (可选)每日定时重启,清理长期运行的内存/状态泄漏。
 #
 # 控制面只对 WireGuard 隧道内网可见(daemon 绑隧道 IP),公网够不到。
@@ -21,8 +21,8 @@ WG_TUNNEL_NAME=jp-android-01
 WG_INTENT_COOLDOWN=120
 INTERVAL=30
 
-EGRESS_NAME=dxandroid-egress
-EGRESS_LAUNCH=/data/adb/service.d/99-dxandroid-egress.sh
+EGRESS_NAME=dxreverse
+EGRESS_LAUNCH=/data/adb/service.d/99-dxreverse-egress.sh
 
 # 每日定时重启时刻(本地 24h,如 "04");留空 = 不自动重启(默认关闭,出口慎用)。
 REBOOT_HOUR=""
@@ -34,9 +34,9 @@ WG_LAST_INTENT_FILE=$BASE/.last-wg-intent
 log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
 
 control_up() { pgrep -f "$CONTROL_BIN" >/dev/null 2>&1; }
-# 看的是 egress 监督脚本(99-dxandroid-egress.sh,自带 while 循环保活 binary)
+# 看的是新版 reverse egress 监督脚本(99-dxreverse-egress.sh,自带 while 循环保活 binary)
 # 在不在,而不是 binary 本身——避免在 binary 短暂缺失时重复拉起多个监督循环。
-egress_up()  { pgrep -f 99-dxandroid-egress >/dev/null 2>&1; }
+egress_up()  { pgrep -f 99-dxreverse-egress >/dev/null 2>&1; }
 wg_addr_up() { ip addr 2>/dev/null | grep -q "$WG_IP/"; }
 wg_hub_reachable() { ping -c 1 -W 2 "$WG_HUB_IP" >/dev/null 2>&1; }
 

@@ -1,6 +1,22 @@
 # Android 出口节点客户端
 
-## 目标
+> 状态:本文前半部分记录旧 `dxandroid-egress` / sing-box 数据面。当前 Android 生产替代路径已迁到 [egress/reverse](../../egress/reverse/README.md):Android 主动反连 Hub,Hub 侧暴露 `127.0.0.1:18081` HTTP CONNECT proxy。旧 `dxandroid-egress` 只作为回滚路径保留。
+
+## 当前生产目标
+
+新版 `dxreverse` 优先满足:
+
+- Android 无需入站端口,主动连接 Hub。
+- Hub 侧提供 Android 出口代理入口。
+- WireGuard App 继续作为内网控制面,不再承载主要公网出口数据面。
+- Magisk `99-dxreverse-egress.sh` 和 `watchdog.sh` 负责常驻保活。
+
+配置示例:
+
+- [android-reverse-client.yaml.example](../20-operations/configs/egress/android-reverse-client.yaml.example)
+- [hub-reverse-server.yaml.example](../20-operations/configs/egress/hub-reverse-server.yaml.example)
+
+## 旧版目标记录
 
 为 root 安卓手机准备第一版出口节点客户端。
 

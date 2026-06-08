@@ -119,7 +119,7 @@ public class StatusService extends Service {
                 "出口状态",
                 NotificationManager.IMPORTANCE_LOW
         );
-        channel.setDescription("显示 dxandroid-egress 是否正在运行");
+        channel.setDescription("显示 dxreverse 是否正在运行");
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         nm.createNotificationChannel(channel);
     }

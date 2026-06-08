@@ -1,6 +1,6 @@
 # Daxiang Android Status
 
-Minimal native Android app for checking the rooted `dxandroid-egress` process on the phone.
+Minimal native Android app for checking the rooted `dxreverse` process on the phone.
 
 ## Features
 
@@ -8,10 +8,10 @@ Minimal native Android app for checking the rooted `dxandroid-egress` process on
 - Simple native status screen.
 - Reads live status through `su`:
   - root availability
-  - `dxandroid-egress` PID
+  - `dxreverse` PID
   - cellular/default route
-  - `wg0` address
-  - `10.66.0.101:1080` listener
+  - `10.66.0.101` control-plane address
+  - active reverse tunnel sockets
   - recent service and egress logs
 
 ## Build
@@ -37,4 +37,4 @@ $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 & $adb shell "am start -n dev.daxiang.dxandroidstatus/.MainActivity"
 ```
 
-The app is intentionally a status surface only. The actual network service is still owned by Magisk and `/data/adb/service.d/99-dxandroid-egress.sh`.
+The app is intentionally a status surface only. The actual network service is owned by Magisk and `/data/adb/service.d/99-dxreverse-egress.sh`.

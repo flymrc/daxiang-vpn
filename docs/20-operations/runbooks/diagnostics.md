@@ -13,13 +13,14 @@
 
 ```text
 客户端  --WireGuard-->  Hub(36.50.84.68, wg0/10.66.0.1)
-   --WireGuard Peer 间转发-->  出口节点(10.66.0.100 或 10.66.0.101)
-   --sing-box 代理--> NAT --> 出口公网
+   --WireGuard Peer 间转发 / Hub 本地 reverse proxy
+   -->  出口节点(Mac 10.66.0.100 或 Android dxreverse)
+   --> NAT / 手机网络 --> 出口公网
 ```
 
 - 客户端的 WG IP 由 Hub 按授权码分配（例如当前客户是 `10.66.0.20`）。
 - Mac 出口固定是 `10.66.0.100`，对外住宅 IP 当前是 `118.158.252.9`。
-- Android 出口固定是 `10.66.0.101:1080`，公网 IP 随手机卡或 WiFi 网络变化。
+- Android 出口数据面是 Hub 本地 `127.0.0.1:18081` 的 `dxreverse` proxy，公网 IP 随手机卡或 WiFi 网络变化。
 
 ---
 
@@ -195,14 +196,15 @@ cat /usr/local/sbin/dxvpn-sing-box-run.sh
 
 ## 3. Android 出口节点
 
-> 当前 Android 出口是 root 后由 Magisk service.d 拉起的 `dxandroid-egress`。
-> 当前推荐模式是 WireGuard App 负责隧道，`dxandroid-egress` 只做 `10.66.0.101:1080` mixed 代理。
+> 当前 Android 出口数据面已迁到 `dxreverse`:Android 主动反连 Hub,Hub 侧暴露 `127.0.0.1:18081` HTTP CONNECT proxy。
+> WireGuard App 仍作为内网控制面使用,不是主要公网出口数据面。
 
 ### 3.1 Hub 侧验证 Android 出口
 
 ```bash
-curl -x http://10.66.0.101:1080 -s https://api.ipify.org; echo
-curl -L --max-time 30 -x http://10.66.0.101:1080 -o /dev/null \
+scripts/check-android-reverse-egress.sh
+curl -x http://127.0.0.1:18081 -s https://api.ipify.org; echo
+curl -L --max-time 30 -x http://127.0.0.1:18081 -o /dev/null \
   -w "code=%{http_code} bytes=%{size_download} bps=%{speed_download} seconds=%{time_total}\n" \
   "https://speed.cloudflare.com/__down?bytes=50000000"
 ```
@@ -215,18 +217,17 @@ curl -L --max-time 30 -x http://10.66.0.101:1080 -o /dev/null \
 
 ### 3.2 Windows 一键健康检查
 
-在仓库根目录运行：
+旧 `check-android-egress-health.ps1` 仍可检查 WireGuard 控制面和老代理回滚路径。新版数据面优先在 Hub 上运行：
 
-```powershell
-.\scripts\check-android-egress-health.ps1
+```bash
+./scripts/check-android-reverse-egress.sh
 ```
 
 脚本从 Hub 侧检查 Android 出口，不依赖 ADB。重点输出：
 
 - 当前公网出口 IP。
-- Hub 到 Android peer 的专用路由 MTU 是否仍是 `1120`。
-- Hub 侧 TCPMSS 规则是否仍是 `--set-mss 1080`。
-- Android WireGuard peer 最近一次握手是否新鲜。
+- 1MB 下载探针速度。
+- reverse proxy 是否能经 Android 出公网。
 
 需要顺手测速时：
 
@@ -242,7 +243,7 @@ curl -L --max-time 30 -x http://10.66.0.101:1080 -o /dev/null \
 .\scripts\measure-android-egress.ps1 -Runs 5
 ```
 
-脚本会从 Hub 侧走 `10.66.0.101:1080` 连续测速，并输出平均、最小、最大 Mbps。
+脚本会从 Hub 侧走 `127.0.0.1:18081` 连续测速，并输出平均、最小、最大 Mbps。
 该脚本不依赖 ADB，适合手机不在身边但 Android 出口仍在线时使用。
 
 ### 3.4 不用 ADB 远程控制 Android
@@ -264,9 +265,9 @@ ssh -i ~/.ssh/dxandroid_control -p 2022 root@10.66.0.101
 登录后常用控制命令：
 
 ```sh
-ps -A | grep dxandroid-egress
-tail -80 /data/local/tmp/dxandroid-egress-work/egress.log
-sh /data/adb/service.d/99-dxandroid-egress.sh
+ps -A -o PID,PPID,ARGS | grep dxreverse
+tail -80 /data/local/tmp/dxreverse-egress.log
+sh /data/adb/service.d/99-dxreverse-egress.sh
 tail -80 /data/local/tmp/dxandroid-control.log
 ```
 
@@ -283,17 +284,17 @@ ADB 可用时：
 ```powershell
 $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 & $adb shell su -c "ip route get 36.50.84.68"
-& $adb shell su -c "ps -A | grep dxandroid-egress"
-& $adb shell su -c "tail -80 /data/local/tmp/dxandroid-egress-work/egress.log"
-& $adb shell su -c "grep 'mode:\|mtu:\|workers:' /data/local/tmp/android-egress.yaml"
+& $adb shell su -c "ps -A -o PID,PPID,ARGS | grep dxreverse"
+& $adb shell su -c "tail -80 /data/local/tmp/dxreverse-egress.log"
+& $adb shell su -c "sed -n '1,40p' /data/adb/dxreverse/client.yaml"
 & $adb shell su -c "ip addr show tun0 | grep 10.66.0.101"
 ```
 
 重点看：
 
 - `ip route get 36.50.84.68` 是走 `rmnet_data*` 还是 `wlan0`。
-- 日志中是否大量出现 `sendmsg: message too long`。
-- 当前运行模式是否为预期值，例如 `mode: external`。
+- 日志中是否有 4 条 `connected to reverse quic server`。
+- 当前 `connections` 是否为预期值。
 - WireGuard App 是否创建了 `tun0 / 10.66.0.101`。
 - 若 `tun0` 缺失,watchdog 会最多每 120s 发一次 WireGuard App `SET_TUNNEL_UP` intent;若 `tun0` 存在但 Hub 内网 ping 失败,watchdog 会 `SET_TUNNEL_DOWN` 后再 `SET_TUNNEL_UP` 强制重拨。可看 `/data/local/tmp/dxandroid-control.log` 中的 `wireguard unhealthy` 记录。
 
@@ -301,7 +302,7 @@ $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 
 - 手机 App 测到的高速下载不等于出口可用下载速度。
 - 作为出口时，电脑下载需要手机把数据上传回 Hub，因此手机上行是关键瓶颈。
-- 若 external 模式后仍大量出现 `sendmsg: message too long`，说明仍有旧 embedded 进程或旧日志干扰，需要先确认 `dxandroid-egress` runtime 配置里没有 `endpoints`。
+- 若仍看到 `dxandroid-egress` 进程,说明旧回滚服务被误启动;当前默认应只有 `99-dxreverse-egress.sh` 和 `dxreverse client`。
 
 ---
 
@@ -316,7 +317,7 @@ wg show
 # ② 在 Hub 上：转发开着吗？端到端出口通吗？
 sysctl net.ipv4.ip_forward
 curl -x http://10.66.0.100:1080 -s https://api.ipify.org; echo
-curl -x http://10.66.0.101:1080 -s https://api.ipify.org; echo
+curl -x http://127.0.0.1:18081 -s https://api.ipify.org; echo
 
 # ③ 若 ② 不通，再上 Mac 看 sing-box 和日志
 sudo /opt/homebrew/bin/wg show
