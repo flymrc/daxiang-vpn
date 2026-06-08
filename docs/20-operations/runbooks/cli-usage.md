@@ -80,13 +80,28 @@ dxvpn ip
 dxvpn test https://www.yahoo.co.jp
 ```
 
-### 5. 切换出口
+### 5. Android 出口换 IP
+
+当当前出口是 Android 手机出口时，可以让手机网络重注册并尝试更换公网出口 IP：
+
+```bash
+dxvpn rotate-ip
+dxvpn rotate-ip --down-seconds 12 --wait-seconds 45
+```
+
+默认读取配置里的 `egress.management_addr`，端口默认 `2022`，私钥默认 `~/.ssh/dxandroid_control`。需要临时覆盖控制面时：
+
+```bash
+dxvpn rotate-ip --phone 10.66.0.101 --port 2022 --key ~/.ssh/dxandroid_control
+```
+
+### 6. 切换出口
 
 ```bash
 dxvpn proxy switch jp-phone-01
 ```
 
-### 6. 停止代理
+### 7. 停止代理
 
 ```bash
 dxvpn proxy stop
@@ -161,6 +176,7 @@ dxvpn login --hub <hub地址> --token <令牌>
 dxvpn import <配置文件>
 
 dxvpn status
+dxvpn rotate-ip
 dxvpn ip
 dxvpn test <URL>
 
@@ -185,6 +201,7 @@ dxvpn tun status
 ```bash
 dxvpn import cn-client-01.yaml
 dxvpn proxy start --auto
+dxvpn rotate-ip
 dxvpn ip
 ```
 
@@ -258,4 +275,3 @@ egress:
 - `dxvpn ip` 显示的是日本出口节点的公网 IP，不是 Hub 的公网 IP。
 - `dxvpn proxy switch jp-phone-01` 可以切换到另一个日本出口。
 - `dxvpn proxy stop` 可以干净停止本地代理和相关连接。
-

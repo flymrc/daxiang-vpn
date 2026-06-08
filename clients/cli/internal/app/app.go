@@ -5,15 +5,17 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"daxiang-vpn/clients/cli/internal/bootstrap"
-	"daxiang-vpn/shared/config"
 	"daxiang-vpn/clients/cli/internal/netcheck"
+	"daxiang-vpn/shared/config"
 	"daxiang-vpn/shared/paths"
 	"daxiang-vpn/shared/proxy"
 )
@@ -57,6 +59,8 @@ func Run(args []string) error {
 		return stop(ctx)
 	case "status":
 		return status(ctx)
+	case "rotate-ip":
+		return rotateIP(ctx, args[1:])
 	case "help", "-h", "--help":
 		printUsage()
 		return nil
@@ -72,6 +76,7 @@ func printUsage() {
   dxvpn.exe login <授权码>
   dxvpn.exe start [--port <端口>] [--fast]
   dxvpn.exe status
+  dxvpn.exe rotate-ip [--down-seconds <秒>] [--wait-seconds <秒>]
   dxvpn.exe stop
   dxvpn.exe help
 
@@ -80,7 +85,10 @@ func printUsage() {
 也可用环境变量 DXVPN_LOCAL_PORT 指定（--port 优先）。
 
 --fast：高性能模式，使用系统网络栈（延迟更低、速度更快），
-        需要管理员权限，启动时会弹出 UAC 授权窗口。`)
+        需要管理员权限，启动时会弹出 UAC 授权窗口。
+
+rotate-ip：经 Android 控制面 SSH 触发手机端 rotate-ip.sh，
+           用于让手机网络重注册并尝试更换公网出口 IP。`)
 }
 
 type startOptions struct {
@@ -357,4 +365,251 @@ func printBool(ok bool) {
 	} else {
 		fmt.Println(" 未连接")
 	}
+}
+
+type rotateIPOptions struct {
+	downSeconds int
+	waitSeconds int
+	phone       string
+	port        int
+	keyPath     string
+	proxyAddr   string
+}
+
+func parseRotateIPOptions(args []string, cfg config.Config) (rotateIPOptions, error) {
+	opts := rotateIPOptions{
+		downSeconds: 8,
+		waitSeconds: 30,
+		port:        2022,
+		keyPath:     defaultAndroidControlKeyPath(),
+		proxyAddr:   cfg.LocalProxy.Addr(),
+	}
+	if cfg.Egress.ManagementAddr != "" {
+		host, port, err := splitOptionalHostPort(cfg.Egress.ManagementAddr, opts.port)
+		if err != nil {
+			return opts, err
+		}
+		opts.phone = host
+		opts.port = port
+	}
+	if opts.phone == "" {
+		opts.phone = "10.66.0.101"
+	}
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		readValue := func(name string) (string, error) {
+			if i+1 >= len(args) {
+				return "", fmt.Errorf("%s 需要一个值", name)
+			}
+			i++
+			return args[i], nil
+		}
+		parsePositiveInt := func(name, text string) (int, error) {
+			value, err := strconv.Atoi(text)
+			if err != nil || value < 1 {
+				return 0, fmt.Errorf("%s 必须是正整数：%s", name, text)
+			}
+			return value, nil
+		}
+
+		switch {
+		case arg == "--down-seconds":
+			value, err := readValue("--down-seconds")
+			if err != nil {
+				return opts, err
+			}
+			seconds, err := parsePositiveInt("--down-seconds", value)
+			if err != nil {
+				return opts, err
+			}
+			opts.downSeconds = seconds
+		case strings.HasPrefix(arg, "--down-seconds="):
+			seconds, err := parsePositiveInt("--down-seconds", strings.TrimPrefix(arg, "--down-seconds="))
+			if err != nil {
+				return opts, err
+			}
+			opts.downSeconds = seconds
+		case arg == "--wait-seconds":
+			value, err := readValue("--wait-seconds")
+			if err != nil {
+				return opts, err
+			}
+			seconds, err := parsePositiveInt("--wait-seconds", value)
+			if err != nil {
+				return opts, err
+			}
+			opts.waitSeconds = seconds
+		case strings.HasPrefix(arg, "--wait-seconds="):
+			seconds, err := parsePositiveInt("--wait-seconds", strings.TrimPrefix(arg, "--wait-seconds="))
+			if err != nil {
+				return opts, err
+			}
+			opts.waitSeconds = seconds
+		case arg == "--phone":
+			value, err := readValue("--phone")
+			if err != nil {
+				return opts, err
+			}
+			opts.phone = strings.TrimSpace(value)
+		case strings.HasPrefix(arg, "--phone="):
+			opts.phone = strings.TrimSpace(strings.TrimPrefix(arg, "--phone="))
+		case arg == "--port":
+			value, err := readValue("--port")
+			if err != nil {
+				return opts, err
+			}
+			port, err := parsePort(value)
+			if err != nil {
+				return opts, err
+			}
+			opts.port = port
+		case strings.HasPrefix(arg, "--port="):
+			port, err := parsePort(strings.TrimPrefix(arg, "--port="))
+			if err != nil {
+				return opts, err
+			}
+			opts.port = port
+		case arg == "--key":
+			value, err := readValue("--key")
+			if err != nil {
+				return opts, err
+			}
+			opts.keyPath = expandHome(value)
+		case strings.HasPrefix(arg, "--key="):
+			opts.keyPath = expandHome(strings.TrimPrefix(arg, "--key="))
+		case arg == "--proxy":
+			value, err := readValue("--proxy")
+			if err != nil {
+				return opts, err
+			}
+			opts.proxyAddr = normalizeProxyAddr(value)
+		case strings.HasPrefix(arg, "--proxy="):
+			opts.proxyAddr = normalizeProxyAddr(strings.TrimPrefix(arg, "--proxy="))
+		default:
+			return opts, fmt.Errorf("未知参数：%s", arg)
+		}
+	}
+
+	if opts.phone == "" {
+		return opts, errors.New("Android 控制面地址不能为空")
+	}
+	if opts.keyPath == "" {
+		return opts, errors.New("SSH 私钥路径不能为空")
+	}
+	if opts.proxyAddr == "" {
+		return opts, errors.New("代理地址不能为空")
+	}
+	return opts, nil
+}
+
+func rotateIP(ctx paths.Context, args []string) error {
+	cfg, err := loadInstalledConfig(ctx)
+	if err != nil {
+		return err
+	}
+	opts, err := parseRotateIPOptions(args, cfg)
+	if err != nil {
+		return err
+	}
+
+	before := publicIPOrUnavailable(opts.proxyAddr)
+	fmt.Printf("换 IP 前出口：%s\n", before)
+	fmt.Printf("触发 Android rotate-ip（断网 %ds）...\n", opts.downSeconds)
+
+	remote := fmt.Sprintf("sh /data/adb/dxandroid/rotate-ip.sh %d", opts.downSeconds)
+	sshArgs := []string{
+		"-i", opts.keyPath,
+		"-p", strconv.Itoa(opts.port),
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=" + os.DevNull,
+		"-o", "BatchMode=yes",
+		"-o", "ConnectTimeout=8",
+		"root@" + opts.phone,
+		remote,
+	}
+	cmd := exec.Command("ssh", sshArgs...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("触发 rotate-ip 失败：%w", err)
+	}
+
+	fmt.Printf("等待 %ds 让无线电重注册 + 隧道恢复...\n", opts.waitSeconds)
+	time.Sleep(time.Duration(opts.waitSeconds) * time.Second)
+
+	after := publicIPOrUnavailable(opts.proxyAddr)
+	fmt.Printf("换 IP 后出口：%s\n", after)
+	if after == unavailableIP {
+		fmt.Println("提示：出口可能还没恢复，过几秒再执行 dxvpn.exe status，或加大 --wait-seconds。")
+	}
+	return nil
+}
+
+const unavailableIP = "(暂不可达)"
+
+func publicIPOrUnavailable(proxyAddr string) string {
+	ip, err := netcheck.PublicIPViaHTTPProxy(normalizeProxyAddr(proxyAddr))
+	if err != nil || ip == "" {
+		return unavailableIP
+	}
+	return ip
+}
+
+func normalizeProxyAddr(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.TrimPrefix(value, "http://")
+	return strings.TrimPrefix(value, "https://")
+}
+
+func splitOptionalHostPort(value string, defaultPort int) (string, int, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", defaultPort, nil
+	}
+	host, portText, err := net.SplitHostPort(value)
+	if err != nil {
+		if strings.Contains(value, ":") {
+			return "", 0, fmt.Errorf("egress.management_addr 格式错误，应类似 10.66.0.101 或 10.66.0.101:2022")
+		}
+		return value, defaultPort, nil
+	}
+	port, err := parsePort(portText)
+	if err != nil {
+		return "", 0, err
+	}
+	return host, port, nil
+}
+
+func parsePort(value string) (int, error) {
+	port, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || port < 1 || port > 65535 {
+		return 0, fmt.Errorf("端口无效：%s", value)
+	}
+	return port, nil
+}
+
+func defaultAndroidControlKeyPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	return filepath.Join(home, ".ssh", "dxandroid_control")
+}
+
+func expandHome(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "~" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			return home
+		}
+	}
+	if strings.HasPrefix(path, "~/") || strings.HasPrefix(path, `~\`) {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			return filepath.Join(home, path[2:])
+		}
+	}
+	return path
 }

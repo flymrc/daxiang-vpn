@@ -94,6 +94,14 @@ Windows 一键(推荐,自动换 + 等待 + 打印前后出口 IP):
 .\scripts\rotate-android-egress-ip.ps1 -DownSeconds 12 -WaitSeconds 40
 ```
 
+CLI 客户端也内置了同等入口，会先后打印当前本地代理看到的出口公网 IP：
+
+```powershell
+dxvpn.exe rotate-ip
+dxvpn.exe rotate-ip --down-seconds 12 --wait-seconds 45
+dxvpn.exe rotate-ip --phone 10.66.0.101 --port 2022 --key "$HOME\.ssh\dxandroid_control"
+```
+
 手动(任意平台,SSH 远程触发手机上的脚本):
 
 ```bash
