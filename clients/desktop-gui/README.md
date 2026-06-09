@@ -42,7 +42,8 @@ npm run tauri dev
 ./build.ps1
 ```
 
-产出 NSIS/MSI 安装包于 `src-tauri/target/release/bundle/`。
+产出 NSIS 安装包（按用户安装，免管理员）于 `src-tauri/target/release/bundle/nsis/`，sidecar `dxvpn.exe` 随包。
+WebView2 用 downloadBootstrapper（Win11 自带，旧系统自动拉起安装）。
 
 ## Rust 命令 ↔ CLI 映射
 

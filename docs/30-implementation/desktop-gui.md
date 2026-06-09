@@ -161,10 +161,11 @@ clients/desktop-gui/
 
 打包细节：
 
-- `tauri build` 出 NSIS / MSI 安装包，含桌面快捷方式。
+- `tauri build` 出 **NSIS** 安装包（`bundle.targets: ["nsis"]`，按用户安装 `installMode: currentUser`，免管理员；NSIS 默认创建开始菜单/桌面快捷方式）。
+  - **不出 MSI**：WiX `light.exe` 在 unicode 产品名「大象 VPN」上会失败；NSIS 处理 UTF-8 正常，且是面向消费者的首选安装器（MSI 偏企业 GPO）。
 - WebView2 走 `downloadBootstrapper`（Win11 自带，旧系统自动拉起安装）。
-- `dxvpn.exe` 作为 `externalBin` sidecar 随包，构建前由 `build.ps1` 用 `go build -tags with_gvisor` 产出并按 target-triple 命名拷入 `src-tauri/binaries/`。
-- 产品名「大象 VPN」、版本号、图标统一。代码签名后续再补。
+- `dxvpn.exe` 作为 `externalBin` sidecar 随包，构建前由 `build.ps1` 用 `go build -tags with_gvisor` 产出并按 target-triple 命名拷入 `src-tauri/binaries/`；Tauri 打包时去 triple 后缀复制为主程序旁的 `dxvpn.exe`。
+- 产品显示名「大象 VPN」（`productName`），二进制名 `dxvpn-desktop`（`mainBinaryName`，ASCII 避坑）；`publisher`/`copyright`/描述齐全；图标为自绘品牌图（蓝底白「象」，`tauri icon` 生成全套）。代码签名后续再补。
 
 ## 文档同步（按 AGENTS.md）
 
@@ -182,7 +183,7 @@ clients/desktop-gui/
 | **M1** ✅ | CLI 机器接口：`status/login/rotate-ip --json` + 测试 | 已完成 |
 | **M2** ✅ | Tauri 工程骨架 + sidecar 打包 + `connect/disconnect/status` 走通 | 已完成 |
 | **M3** ✅ | Rust 系统代理开关 + 换 IP + 全局模式 + 托盘 + 状态轮询 + UI（代码完成，待人工点验） | 已完成 |
-| **M4** | NSIS/MSI 安装包 + 桌面快捷方式 + 文档四件套 + worklog | 1 天 |
+| **M4** ✅ | NSIS 安装包（按用户安装 + 快捷方式）+ 品牌图标 + 文档/架构同步 | 已完成 |
 | **M5（后置）** | 先补 `shared/proxy` macOS 引擎，再开 macOS 包 | 单列 |
 
 ## 验收标准（Windows / 第一阶段）
@@ -216,4 +217,9 @@ clients/desktop-gui/
   - 换 IP：`rotate_ip` 命令（`dxvpn rotate-ip --json`）+ 主界面「换 IP」按钮。
   - 全局模式：UI 复选框 → `connect(fast=true)`（系统 TUN，弹一次 UAC，不设系统代理）。
   - 验证：`cargo build` 通过（1m，含 `sysproxy`/`tray-icon`）；`npm run build` 通过；运行 debug 程序窗口「大象 VPN」正常、托盘 setup 未 panic。**待人工点验**：登录→连接（看浏览器是否免设置直连日本）→断开（系统代理还原）→换 IP→关窗到托盘→托盘退出。
-- 下一步：M4（NSIS/MSI 打包细化 + 品牌图标 + 文档/验收）。
+- **M4 已完成**（2026-06-09）：打包细化 + 品牌图标 + 文档/架构同步。
+  - 品牌图标：自绘蓝底白「象」512² 源图（System.Drawing 生成），`tauri icon` 出全套，替换脚手架默认 logo；删掉用不到的 android/ios 图标。
+  - `tauri.conf.json`：`productName` 改「大象 VPN」+ `mainBinaryName: dxvpn-desktop`（ASCII 二进制名）；`bundle.targets: ["nsis"]`、`installMode: currentUser`、`webviewInstallMode: downloadBootstrapper`、`publisher/copyright/category(Utility)/描述`。
+  - 验证：`tauri build` 产出 `bundle/nsis/大象 VPN_0.1.0_x64-setup.exe`（7.5MB，sidecar `dxvpn.exe` 17.2MB 随包置于主程序旁）。踩坑：`category` 只接受 Apple 枚举（`Network` 非法→`Utility`）；unicode `productName` 让 WiX MSI 失败→去掉 MSI 只留 NSIS。
+  - 架构文档：`system-architecture.md` 角色表新增「桌面 GUI」。
+- **桌面 GUI 四个里程碑（M1–M4）代码与打包完成**；剩真实出口下的端到端人工点验，及后置项：代码签名、macOS（M5，需先补 `shared/proxy` mac 引擎）。
