@@ -3,6 +3,7 @@ package app
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -44,10 +45,7 @@ func Run(args []string) error {
 		}
 		return proxy.KillPID(pid)
 	case "login":
-		if len(args) != 2 {
-			return errors.New("用法：dxvpn.exe login <授权码>")
-		}
-		return login(ctx, args[1])
+		return loginCmd(ctx, args[1:])
 	case "import":
 		if len(args) != 2 {
 			return errors.New("用法：dxvpn.exe import <配置文件>")
@@ -58,7 +56,7 @@ func Run(args []string) error {
 	case "stop":
 		return stop(ctx)
 	case "status":
-		return status(ctx)
+		return status(ctx, args[1:])
 	case "rotate-ip":
 		return rotateIP(ctx, args[1:])
 	case "help", "-h", "--help":
@@ -88,6 +86,69 @@ func printUsage() {
         需要管理员权限，启动时会弹出 UAC 授权窗口。
 
 rotate-ip：更换当前手机卡出口 IP，并等待出口恢复。`)
+}
+
+// ErrSilent signals that a command already reported its outcome (e.g. as a JSON
+// object on stdout). main exits non-zero without printing the error again.
+var ErrSilent = errors.New("已输出结果")
+
+// jsonResult is the machine-readable result for login / rotate-ip (--json).
+type jsonResult struct {
+	OK     bool   `json:"ok"`
+	Egress string `json:"egress,omitempty"`
+	Proxy  string `json:"proxy,omitempty"`
+	Before string `json:"before,omitempty"`
+	After  string `json:"after,omitempty"`
+	Error  string `json:"error,omitempty"`
+}
+
+// statusResult is the machine-readable result for status --json.
+type statusResult struct {
+	Running        bool   `json:"running"`
+	Proxy          string `json:"proxy,omitempty"`
+	ProxyReachable bool   `json:"proxy_reachable"`
+	Egress         string `json:"egress,omitempty"`
+	EgressIP       string `json:"egress_ip,omitempty"`
+	Error          string `json:"error,omitempty"`
+}
+
+func printJSON(v any) error {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetEscapeHTML(false) // keep < > & literal so messages like "<授权码>" stay readable
+	return enc.Encode(v)     // Encode appends a trailing newline
+}
+
+// reportErr renders err as {"ok":false,"error":...} in JSON mode (returning
+// ErrSilent so main exits non-zero quietly), or returns it verbatim otherwise.
+func reportErr(jsonOut bool, err error) error {
+	if jsonOut {
+		_ = printJSON(jsonResult{Error: err.Error()})
+		return ErrSilent
+	}
+	return err
+}
+
+// wantJSON parses flag-only args, accepting just --json.
+func wantJSON(args []string) (bool, error) {
+	jsonOut := false
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			jsonOut = true
+		default:
+			return false, fmt.Errorf("未知参数：%s", arg)
+		}
+	}
+	return jsonOut, nil
+}
+
+func hasFlag(args []string, flag string) bool {
+	for _, arg := range args {
+		if arg == flag {
+			return true
+		}
+	}
+	return false
 }
 
 type startOptions struct {
@@ -141,27 +202,54 @@ func engineContext(def paths.Context, args []string) paths.Context {
 	return def
 }
 
-func login(ctx paths.Context, token string) error {
-	if token == "" {
-		return errors.New("授权码不能为空")
+func loginCmd(ctx paths.Context, args []string) error {
+	jsonOut := false
+	var positional []string
+	for _, arg := range args {
+		if arg == "--json" {
+			jsonOut = true
+			continue
+		}
+		positional = append(positional, arg)
 	}
-	if err := ctx.EnsureDirs(); err != nil {
-		return err
+	if len(positional) != 1 {
+		return errors.New("用法：dxvpn.exe login <授权码> [--json]")
 	}
-	cfg, err := bootstrap.Fetch(token)
+	return login(ctx, positional[0], jsonOut)
+}
+
+func login(ctx paths.Context, token string, jsonOut bool) error {
+	cfg, err := doLogin(ctx, token)
 	if err != nil {
-		return err
+		return reportErr(jsonOut, err)
 	}
-	if err := config.Save(ctx.ConfigPath, config.Config{
-		License: config.LicenseConfig{Token: token},
-	}); err != nil {
-		return err
+	if jsonOut {
+		return printJSON(jsonResult{OK: true, Egress: cfg.Egress.CustomerName(), Proxy: cfg.LocalProxy.Addr()})
 	}
 
 	fmt.Println("授权成功")
 	fmt.Printf("出口：%s\n", cfg.Egress.CustomerName())
 	fmt.Printf("代理：http://%s\n", cfg.LocalProxy.Addr())
 	return nil
+}
+
+func doLogin(ctx paths.Context, token string) (config.Config, error) {
+	if token == "" {
+		return config.Config{}, errors.New("授权码不能为空")
+	}
+	if err := ctx.EnsureDirs(); err != nil {
+		return config.Config{}, err
+	}
+	cfg, err := bootstrap.Fetch(token)
+	if err != nil {
+		return config.Config{}, err
+	}
+	if err := config.Save(ctx.ConfigPath, config.Config{
+		License: config.LicenseConfig{Token: token},
+	}); err != nil {
+		return config.Config{}, err
+	}
+	return cfg, nil
 }
 
 func importConfig(ctx paths.Context, source string) error {
@@ -329,14 +417,38 @@ func runtimeFingerprint(cfg config.Config, fast bool) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func status(ctx paths.Context) error {
+func status(ctx paths.Context, args []string) error {
+	jsonOut, err := wantJSON(args)
+	if err != nil {
+		return err
+	}
+
 	cfg, err := loadInstalledConfig(ctx)
 	if err != nil {
+		if jsonOut {
+			_ = printJSON(statusResult{Error: err.Error()})
+			return ErrSilent
+		}
 		return err
 	}
 
 	running, _ := proxy.IsRunning(ctx)
 	localReachable, _ := netcheck.TCP(cfg.LocalProxy.Addr(), netcheck.ShortTimeout)
+
+	if jsonOut {
+		res := statusResult{
+			Running:        running || localReachable,
+			Proxy:          cfg.LocalProxy.Addr(),
+			ProxyReachable: localReachable,
+			Egress:         cfg.Egress.CustomerName(),
+		}
+		if localReachable {
+			if ip, err := netcheck.PublicIPViaHTTPProxy(cfg.LocalProxy.Addr()); err == nil && ip != "" {
+				res.EgressIP = ip
+			}
+		}
+		return printJSON(res)
+	}
 
 	if running || localReachable {
 		fmt.Println("状态：运行中")
@@ -505,6 +617,8 @@ func parseRotateIPOptions(args []string, cfg config.Config) (rotateIPOptions, er
 			opts.direct = true
 		case arg == "--direct":
 			opts.direct = true
+		case arg == "--json":
+			// 机器可读输出，由调用方处理；不影响换 IP 行为。
 		default:
 			return opts, fmt.Errorf("未知参数：%s", arg)
 		}
@@ -523,42 +637,65 @@ func parseRotateIPOptions(args []string, cfg config.Config) (rotateIPOptions, er
 }
 
 func rotateIP(ctx paths.Context, args []string) error {
+	jsonOut := hasFlag(args, "--json")
 	cfg, err := loadInstalledConfig(ctx)
 	if err != nil {
-		return err
+		return reportErr(jsonOut, err)
 	}
 	opts, err := parseRotateIPOptions(args, cfg)
 	if err != nil {
-		return err
+		return reportErr(jsonOut, err)
 	}
 
-	before := publicIPOrUnavailable(opts.proxyAddr)
-	fmt.Printf("换 IP 前出口：%s\n", before)
-	if !opts.direct {
-		fmt.Printf("触发 Android rotate-ip（断网 %ds）...\n", opts.downSeconds)
-		if err := bootstrap.RotateIP(cfg.License.Token, opts.downSeconds); err != nil {
-			return err
-		}
-		after := waitForPublicIP(opts.proxyAddr, opts.downSeconds, opts.waitSeconds)
-		fmt.Printf("换 IP 后出口：%s\n", after)
-		if after == unavailableIP {
-			fmt.Println("提示：出口可能还没恢复，过几秒再执行 dxvpn.exe status，或加大 --wait-seconds。")
-		}
-		return nil
+	before, after, err := performRotate(cfg, opts, jsonOut)
+	if err != nil {
+		return reportErr(jsonOut, err)
 	}
+
+	if jsonOut {
+		return printJSON(jsonResult{OK: true, Egress: cfg.Egress.CustomerName(), Before: before, After: after})
+	}
+	fmt.Printf("换 IP 后出口：%s\n", after)
+	if after == unavailableIP {
+		fmt.Println("提示：出口可能还没恢复，过几秒再执行 dxvpn.exe status，或加大 --wait-seconds。")
+	}
+	return nil
+}
+
+// performRotate triggers a rotate (hub-managed or direct ssh) and returns the
+// public egress IP before and after. When quiet is true (--json) it suppresses
+// all progress output so stdout carries only the caller's final JSON.
+func performRotate(cfg config.Config, opts rotateIPOptions, quiet bool) (string, string, error) {
+	before := publicIPOrUnavailable(opts.proxyAddr)
+	if !quiet {
+		fmt.Printf("换 IP 前出口：%s\n", before)
+	}
+
+	if !opts.direct {
+		if !quiet {
+			fmt.Printf("触发 Android rotate-ip（断网 %ds）...\n", opts.downSeconds)
+		}
+		if err := bootstrap.RotateIP(cfg.License.Token, opts.downSeconds); err != nil {
+			return before, "", err
+		}
+		return before, waitForPublicIP(opts.proxyAddr, opts.downSeconds, opts.waitSeconds, quiet), nil
+	}
+
 	if _, err := os.Stat(opts.keyPath); err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("Android 控制面 SSH 私钥不存在：%s\n请把当前授权的私钥放到该路径，或使用 --key <路径>。普通用户态 start 还需要 --jump root@36.50.84.68 或改用 start --fast 提供系统路由", opts.keyPath)
+			return before, "", fmt.Errorf("Android 控制面 SSH 私钥不存在：%s\n请把当前授权的私钥放到该路径，或使用 --key <路径>。普通用户态 start 还需要 --jump root@36.50.84.68 或改用 start --fast 提供系统路由", opts.keyPath)
 		}
-		return fmt.Errorf("无法读取 Android 控制面 SSH 私钥：%w", err)
+		return before, "", fmt.Errorf("无法读取 Android 控制面 SSH 私钥：%w", err)
 	}
 	if opts.jumpHost == "" {
 		controlAddr := net.JoinHostPort(opts.phone, strconv.Itoa(opts.port))
 		if reachable, _ := netcheck.TCP(controlAddr, 3*time.Second); !reachable {
-			return fmt.Errorf("Android 控制面 %s 不可达。普通 dxvpn.exe start 是用户态代理模式，不会给 Windows 系统添加 10.66.0.0/24 路由；请使用 --jump root@36.50.84.68，或先用 dxvpn.exe start --fast / 管理内网 WireGuard 提供系统路由", controlAddr)
+			return before, "", fmt.Errorf("Android 控制面 %s 不可达。普通 dxvpn.exe start 是用户态代理模式，不会给 Windows 系统添加 10.66.0.0/24 路由；请使用 --jump root@36.50.84.68，或先用 dxvpn.exe start --fast / 管理内网 WireGuard 提供系统路由", controlAddr)
 		}
 	}
-	fmt.Printf("触发 Android rotate-ip（断网 %ds）...\n", opts.downSeconds)
+	if !quiet {
+		fmt.Printf("触发 Android rotate-ip（断网 %ds）...\n", opts.downSeconds)
+	}
 
 	remote := fmt.Sprintf("sh /data/adb/dxandroid/rotate-ip.sh %d", opts.downSeconds)
 	sshArgs := []string{
@@ -574,24 +711,23 @@ func rotateIP(ctx paths.Context, args []string) error {
 	}
 	sshArgs = append(sshArgs, "root@"+opts.phone, remote)
 	cmd := exec.Command("ssh", sshArgs...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	if !quiet {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("触发 rotate-ip 失败：%w", err)
+		return before, "", fmt.Errorf("触发 rotate-ip 失败：%w", err)
 	}
 
-	after := waitForPublicIP(opts.proxyAddr, opts.downSeconds, opts.waitSeconds)
-	fmt.Printf("换 IP 后出口：%s\n", after)
-	if after == unavailableIP {
-		fmt.Println("提示：出口可能还没恢复，过几秒再执行 dxvpn.exe status，或加大 --wait-seconds。")
-	}
-	return nil
+	return before, waitForPublicIP(opts.proxyAddr, opts.downSeconds, opts.waitSeconds, quiet), nil
 }
 
 const unavailableIP = "(暂不可达)"
 
-func waitForPublicIP(proxyAddr string, downSeconds, waitSeconds int) string {
-	fmt.Printf("最多等待 %ds 让无线电重注册 + 隧道恢复...\n", waitSeconds)
+func waitForPublicIP(proxyAddr string, downSeconds, waitSeconds int, quiet bool) string {
+	if !quiet {
+		fmt.Printf("最多等待 %ds 让无线电重注册 + 隧道恢复...\n", waitSeconds)
+	}
 	deadline := time.Now().Add(time.Duration(waitSeconds) * time.Second)
 	initialDelay := time.Duration(downSeconds+10) * time.Second
 	if initialDelay > time.Duration(waitSeconds)*time.Second {

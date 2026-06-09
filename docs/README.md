@@ -65,6 +65,7 @@ Mac 出口仍是远端 mixed 代理。Android 出口数据面已迁到 `dxrevers
 - [CLI MVP 实现](30-implementation/cli-mvp-implementation.md)
 - [dxvpn.exe 实现](30-implementation/dxvpn-exe-implementation.md)
 - [dxvpn.exe 本地单例实现计划](30-implementation/client-singleton-plan.md)
+- [桌面 GUI 客户端实现方案](30-implementation/desktop-gui.md)
 - [服务端托管客户端配置](30-implementation/server-managed-client.md)
 - [管理内网状态栏工具](../clients/admin-menubar/README.md)
 

@@ -74,3 +74,38 @@ func TestParseRotateIPOptionsRejectsBadPort(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestParseRotateIPOptionsAcceptsJSON(t *testing.T) {
+	cfg := config.Config{}
+	cfg.ApplyDefaults()
+
+	opts, err := parseRotateIPOptions([]string{"--json"}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// --json is a caller concern; it must not flip the rotate to direct mode.
+	if opts.direct {
+		t.Fatal("direct = true, --json should not change rotate behavior")
+	}
+}
+
+func TestWantJSON(t *testing.T) {
+	if ok, err := wantJSON(nil); err != nil || ok {
+		t.Fatalf("empty: ok=%v err=%v", ok, err)
+	}
+	if ok, err := wantJSON([]string{"--json"}); err != nil || !ok {
+		t.Fatalf("--json: ok=%v err=%v", ok, err)
+	}
+	if _, err := wantJSON([]string{"--nope"}); err == nil {
+		t.Fatal("expected error for unknown arg")
+	}
+}
+
+func TestHasFlag(t *testing.T) {
+	if !hasFlag([]string{"a", "--json", "b"}, "--json") {
+		t.Fatal("expected --json found")
+	}
+	if hasFlag([]string{"a", "b"}, "--json") {
+		t.Fatal("expected --json not found")
+	}
+}
