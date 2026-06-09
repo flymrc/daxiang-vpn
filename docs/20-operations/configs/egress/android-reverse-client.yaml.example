@@ -4,5 +4,8 @@ client:
   # Store the real token in this file, mode 600/700. Do not commit it.
   token_file: /data/adb/dxreverse/token
   transport: quic
+  # SHA-256 fingerprint of the Hub QUIC server certificate DER.
+  # Replace this placeholder after installing /etc/daxiang/dxreverse/server.crt.
+  server_cert_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
   connections: 4
   reconnect: 3s

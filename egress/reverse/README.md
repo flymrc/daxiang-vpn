@@ -21,7 +21,8 @@ The Android side actively dials the Hub, so no inbound port is required on the
 phone. The server can either resolve target hostnames and send `IP:port` to
 Android, or ask Android to resolve with a public DNS fallback.
 
-The proxy also exposes an experimental application-layer fetch endpoint:
+The proxy can also expose an experimental application-layer fetch endpoint when
+`server.enable_fetch: true` is set:
 
 ```text
 Hub curl/client
@@ -33,10 +34,10 @@ Hub curl/client
   -> status, headers, and body streamed back to Hub
 ```
 
-`/fetch` is not a transparent proxy replacement. It is a diagnostic path for
-testing recoverable Android-side downloads without tunneling the target TLS
-connection byte-for-byte. The Android binary uses the same public-DNS dialer as
-CONNECT and explicitly loads Android system CA certificates from
+`/fetch` is disabled by default and is not a transparent proxy replacement. It
+is a diagnostic path for testing recoverable Android-side downloads without
+tunneling the target TLS connection byte-for-byte. The Android binary uses the
+same public-DNS dialer as CONNECT and explicitly loads Android system CA certificates from
 `/system/etc/security/cacerts` / `/apex/com.android.conscrypt/cacerts`.
 
 ## Build
@@ -53,7 +54,9 @@ Example configs:
 - Hub: `docs/20-operations/configs/egress/hub-reverse-server.yaml.example`
 - Android: `docs/20-operations/configs/egress/android-reverse-client.yaml.example`
 
-Use `token_file` in production and keep the real token out of git.
+Use `token_file` in production and keep the real token out of git. QUIC clients
+must pin the Hub certificate with `client.server_cert_sha256`; the unsafe
+`--insecure-skip-verify` flag is only for temporary lab runs.
 
 ## Production services
 
@@ -62,6 +65,13 @@ Hub systemd template:
 ```sh
 install -d /opt/daxiang/dxreverse /etc/daxiang/dxreverse
 install -m 755 dist/reverse/dxreverse-linux-amd64 /opt/daxiang/dxreverse/dxreverse
+openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+  -subj /CN=dxreverse \
+  -keyout /etc/daxiang/dxreverse/server.key \
+  -out /etc/daxiang/dxreverse/server.crt
+chmod 600 /etc/daxiang/dxreverse/server.key
+openssl x509 -in /etc/daxiang/dxreverse/server.crt -outform DER \
+  | sha256sum | awk '{print $1}'
 install -m 600 docs/20-operations/configs/egress/hub-reverse-server.yaml.example /etc/daxiang/dxreverse/server.yaml
 install -m 644 egress/reverse/systemd/dxreverse-hub.service /etc/systemd/system/dxreverse-hub.service
 systemctl daemon-reload
@@ -93,6 +103,8 @@ Server:
   --resolve server \
   --listen 0.0.0.0:39093 \
   --proxy 10.66.0.1:18081 \
+  --tls-cert-file /etc/daxiang/dxreverse/server.crt \
+  --tls-key-file /etc/daxiang/dxreverse/server.key \
   --token <shared-token>
 ```
 
@@ -103,6 +115,7 @@ Android client:
   --transport quic \
   --connections 4 \
   --server <hub-public-ip>:39093 \
+  --server-cert-sha256 <hub-cert-sha256> \
   --token <shared-token>
 ```
 
@@ -119,6 +132,7 @@ scripts/check-android-reverse-egress.sh
 curl --proxy http://10.66.0.1:18081 https://api.ipify.org
 curl -L --proxy http://10.66.0.1:18081 -o /dev/null \
   'https://speed.cloudflare.com/__down?bytes=20000000'
+# Requires server.enable_fetch: true.
 curl -L -o /dev/null \
   'http://10.66.0.1:18081/fetch?url=https%3A%2F%2Fspeed.cloudflare.com%2F__down%3Fbytes%3D2000000'
 ```

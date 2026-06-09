@@ -98,6 +98,7 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 | Hub binary | `/opt/daxiang/dxreverse/dxreverse` |
 | Hub config | `/etc/daxiang/dxreverse/server.yaml` |
 | Hub token | `/etc/daxiang/dxreverse/token` |
+| Hub QUIC cert/key | `/etc/daxiang/dxreverse/server.crt` / `/etc/daxiang/dxreverse/server.key` |
 | Hub service | `/etc/systemd/system/dxreverse-hub.service` |
 | Android binary | `/data/adb/dxreverse/bin/dxreverse` |
 | Android config | `/data/adb/dxreverse/client.yaml` |
@@ -109,6 +110,7 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 
 - `dxreverse-hub.service` 已启用并运行。
 - Hub 监听 `39093/udp` 和 `10.66.0.1:18081`。
+- Android `client.server_cert_sha256` 应匹配 Hub QUIC 证书 DER SHA-256 指纹。
 - UFW 已允许 WireGuard 客户端访问 `10.66.0.1:18081/tcp`。
 - Hub 日志显示 Android 4 条 QUIC reverse session 已连接。
 - Android 当前仅运行 `99-dxreverse-egress.sh` supervisor 和 `dxreverse client`。

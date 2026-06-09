@@ -5,11 +5,13 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -60,21 +62,27 @@ type reverseConfig struct {
 }
 
 type serverOptions struct {
-	Listen    string `json:"listen" yaml:"listen"`
-	Proxy     string `json:"proxy" yaml:"proxy"`
-	Token     string `json:"token,omitempty" yaml:"token,omitempty"`
-	TokenFile string `json:"token_file,omitempty" yaml:"token_file,omitempty"`
-	Transport string `json:"transport" yaml:"transport"`
-	Resolve   string `json:"resolve" yaml:"resolve"`
+	Listen            string   `json:"listen" yaml:"listen"`
+	Proxy             string   `json:"proxy" yaml:"proxy"`
+	Token             string   `json:"token,omitempty" yaml:"token,omitempty"`
+	TokenFile         string   `json:"token_file,omitempty" yaml:"token_file,omitempty"`
+	Transport         string   `json:"transport" yaml:"transport"`
+	Resolve           string   `json:"resolve" yaml:"resolve"`
+	TLSCertFile       string   `json:"tls_cert_file,omitempty" yaml:"tls_cert_file,omitempty"`
+	TLSKeyFile        string   `json:"tls_key_file,omitempty" yaml:"tls_key_file,omitempty"`
+	EnableFetch       bool     `json:"enable_fetch,omitempty" yaml:"enable_fetch,omitempty"`
+	AllowedProxyCIDRs []string `json:"allowed_proxy_cidrs,omitempty" yaml:"allowed_proxy_cidrs,omitempty"`
 }
 
 type clientOptions struct {
-	Server      string        `json:"server" yaml:"server"`
-	Token       string        `json:"token,omitempty" yaml:"token,omitempty"`
-	TokenFile   string        `json:"token_file,omitempty" yaml:"token_file,omitempty"`
-	Reconnect   time.Duration `json:"reconnect" yaml:"reconnect"`
-	Transport   string        `json:"transport" yaml:"transport"`
-	Connections int           `json:"connections" yaml:"connections"`
+	Server             string        `json:"server" yaml:"server"`
+	Token              string        `json:"token,omitempty" yaml:"token,omitempty"`
+	TokenFile          string        `json:"token_file,omitempty" yaml:"token_file,omitempty"`
+	Reconnect          time.Duration `json:"reconnect" yaml:"reconnect"`
+	Transport          string        `json:"transport" yaml:"transport"`
+	Connections        int           `json:"connections" yaml:"connections"`
+	ServerCertSHA256   string        `json:"server_cert_sha256,omitempty" yaml:"server_cert_sha256,omitempty"`
+	InsecureSkipVerify bool          `json:"insecure_skip_verify,omitempty" yaml:"insecure_skip_verify,omitempty"`
 }
 
 func defaultServerOptions() serverOptions {
@@ -170,6 +178,9 @@ func runServer(args []string) error {
 	tokenFile := fs.String("token-file", defaults.TokenFile, "file containing shared auth token")
 	transport := fs.String("transport", defaults.Transport, "reverse transport: tcp or quic")
 	resolve := fs.String("resolve", defaults.Resolve, "target DNS side: server or client")
+	tlsCertFile := fs.String("tls-cert-file", defaults.TLSCertFile, "TLS certificate for QUIC")
+	tlsKeyFile := fs.String("tls-key-file", defaults.TLSKeyFile, "TLS key for QUIC")
+	enableFetch := fs.Bool("enable-fetch", defaults.EnableFetch, "enable diagnostic /fetch endpoint")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -200,6 +211,15 @@ func runServer(args []string) error {
 	if explicit["resolve"] {
 		opts.Resolve = *resolve
 	}
+	if explicit["tls-cert-file"] {
+		opts.TLSCertFile = *tlsCertFile
+	}
+	if explicit["tls-key-file"] {
+		opts.TLSKeyFile = *tlsKeyFile
+	}
+	if explicit["enable-fetch"] {
+		opts.EnableFetch = *enableFetch
+	}
 	resolvedToken, err := resolveToken(opts.Token, opts.TokenFile)
 	if err != nil {
 		return err
@@ -211,12 +231,20 @@ func runServer(args []string) error {
 		return errors.New("--resolve must be server or client")
 	}
 
-	manager := &sessionManager{resolve: opts.Resolve}
+	allowedProxyNets, err := parseCIDRs(opts.AllowedProxyCIDRs)
+	if err != nil {
+		return err
+	}
+	manager := &sessionManager{resolve: opts.Resolve, fetch: opts.EnableFetch, allowedProxyNets: allowedProxyNets}
+	tunnelReady := make(chan error, 1)
 	go func() {
-		if err := serveTunnel(opts.Transport, opts.Listen, resolvedToken, manager); err != nil {
+		if err := serveTunnel(opts, resolvedToken, manager, tunnelReady); err != nil {
 			log.Printf("tunnel listener stopped: %v", err)
 		}
 	}()
+	if err := <-tunnelReady; err != nil {
+		return err
+	}
 
 	server := &http.Server{
 		Addr:              opts.Proxy,
@@ -227,22 +255,26 @@ func runServer(args []string) error {
 	return server.ListenAndServe()
 }
 
-func serveTunnel(transport string, addr string, token string, manager *sessionManager) error {
-	switch transport {
+func serveTunnel(opts serverOptions, token string, manager *sessionManager, ready chan<- error) error {
+	switch opts.Transport {
 	case "tcp":
-		return serveTCPTunnel(addr, token, manager)
+		return serveTCPTunnel(opts.Listen, token, manager, ready)
 	case "quic":
-		return serveQUICTunnel(addr, token, manager)
+		return serveQUICTunnel(opts, token, manager, ready)
 	default:
-		return fmt.Errorf("unknown transport: %s", transport)
+		err := fmt.Errorf("unknown transport: %s", opts.Transport)
+		ready <- err
+		return err
 	}
 }
 
-func serveTCPTunnel(addr string, token string, manager *sessionManager) error {
+func serveTCPTunnel(addr string, token string, manager *sessionManager, ready chan<- error) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
+		ready <- err
 		return err
 	}
+	ready <- nil
 	defer ln.Close()
 	for {
 		conn, err := ln.Accept()
@@ -275,11 +307,18 @@ func handleTCPTunnelConn(conn net.Conn, token string, manager *sessionManager) {
 	log.Printf("reverse tcp client disconnected from %s", conn.RemoteAddr())
 }
 
-func serveQUICTunnel(addr string, token string, manager *sessionManager) error {
-	listener, err := quic.ListenAddr(addr, serverTLSConfig(), quicConfig())
+func serveQUICTunnel(opts serverOptions, token string, manager *sessionManager, ready chan<- error) error {
+	tlsConfig, err := serverTLSConfig(opts.TLSCertFile, opts.TLSKeyFile)
 	if err != nil {
+		ready <- err
 		return err
 	}
+	listener, err := quic.ListenAddr(opts.Listen, tlsConfig, quicConfig())
+	if err != nil {
+		ready <- err
+		return err
+	}
+	ready <- nil
 	defer listener.Close()
 	for {
 		conn, err := listener.Accept(context.Background())
@@ -367,10 +406,12 @@ func (s *quicSession) RemoteAddr() net.Addr {
 }
 
 type sessionManager struct {
-	mu       sync.RWMutex
-	sessions []tunnelSession
-	next     int
-	resolve  string
+	mu               sync.RWMutex
+	sessions         []tunnelSession
+	next             int
+	resolve          string
+	fetch            bool
+	allowedProxyNets []*net.IPNet
 }
 
 func (m *sessionManager) set(session tunnelSession) {
@@ -459,7 +500,15 @@ func (m *sessionManager) pickSession() tunnelSession {
 }
 
 func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
+	if !m.proxyAllowed(req.RemoteAddr) {
+		http.Error(w, "proxy forbidden", http.StatusForbidden)
+		return
+	}
 	if req.Method == http.MethodGet && req.URL.Path == "/fetch" {
+		if !m.fetch {
+			http.Error(w, "fetch disabled", http.StatusNotFound)
+			return
+		}
 		m.handleFetch(w, req)
 		return
 	}
@@ -512,6 +561,42 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	pipeBoth(clientConn, &bufferedConn{Conn: stream, reader: streamReader})
+}
+
+func (m *sessionManager) proxyAllowed(remoteAddr string) bool {
+	if len(m.allowedProxyNets) == 0 {
+		return true
+	}
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	for _, network := range m.allowedProxyNets {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func parseCIDRs(values []string) ([]*net.IPNet, error) {
+	var out []*net.IPNet
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		_, network, err := net.ParseCIDR(value)
+		if err != nil {
+			return nil, fmt.Errorf("invalid allowed_proxy_cidrs entry %q: %w", value, err)
+		}
+		out = append(out, network)
+	}
+	return out, nil
 }
 
 func (m *sessionManager) handleFetch(w http.ResponseWriter, req *http.Request) {
@@ -632,6 +717,8 @@ func runClient(args []string) error {
 	reconnect := fs.Duration("reconnect", defaults.Reconnect, "reconnect delay")
 	transport := fs.String("transport", defaults.Transport, "reverse transport: tcp or quic")
 	connections := fs.Int("connections", defaults.Connections, "number of parallel reverse connections")
+	serverCertSHA256 := fs.String("server-cert-sha256", defaults.ServerCertSHA256, "expected SHA-256 fingerprint of QUIC server certificate")
+	insecureSkipVerify := fs.Bool("insecure-skip-verify", defaults.InsecureSkipVerify, "allow QUIC without certificate pinning; unsafe")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -662,6 +749,12 @@ func runClient(args []string) error {
 	if explicit["connections"] {
 		opts.Connections = *connections
 	}
+	if explicit["server-cert-sha256"] {
+		opts.ServerCertSHA256 = *serverCertSHA256
+	}
+	if explicit["insecure-skip-verify"] {
+		opts.InsecureSkipVerify = *insecureSkipVerify
+	}
 	resolvedToken, err := resolveToken(opts.Token, opts.TokenFile)
 	if err != nil {
 		return err
@@ -672,6 +765,12 @@ func runClient(args []string) error {
 	if opts.Connections < 1 || opts.Connections > 64 {
 		return errors.New("--connections must be between 1 and 64")
 	}
+	if opts.Transport == "quic" && !opts.InsecureSkipVerify && normalizeFingerprint(opts.ServerCertSHA256) == "" {
+		return errors.New("--server-cert-sha256 is required for quic transport")
+	}
+	if pin := normalizeFingerprint(opts.ServerCertSHA256); pin != "" && len(pin) != sha256.Size*2 {
+		return errors.New("--server-cert-sha256 must be a 64-character SHA-256 hex fingerprint")
+	}
 
 	var wg sync.WaitGroup
 	for i := 0; i < opts.Connections; i++ {
@@ -680,7 +779,7 @@ func runClient(args []string) error {
 		go func() {
 			defer wg.Done()
 			for {
-				if err := clientOnce(opts.Transport, opts.Server, resolvedToken); err != nil {
+				if err := clientOnce(opts.Transport, opts.Server, resolvedToken, opts); err != nil {
 					log.Printf("client connection %d/%d disconnected: %v", connID, opts.Connections, err)
 				}
 				time.Sleep(opts.Reconnect)
@@ -691,12 +790,12 @@ func runClient(args []string) error {
 	return nil
 }
 
-func clientOnce(transport string, serverAddr string, token string) error {
+func clientOnce(transport string, serverAddr string, token string, opts clientOptions) error {
 	switch transport {
 	case "tcp":
 		return tcpClientOnce(serverAddr, token)
 	case "quic":
-		return quicClientOnce(serverAddr, token)
+		return quicClientOnce(serverAddr, token, opts)
 	default:
 		return fmt.Errorf("unknown transport: %s", transport)
 	}
@@ -731,9 +830,9 @@ func tcpClientOnce(serverAddr string, token string) error {
 	}
 }
 
-func quicClientOnce(serverAddr string, token string) error {
+func quicClientOnce(serverAddr string, token string, opts clientOptions) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	conn, err := quic.DialAddr(ctx, serverAddr, clientTLSConfig(), quicConfig())
+	conn, err := quic.DialAddr(ctx, serverAddr, clientTLSConfig(opts), quicConfig())
 	cancel()
 	if err != nil {
 		return err
@@ -1033,24 +1132,62 @@ func quicConfig() *quic.Config {
 	}
 }
 
-func serverTLSConfig() *tls.Config {
-	cert, err := selfSignedCert()
+func serverTLSConfig(certFile string, keyFile string) (*tls.Config, error) {
+	cert, err := loadOrCreateServerCert(certFile, keyFile)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	return &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		NextProtos:   []string{quicALPN},
 		MinVersion:   tls.VersionTLS13,
+	}, nil
+}
+
+func clientTLSConfig(opts clientOptions) *tls.Config {
+	pin := normalizeFingerprint(opts.ServerCertSHA256)
+	return &tls.Config{
+		InsecureSkipVerify: opts.InsecureSkipVerify || pin != "",
+		NextProtos:         []string{quicALPN},
+		MinVersion:         tls.VersionTLS13,
+		VerifyConnection: func(state tls.ConnectionState) error {
+			if opts.InsecureSkipVerify {
+				return nil
+			}
+			if pin == "" {
+				return errors.New("missing server certificate pin")
+			}
+			if len(state.PeerCertificates) == 0 {
+				return errors.New("server certificate missing")
+			}
+			sum := sha256.Sum256(state.PeerCertificates[0].Raw)
+			actual := hex.EncodeToString(sum[:])
+			if subtle.ConstantTimeCompare([]byte(actual), []byte(pin)) != 1 {
+				return fmt.Errorf("server certificate pin mismatch: got %s", actual)
+			}
+			return nil
+		},
 	}
 }
 
-func clientTLSConfig() *tls.Config {
-	return &tls.Config{
-		InsecureSkipVerify: true,
-		NextProtos:         []string{quicALPN},
-		MinVersion:         tls.VersionTLS13,
+func loadOrCreateServerCert(certFile string, keyFile string) (tls.Certificate, error) {
+	certFile = strings.TrimSpace(certFile)
+	keyFile = strings.TrimSpace(keyFile)
+	if certFile != "" || keyFile != "" {
+		if certFile == "" || keyFile == "" {
+			return tls.Certificate{}, errors.New("tls_cert_file and tls_key_file must be set together")
+		}
+		return tls.LoadX509KeyPair(certFile, keyFile)
 	}
+	return selfSignedCert()
+}
+
+func normalizeFingerprint(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.TrimPrefix(value, "sha256:")
+	value = strings.ReplaceAll(value, ":", "")
+	value = strings.ReplaceAll(value, " ", "")
+	return value
 }
 
 func selfSignedCert() (tls.Certificate, error) {
