@@ -182,3 +182,46 @@ rotate-ip：更换当前手机卡出口 IP，并等待出口恢复。
 ```
 
 管理员排障细节保留在运维文档中。
+
+## 同日追加：Android 半掉线修复
+
+现象:
+
+- 客户端偶发 `出口 IP：获取失败`。
+- Hub/Mac 到 Android 控制面 `10.66.0.101:2022` 超时。
+- Hub 到 Android `10.66.0.101` ping 100% 丢包。
+- `dxreverse` 反向出口间歇可用,最初返回 `133.106.33.44`,随后一度返回 `118.158.252.9`。
+
+排查:
+
+- 通过 `dxreverse` HTTP CONNECT 救援通道可连回 Android 控制面:
+
+```bash
+ssh -i /root/.ssh/dxandroid_control_hub \
+  -o 'ProxyCommand=nc -X connect -x 10.66.0.1:18081 %h %p' \
+  -p 2022 root@10.66.0.101
+```
+
+- Android 上实际运行的 watchdog 是旧版本,仍尝试拉起 `/data/adb/service.d/99-dxandroid-egress.sh`,日志持续出现:
+
+```text
+WARN /data/adb/service.d/99-dxandroid-egress.sh missing, cannot relaunch egress
+```
+
+- Android Wi-Fi 连接到 `JDCwifi_9BD3`,本机公网为 `118.158.252.9`,导致手机卡出口误走 Wi-Fi/住宅出口。
+
+修复:
+
+- 经救援通道把新版 [egress/android-control/watchdog.sh](../../../egress/android-control/watchdog.sh) 部署到 `/data/adb/dxandroid/watchdog.sh`。
+- 重启 Android watchdog。
+- 关闭 Android Wi-Fi,强制 dxreverse / WireGuard 回到蜂窝网络。
+
+验证:
+
+- Android Wi-Fi 状态:`Wifi is disabled`。
+- Android radio:`Rakuten` / `LTE`。
+- Android `tun0=10.66.0.101/24`。
+- Hub 到 Android ping:3/3 成功,RTT 约 `59-83 ms`。
+- Hub 到 Android SSH `10.66.0.101:2022`:成功。
+- Hub 经 `10.66.0.1:18081` 连续 5 次出口 IP 均为 `133.106.35.254`。
+- 客户端 `dxvpn.exe status` 返回出口 IP `133.106.35.254`。

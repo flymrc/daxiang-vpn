@@ -59,6 +59,8 @@ func Run(args []string) error {
 		return status(ctx, args[1:])
 	case "rotate-ip":
 		return rotateIP(ctx, args[1:])
+	case "logout":
+		return logout(ctx, args[1:])
 	case "help", "-h", "--help":
 		printUsage()
 		return nil
@@ -76,6 +78,7 @@ func printUsage() {
   dxvpn.exe status
   dxvpn.exe rotate-ip [--down-seconds <秒>] [--wait-seconds <秒>]
   dxvpn.exe stop
+  dxvpn.exe logout
   dxvpn.exe help
 
 本地代理端口默认 7890，可临时指定其它端口：
@@ -250,6 +253,24 @@ func doLogin(ctx paths.Context, token string) (config.Config, error) {
 		return config.Config{}, err
 	}
 	return cfg, nil
+}
+
+// logout removes the saved config (token), so the next status reports
+// "not configured" and the GUI returns to the login screen.
+func logout(ctx paths.Context, args []string) error {
+	jsonOut, err := wantJSON(args)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(ctx.ConfigPath); err != nil && !os.IsNotExist(err) {
+		return reportErr(jsonOut, err)
+	}
+	_ = os.Remove(runtimeFingerprintPath(ctx))
+	if jsonOut {
+		return printJSON(jsonResult{OK: true})
+	}
+	fmt.Println("已登出")
+	return nil
 }
 
 func importConfig(ctx paths.Context, source string) error {

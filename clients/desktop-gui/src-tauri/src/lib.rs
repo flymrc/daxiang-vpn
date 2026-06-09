@@ -115,6 +115,14 @@ async fn rotate_impl(app: &AppHandle) -> Result<Value, String> {
     parse_json(&stdout, &stderr)
 }
 
+async fn logout_impl(app: &AppHandle) -> Result<Value, String> {
+    // 先断开（还原系统代理 + 停引擎），再清掉配置，回到登录页。
+    let _ = disconnect_impl(app).await;
+    let (ok, stdout, stderr) = sidecar(app, &["logout", "--json"]).await?;
+    parse_json(&stdout, &stderr)
+        .or_else(|_| Ok(json!({ "ok": ok, "message": message(ok, stdout, stderr) })))
+}
+
 // ---- Tauri commands (frontend) just delegate to the impls ----
 
 #[tauri::command]
@@ -142,6 +150,11 @@ async fn rotate_ip(app: AppHandle) -> Result<Value, String> {
     rotate_impl(&app).await
 }
 
+#[tauri::command]
+async fn logout(app: AppHandle) -> Result<Value, String> {
+    logout_impl(&app).await
+}
+
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
@@ -163,7 +176,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
-            status, login, connect, disconnect, rotate_ip
+            status, login, connect, disconnect, rotate_ip, logout
         ])
         .setup(|app| {
             // 托盘菜单（仿 Tailscale）：状态行 + 连接/断开/换IP + 打开/退出。

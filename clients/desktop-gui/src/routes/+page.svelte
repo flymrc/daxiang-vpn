@@ -74,6 +74,20 @@
     }
   }
 
+  async function logout() {
+    busy = true;
+    errMsg = "";
+    info = "";
+    try {
+      await api.logout();
+      await refresh();
+    } catch (e) {
+      errMsg = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
   onMount(() => {
     refresh();
     poll = setInterval(() => {
@@ -133,6 +147,7 @@
         <button class="rotate" onclick={rotate} disabled={busy}>换 IP</button>
       {/if}
     </section>
+    <button class="link" onclick={logout} disabled={busy}>登出</button>
   {/if}
 
   {#if info}
@@ -260,6 +275,15 @@
     border: 1px solid #d1d5db;
     font-size: 13px;
     padding: 8px 16px;
+  }
+  .link {
+    background: none;
+    border: none;
+    color: #6b7280;
+    font-size: 12px;
+    text-decoration: underline;
+    align-self: center;
+    padding: 4px;
   }
   .info-msg {
     color: #166534;

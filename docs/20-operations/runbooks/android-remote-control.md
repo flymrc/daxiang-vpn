@@ -57,6 +57,25 @@ curl --proxy http://10.66.0.1:18081 https://api.ipify.org
 
 边界:**隧道断了以后带内 SSH 仍连不上**。watchdog 会在手机本机尝试重拉隧道,但手机无网、关机、没电、WireGuard App 被系统策略拦截时,仍需要物理接触或 ADB 兜底。
 
+### dxreverse 救援通道
+
+当 Hub/Mac 直连 `10.66.0.101:2022` 超时,但 `dxreverse` 反向出口仍可用时,可以让 Android 通过反向数据面连接自己的控制面:
+
+```bash
+ssh -i /root/.ssh/dxandroid_control_hub \
+  -o 'ProxyCommand=nc -X connect -x 10.66.0.1:18081 %h %p' \
+  -p 2022 root@10.66.0.101
+```
+
+这条路径用于应急修复 watchdog / WireGuard,不作为客户侧入口。
+
+生产手机卡出口应关闭 Android Wi-Fi,避免 dxreverse 误走现场 Wi-Fi/住宅出口。检查:
+
+```bash
+cmd wifi status
+curl --max-time 8 https://api.ipify.org
+```
+
 ## 5. 部署 / 更新(需 ADB,改动线上前确认)
 
 ```powershell

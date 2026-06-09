@@ -41,4 +41,5 @@ export const api = {
   connect: (fast: boolean) => invoke<ActionResult>("connect", { fast }),
   disconnect: () => invoke<ActionResult>("disconnect"),
   rotateIp: () => invoke<RotateResult>("rotate_ip"),
+  logout: () => invoke<ActionResult>("logout"),
 };
