@@ -74,6 +74,8 @@ type serverOptions struct {
 	TLSKeyFile        string   `json:"tls_key_file,omitempty" yaml:"tls_key_file,omitempty"`
 	EnableFetch       bool     `json:"enable_fetch,omitempty" yaml:"enable_fetch,omitempty"`
 	AllowedProxyCIDRs []string `json:"allowed_proxy_cidrs,omitempty" yaml:"allowed_proxy_cidrs,omitempty"`
+	MaxProxyConns     int      `json:"max_proxy_connections,omitempty" yaml:"max_proxy_connections,omitempty"`
+	MaxProxyConnsPeer int      `json:"max_proxy_connections_per_client,omitempty" yaml:"max_proxy_connections_per_client,omitempty"`
 }
 
 type clientOptions struct {
@@ -188,6 +190,8 @@ func runServer(args []string) error {
 	tlsCertFile := fs.String("tls-cert-file", defaults.TLSCertFile, "TLS certificate for QUIC")
 	tlsKeyFile := fs.String("tls-key-file", defaults.TLSKeyFile, "TLS key for QUIC")
 	enableFetch := fs.Bool("enable-fetch", defaults.EnableFetch, "enable diagnostic /fetch endpoint")
+	maxProxyConns := fs.Int("max-proxy-connections", defaults.MaxProxyConns, "maximum concurrent CONNECT proxy sessions; 0 disables the limit")
+	maxProxyConnsPeer := fs.Int("max-proxy-connections-per-client", defaults.MaxProxyConnsPeer, "maximum concurrent CONNECT proxy sessions per client IP; 0 disables the limit")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -227,6 +231,12 @@ func runServer(args []string) error {
 	if explicit["enable-fetch"] {
 		opts.EnableFetch = *enableFetch
 	}
+	if explicit["max-proxy-connections"] {
+		opts.MaxProxyConns = *maxProxyConns
+	}
+	if explicit["max-proxy-connections-per-client"] {
+		opts.MaxProxyConnsPeer = *maxProxyConnsPeer
+	}
 	resolvedToken, err := resolveToken(opts.Token, opts.TokenFile)
 	if err != nil {
 		return err
@@ -237,12 +247,25 @@ func runServer(args []string) error {
 	if opts.Resolve != "server" && opts.Resolve != "client" {
 		return errors.New("--resolve must be server or client")
 	}
+	if opts.MaxProxyConns < 0 {
+		return errors.New("--max-proxy-connections must be >= 0")
+	}
+	if opts.MaxProxyConnsPeer < 0 {
+		return errors.New("--max-proxy-connections-per-client must be >= 0")
+	}
 
 	allowedProxyNets, err := parseCIDRs(opts.AllowedProxyCIDRs)
 	if err != nil {
 		return err
 	}
-	manager := &sessionManager{resolve: opts.Resolve, fetch: opts.EnableFetch, allowedProxyNets: allowedProxyNets}
+	manager := &sessionManager{
+		resolve:           opts.Resolve,
+		fetch:             opts.EnableFetch,
+		allowedProxyNets:  allowedProxyNets,
+		maxProxyConns:     opts.MaxProxyConns,
+		maxProxyConnsPeer: opts.MaxProxyConnsPeer,
+		activeProxyByPeer: map[string]int{},
+	}
 	tunnelReady := make(chan error, 1)
 	go func() {
 		if err := serveTunnel(opts, resolvedToken, manager, tunnelReady); err != nil {
@@ -258,7 +281,7 @@ func runServer(args []string) error {
 		Handler:           http.HandlerFunc(manager.handleProxy),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	log.Printf("reverse server listening transport=%s resolve=%s tunnel=%s proxy=%s", opts.Transport, opts.Resolve, opts.Listen, opts.Proxy)
+	log.Printf("reverse server listening transport=%s resolve=%s tunnel=%s proxy=%s max_proxy_connections=%d max_proxy_connections_per_client=%d", opts.Transport, opts.Resolve, opts.Listen, opts.Proxy, opts.MaxProxyConns, opts.MaxProxyConnsPeer)
 	return server.ListenAndServe()
 }
 
@@ -413,12 +436,17 @@ func (s *quicSession) RemoteAddr() net.Addr {
 }
 
 type sessionManager struct {
-	mu               sync.RWMutex
-	sessions         []tunnelSession
-	next             int
-	resolve          string
-	fetch            bool
-	allowedProxyNets []*net.IPNet
+	mu                sync.RWMutex
+	sessions          []tunnelSession
+	next              int
+	resolve           string
+	fetch             bool
+	allowedProxyNets  []*net.IPNet
+	maxProxyConns     int
+	maxProxyConnsPeer int
+	activeProxyMu     sync.Mutex
+	activeProxyConns  int
+	activeProxyByPeer map[string]int
 }
 
 func (m *sessionManager) set(session tunnelSession) {
@@ -591,6 +619,13 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "CONNECT only", http.StatusMethodNotAllowed)
 		return
 	}
+	release, ok, reason := m.acquireProxySlot(req.RemoteAddr)
+	if !ok {
+		http.Error(w, reason, http.StatusTooManyRequests)
+		return
+	}
+	defer release()
+
 	target := req.Host
 	if m.resolve == "server" {
 		resolvedTarget, err := resolveTarget(req.Host)
@@ -625,6 +660,50 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	pipeBoth(clientConn, &bufferedConn{Conn: stream, reader: streamReader})
+}
+
+func (m *sessionManager) acquireProxySlot(remoteAddr string) (func(), bool, string) {
+	peer := proxyPeer(remoteAddr)
+
+	m.activeProxyMu.Lock()
+	defer m.activeProxyMu.Unlock()
+
+	if m.maxProxyConns > 0 && m.activeProxyConns >= m.maxProxyConns {
+		return nil, false, "proxy busy"
+	}
+	if m.maxProxyConnsPeer > 0 && m.activeProxyByPeer[peer] >= m.maxProxyConnsPeer {
+		return nil, false, "proxy busy for client"
+	}
+
+	if m.activeProxyByPeer == nil {
+		m.activeProxyByPeer = map[string]int{}
+	}
+	m.activeProxyConns++
+	m.activeProxyByPeer[peer]++
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			m.activeProxyMu.Lock()
+			defer m.activeProxyMu.Unlock()
+			if m.activeProxyConns > 0 {
+				m.activeProxyConns--
+			}
+			if m.activeProxyByPeer[peer] <= 1 {
+				delete(m.activeProxyByPeer, peer)
+			} else {
+				m.activeProxyByPeer[peer]--
+			}
+		})
+	}, true, ""
+}
+
+func proxyPeer(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return remoteAddr
+	}
+	return host
 }
 
 func (m *sessionManager) proxyAllowed(remoteAddr string) bool {

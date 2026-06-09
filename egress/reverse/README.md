@@ -117,7 +117,7 @@ Android client:
 ```sh
 /data/local/tmp/dxreverse client \
   --transport tcp \
-  --connections 1 \
+  --connections 2 \
   --server <hub-public-ip>:39093 \
   --token <shared-token>
 ```
@@ -125,14 +125,19 @@ Android client:
 Use `--transport quic` for the UDP/QUIC experiment; when using QUIC, also pass
 `--server-cert-sha256 <hub-cert-sha256>`. Use `--connections N` to have Android
 maintain multiple reverse sessions; the server round-robins CONNECT requests
-across them. Production keeps `connections: 1` to avoid mobile-network half-dead
-session pools. Use `--resolve client` to have the Android side resolve target
+across them. Production keeps `connections: 2` as the current balance between
+lower TCP/yamux head-of-line blocking and mobile-network half-dead session risk.
+Use `--resolve client` to have the Android side resolve target
 hostnames via public DNS, which helps test CDN/DNS selection effects.
 
 The Hub server applies a deadline while sending `CONNECT`/`FETCH` commands and
 waiting for the Android-side response. If a reverse session is half-dead,
 the server removes that session from the pool and retries another session
 instead of letting the HTTP proxy request hang behind a stale tunnel.
+The Hub server can also cap concurrent `CONNECT` sessions with
+`max_proxy_connections` and `max_proxy_connections_per_client`; production uses
+these as a fast-fail guard so browser burst concurrency does not pile up inside
+the mobile reverse tunnel.
 
 Hub-side probe:
 

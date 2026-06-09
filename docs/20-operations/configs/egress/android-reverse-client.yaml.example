@@ -10,5 +10,5 @@ client:
   # auto/ipv4 keep the historical IPv4-first behavior; ipv6 is useful on
   # Japanese mobile networks where IPv4 CDN paths are degraded.
   address_family: auto
-  connections: 1
+  connections: 2
   reconnect: 3s

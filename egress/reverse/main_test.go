@@ -36,7 +36,7 @@ func TestLoadReverseConfigExamples(t *testing.T) {
 	if client.Transport != "tcp" {
 		t.Fatalf("client transport = %q", client.Transport)
 	}
-	if client.Connections != 1 {
+	if client.Connections != 2 {
 		t.Fatalf("client connections = %d", client.Connections)
 	}
 	if client.AddressFamily != "auto" {
@@ -45,6 +45,56 @@ func TestLoadReverseConfigExamples(t *testing.T) {
 	if got := normalizeFingerprint(client.ServerCertSHA256); len(got) != 64 {
 		t.Fatalf("client server cert pin length = %d", len(got))
 	}
+}
+
+func TestAcquireProxySlotLimitsPerClient(t *testing.T) {
+	manager := &sessionManager{
+		maxProxyConns:     4,
+		maxProxyConnsPeer: 2,
+		activeProxyByPeer: map[string]int{},
+	}
+
+	release1, ok, reason := manager.acquireProxySlot("10.66.0.30:10001")
+	if !ok {
+		t.Fatalf("first acquire failed: %s", reason)
+	}
+	release2, ok, reason := manager.acquireProxySlot("10.66.0.30:10002")
+	if !ok {
+		t.Fatalf("second acquire failed: %s", reason)
+	}
+	if _, ok, reason := manager.acquireProxySlot("10.66.0.30:10003"); ok || reason != "proxy busy for client" {
+		t.Fatalf("third per-client acquire ok=%v reason=%q", ok, reason)
+	}
+
+	release1()
+	release3, ok, reason := manager.acquireProxySlot("10.66.0.30:10003")
+	if !ok {
+		t.Fatalf("acquire after release failed: %s", reason)
+	}
+	release2()
+	release3()
+}
+
+func TestAcquireProxySlotLimitsGlobal(t *testing.T) {
+	manager := &sessionManager{
+		maxProxyConns:     2,
+		activeProxyByPeer: map[string]int{},
+	}
+
+	release1, ok, reason := manager.acquireProxySlot("10.66.0.30:10001")
+	if !ok {
+		t.Fatalf("first acquire failed: %s", reason)
+	}
+	release2, ok, reason := manager.acquireProxySlot("10.66.0.31:10001")
+	if !ok {
+		t.Fatalf("second acquire failed: %s", reason)
+	}
+	if _, ok, reason := manager.acquireProxySlot("10.66.0.32:10001"); ok || reason != "proxy busy" {
+		t.Fatalf("third global acquire ok=%v reason=%q", ok, reason)
+	}
+
+	release1()
+	release2()
 }
 
 func TestQUICClientRequiresServerCertPin(t *testing.T) {
