@@ -16,7 +16,7 @@ clients/              客户端(终端用户侧)
 hub/                  Hub 服务端（授权 API，原 backend/dxhub）
 
 egress/               出口节点(基础设施侧，非终端客户端)
-  reverse/            Android 反向 QUIC 出口数据面（dxreverse，当前生产替代路径）
+  reverse/            Android 反向 TCP/yamux 出口数据面（dxreverse，当前生产路径）
   proxy/              旧跨平台 Go 出口代理（基于 sing-box；Android 上仅保留回滚）
   android-status/     安卓出口监控 App（原 android/dxandroid-status）
   android-control/    安卓出口远程控制+自愈（Go SSH 服务绑隧道 IP + 看门狗）

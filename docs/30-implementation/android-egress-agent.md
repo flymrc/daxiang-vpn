@@ -9,7 +9,7 @@ Android 出口生产数据面只使用 [egress/reverse](../../egress/reverse/REA
   -> WireGuard
   -> Hub/WG 10.66.0.1:18081 HTTP CONNECT proxy
   -> dxreverse server
-  -> QUIC reverse tunnel UDP :39093
+  -> TCP/yamux reverse tunnel :39093
   -> Android dxreverse client
   -> 手机卡公网出口
 ```
@@ -42,7 +42,7 @@ WireGuard App 仍保留为控制面,用于:
 
 watchdog [watchdog.sh](../../egress/android-control/watchdog.sh) 会周期性重放这些底层基线,并确保 WireGuard 控制面、`dxandroid-control` 和 `dxreverse` supervisor 都在运行。
 
-Hub 侧 `dxreverse server` 对每次 `CONNECT` / `FETCH` 反向命令设置超时。若某条 QUIC reverse session 半死、能被选中但不再回应,Hub 会把它从 session 池剔除并重试其它 session,避免 `10.66.0.1:18081` 的 HTTP proxy 请求长期卡住。
+Hub 侧 `dxreverse server` 对每次 `CONNECT` / `FETCH` 反向命令设置超时。若某条 reverse session 半死、能被选中但不再回应,Hub 会把它从 session 池剔除并重试其它 session,避免 `10.66.0.1:18081` 的 HTTP proxy 请求长期卡住。生产当前使用 TCP/yamux 单连接;QUIC/UDP 在 Rakuten 手机卡上容易出现空闲超时和半死 session,仅保留为回滚/实验路径。
 
 ## 部署验证
 
@@ -66,7 +66,7 @@ ip route get 1.1.1.1
 
 正常生产状态:
 
-- `dxreverse client` 有多条 QUIC reverse session 连到 Hub。
+- `dxreverse client` 有 1 条 TCP reverse session 连到 Hub。
 - Android 默认公网路由应走 `rmnet_data*`,不是 `wlan0`。
 - 不应看到 `dxandroid-egress` 进程。
 - 客户端 token 的 `egress.proxy_addr` 应为 `10.66.0.1:18081`。

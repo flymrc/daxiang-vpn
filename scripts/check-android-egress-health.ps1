@@ -2,6 +2,12 @@ param(
     [string]$Hub = "root@36.50.84.68",
     [string]$Proxy = "http://10.66.0.1:18081",
     [string]$AndroidIP = "10.66.0.101",
+    [string[]]$EgressIPUrls = @(
+        "https://api.ipify.org",
+        "https://ifconfig.me/ip",
+        "https://ident.me",
+        "https://cloudflare.com/cdn-cgi/trace"
+    ),
     [int]$ExpectedRouteMtu = 1120,
     [int]$ExpectedMss = 0,
     [int]$StaleHandshakeSeconds = 180,
@@ -39,13 +45,34 @@ Write-Host ("hub={0}" -f $Hub)
 Write-Host ("android_ip={0}" -f $AndroidIP)
 Write-Host ("proxy={0}" -f $Proxy)
 
-$egressIP = Join-Output (Invoke-Hub "curl -sS -m '$TimeoutSeconds' -x '$Proxy' https://api.ipify.org || true")
-if ($egressIP -match "^\d{1,3}(\.\d{1,3}){3}$") {
-    Write-Check "PASS" ("proxy reachable, egress_ip={0}" -f $egressIP)
-} elseif ($egressIP.Length -gt 0) {
-    Write-Check "WARN" ("proxy returned unexpected egress_ip='{0}'" -f $egressIP)
+$egressIP = ""
+$egressSource = ""
+$egressErrors = @()
+foreach ($url in $EgressIPUrls) {
+    $body = Join-Output (Invoke-Hub "curl -sS -m '$TimeoutSeconds' -x '$Proxy' '$url' 2>/tmp/dxreverse-health-curl.err || true; cat /tmp/dxreverse-health-curl.err >&2; rm -f /tmp/dxreverse-health-curl.err")
+    if ($body -match "^\d{1,3}(\.\d{1,3}){3}$") {
+        $egressIP = $body
+        $egressSource = $url
+        break
+    }
+    if ($body -match "(?m)^ip=([0-9a-fA-F:.]+|\d{1,3}(\.\d{1,3}){3})$") {
+        $egressIP = $matches[1]
+        $egressSource = $url
+        break
+    }
+    if ($body.Length -gt 0) {
+        $egressErrors += ("{0}: {1}" -f $url, ($body -replace "`r?`n", " | "))
+    } else {
+        $egressErrors += ("{0}: empty response" -f $url)
+    }
+}
+if ($egressIP.Length -gt 0) {
+    Write-Check "PASS" ("proxy reachable, egress_ip={0}, source={1}" -f $egressIP, $egressSource)
 } else {
-    Write-Check "FAIL" "proxy did not return an egress IP"
+    Write-Check "FAIL" ("proxy did not return an egress IP; tried {0}" -f ($EgressIPUrls -join ", "))
+    foreach ($err in $egressErrors) {
+        Write-Check "WARN" $err
+    }
     Set-Failed
 }
 

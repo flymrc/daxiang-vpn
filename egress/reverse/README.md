@@ -13,7 +13,7 @@ the production path. Android production data must use `dxreverse`.
 Hub egress router/client
   -> 10.66.0.1:18081 HTTP CONNECT proxy
   -> dxreverse server
-  -> UDP + QUIC reverse session
+  -> TCP + yamux reverse session
   -> dxreverse client on Android
   -> public target from Android network
 ```
@@ -55,9 +55,11 @@ Example configs:
 - Hub: `docs/20-operations/configs/egress/hub-reverse-server.yaml.example`
 - Android: `docs/20-operations/configs/egress/android-reverse-client.yaml.example`
 
-Use `token_file` in production and keep the real token out of git. QUIC clients
-must pin the Hub certificate with `client.server_cert_sha256`; the unsafe
-`--insecure-skip-verify` flag is only for temporary lab runs.
+Use `token_file` in production and keep the real token out of git. Production
+currently uses TCP/yamux because Rakuten mobile UDP paths showed repeated QUIC
+idle timeouts. QUIC clients must pin the Hub certificate with
+`client.server_cert_sha256`; the unsafe `--insecure-skip-verify` flag is only
+for temporary lab runs.
 
 ## Production services
 
@@ -101,7 +103,7 @@ Server:
 
 ```sh
 /tmp/dxreverse server \
-  --transport quic \
+  --transport tcp \
   --resolve server \
   --listen 0.0.0.0:39093 \
   --proxy 10.66.0.1:18081 \
@@ -114,21 +116,21 @@ Android client:
 
 ```sh
 /data/local/tmp/dxreverse client \
-  --transport quic \
-  --connections 4 \
+  --transport tcp \
+  --connections 1 \
   --server <hub-public-ip>:39093 \
-  --server-cert-sha256 <hub-cert-sha256> \
   --token <shared-token>
 ```
 
-Use `--transport tcp` for the older TCP/yamux experiment. Use
-`--connections N` to have Android maintain multiple reverse sessions; the
-server round-robins CONNECT requests across them. Use `--resolve client` to have
-the Android side resolve target hostnames via public DNS, which helps test
-CDN/DNS selection effects.
+Use `--transport quic` for the UDP/QUIC experiment; when using QUIC, also pass
+`--server-cert-sha256 <hub-cert-sha256>`. Use `--connections N` to have Android
+maintain multiple reverse sessions; the server round-robins CONNECT requests
+across them. Production keeps `connections: 1` to avoid mobile-network half-dead
+session pools. Use `--resolve client` to have the Android side resolve target
+hostnames via public DNS, which helps test CDN/DNS selection effects.
 
 The Hub server applies a deadline while sending `CONNECT`/`FETCH` commands and
-waiting for the Android-side response. If a reverse QUIC session is half-dead,
+waiting for the Android-side response. If a reverse session is half-dead,
 the server removes that session from the pool and retries another session
 instead of letting the HTTP proxy request hang behind a stale tunnel.
 

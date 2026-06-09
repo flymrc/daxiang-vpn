@@ -5,13 +5,13 @@ server:
   proxy: 10.66.0.1:18081
   # Store the real token in this file, mode 600. Do not commit it.
   token_file: /etc/daxiang/dxreverse/token
-  transport: quic
-  # Use a persistent certificate for QUIC so Android can pin it.
+  transport: tcp
+  # Used when transport is quic; harmless to keep for TCP rollback safety.
   tls_cert_file: /etc/daxiang/dxreverse/server.crt
   tls_key_file: /etc/daxiang/dxreverse/server.key
   # server = Hub resolves target hostnames before sending IP:port to Android.
-  # client = Android resolves target hostnames through the public DNS fallback.
-  resolve: server
+  # client = Android resolves target hostnames and can use its mobile IPv6 path.
+  resolve: client
   # Limit who can use the Hub-side proxy. Narrow these to issued client /32s in production.
   allowed_proxy_cidrs:
     - 10.66.0.0/24

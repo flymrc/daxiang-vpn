@@ -84,9 +84,9 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 - 角色：日本手机卡出口节点
 - 控制面 WireGuard IP：`10.66.0.101`
 - 控制面 SSH：`10.66.0.101:2022`
-- 数据面：`dxreverse` 反向 QUIC
+- 数据面：`dxreverse` 反向 TCP/yamux
 - Hub 侧代理入口：`10.66.0.1:18081`
-- Hub reverse UDP 监听：`0.0.0.0:39093/udp`
+- Hub reverse TCP 监听：`0.0.0.0:39093/tcp`
 - Android reverse endpoint：Android 主动连 Hub,无手机入站端口
 - Hub 防火墙：UFW 允许 `wg0 -> 10.66.0.1:18081/tcp`
 - 旧代理：`10.66.0.101:1080` / `dxandroid-egress` 已从 Android 生产入口拆除
@@ -98,7 +98,7 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 | Hub binary | `/opt/daxiang/dxreverse/dxreverse` |
 | Hub config | `/etc/daxiang/dxreverse/server.yaml` |
 | Hub token | `/etc/daxiang/dxreverse/token` |
-| Hub QUIC cert/key | `/etc/daxiang/dxreverse/server.crt` / `/etc/daxiang/dxreverse/server.key` |
+| Hub QUIC cert/key（仅 QUIC 回滚用） | `/etc/daxiang/dxreverse/server.crt` / `/etc/daxiang/dxreverse/server.key` |
 | Hub service | `/etc/systemd/system/dxreverse-hub.service` |
 | Android binary | `/data/adb/dxreverse/bin/dxreverse` |
 | Android config | `/data/adb/dxreverse/client.yaml` |
@@ -108,10 +108,10 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 当前验证结果：
 
 - `dxreverse-hub.service` 已启用并运行。
-- Hub 监听 `39093/udp` 和 `10.66.0.1:18081`。
-- Android `client.server_cert_sha256` 应匹配 Hub QUIC 证书 DER SHA-256 指纹。
+- Hub 监听 `39093/tcp` 和 `10.66.0.1:18081`。
+- Android 当前 `transport: tcp`、`connections: 1`;`client.server_cert_sha256` 保留用于 QUIC 回滚。
 - UFW 已允许 WireGuard 客户端访问 `10.66.0.1:18081/tcp`。
-- Hub 日志显示 Android 4 条 QUIC reverse session 已连接。
+- Hub 日志显示 Android 1 条 TCP reverse session 已连接。
 - Android 当前仅运行 `99-dxreverse-egress.sh` supervisor 和 `dxreverse client`。
 - Hub 经 reverse proxy 出口 IP：以 `curl --proxy http://10.66.0.1:18081 https://api.ipify.org` 实时结果为准。
 - Android 客户端 token 当前应绑定 `egress.proxy_addr=10.66.0.1:18081`;旧 `10.66.0.101:1080` 不再分配给 Android 客户端。
@@ -139,7 +139,7 @@ ssh -i ~/.ssh/dxandroid_control_local -p 2022 root@10.66.0.101 \
 - WireGuard 监听端口：`51820/udp`
 - IPv4 转发：已开启
 - WireGuard 服务：`wg-quick@wg0`，已启用并正在运行
-- 防火墙：`ufw` 已启用,默认拒绝入站;显式放行 SSH、WireGuard、dxhub bootstrap、dxreverse UDP 和 `wg0` 上的 `10.66.0.1:18081/tcp`
+- 防火墙：`ufw` 已启用,默认拒绝入站;显式放行 SSH、WireGuard、dxhub bootstrap、dxreverse TCP 和 `wg0` 上的 `10.66.0.1:18081/tcp`
 - Docker：正在运行 `linuxserver/librespeed`，占用 `80/tcp`
 
 ## 当前 WireGuard Peer

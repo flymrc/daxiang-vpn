@@ -18,7 +18,7 @@ func TestLoadReverseConfigExamples(t *testing.T) {
 	if server.Listen != "0.0.0.0:39093" {
 		t.Fatalf("server listen = %q", server.Listen)
 	}
-	if server.Transport != "quic" {
+	if server.Transport != "tcp" {
 		t.Fatalf("server transport = %q", server.Transport)
 	}
 
@@ -33,8 +33,14 @@ func TestLoadReverseConfigExamples(t *testing.T) {
 	if client.Reconnect != 3*time.Second {
 		t.Fatalf("client reconnect = %s", client.Reconnect)
 	}
-	if client.Connections != 4 {
+	if client.Transport != "tcp" {
+		t.Fatalf("client transport = %q", client.Transport)
+	}
+	if client.Connections != 1 {
 		t.Fatalf("client connections = %d", client.Connections)
+	}
+	if client.AddressFamily != "auto" {
+		t.Fatalf("client address family = %q", client.AddressFamily)
 	}
 	if got := normalizeFingerprint(client.ServerCertSHA256); len(got) != 64 {
 		t.Fatalf("client server cert pin length = %d", len(got))
@@ -61,6 +67,23 @@ func TestNormalizeFingerprint(t *testing.T) {
 	got := normalizeFingerprint("SHA256:AA:bb cc")
 	if got != "aabbcc" {
 		t.Fatalf("normalized fingerprint = %q", got)
+	}
+}
+
+func TestOrderIPsAddressFamily(t *testing.T) {
+	ips := []net.IPAddr{
+		{IP: net.ParseIP("2001:db8::1")},
+		{IP: net.ParseIP("192.0.2.10")},
+		{IP: net.ParseIP("2001:db8::2")},
+	}
+	if got := orderIPs(ips, "auto"); got[0].IP.String() != "192.0.2.10" {
+		t.Fatalf("auto first IP = %s", got[0].IP)
+	}
+	if got := orderIPs(ips, "ipv4"); got[0].IP.String() != "192.0.2.10" {
+		t.Fatalf("ipv4 first IP = %s", got[0].IP)
+	}
+	if got := orderIPs(ips, "ipv6"); got[0].IP.String() != "2001:db8::1" {
+		t.Fatalf("ipv6 first IP = %s", got[0].IP)
 	}
 }
 

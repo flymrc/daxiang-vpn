@@ -60,7 +60,7 @@ Hub egress router/client
     v
 Hub/WireGuard dxreverse proxy 10.66.0.1:18081
     |
-    | QUIC reverse tunnel, Android actively dials Hub UDP :39093
+    | TCP/yamux reverse tunnel, Android actively dials Hub TCP :39093
     v
 Android dxreverse client
     |

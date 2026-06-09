@@ -83,6 +83,7 @@ type clientOptions struct {
 	Reconnect          time.Duration `json:"reconnect" yaml:"reconnect"`
 	Transport          string        `json:"transport" yaml:"transport"`
 	Connections        int           `json:"connections" yaml:"connections"`
+	AddressFamily      string        `json:"address_family,omitempty" yaml:"address_family,omitempty"`
 	ServerCertSHA256   string        `json:"server_cert_sha256,omitempty" yaml:"server_cert_sha256,omitempty"`
 	InsecureSkipVerify bool          `json:"insecure_skip_verify,omitempty" yaml:"insecure_skip_verify,omitempty"`
 }
@@ -98,9 +99,10 @@ func defaultServerOptions() serverOptions {
 
 func defaultClientOptions() clientOptions {
 	return clientOptions{
-		Reconnect:   3 * time.Second,
-		Transport:   "quic",
-		Connections: 4,
+		Reconnect:     3 * time.Second,
+		Transport:     "quic",
+		Connections:   4,
+		AddressFamily: "auto",
 	}
 }
 
@@ -132,6 +134,9 @@ func (o clientOptions) withDefaults(defaults clientOptions) clientOptions {
 	}
 	if o.Connections == 0 {
 		o.Connections = defaults.Connections
+	}
+	if o.AddressFamily == "" {
+		o.AddressFamily = defaults.AddressFamily
 	}
 	return o
 }
@@ -765,6 +770,7 @@ func runClient(args []string) error {
 	reconnect := fs.Duration("reconnect", defaults.Reconnect, "reconnect delay")
 	transport := fs.String("transport", defaults.Transport, "reverse transport: tcp or quic")
 	connections := fs.Int("connections", defaults.Connections, "number of parallel reverse connections")
+	addressFamily := fs.String("address-family", defaults.AddressFamily, "target dial address family: auto, ipv4, or ipv6")
 	serverCertSHA256 := fs.String("server-cert-sha256", defaults.ServerCertSHA256, "expected SHA-256 fingerprint of QUIC server certificate")
 	insecureSkipVerify := fs.Bool("insecure-skip-verify", defaults.InsecureSkipVerify, "allow QUIC without certificate pinning; unsafe")
 	if err := fs.Parse(args); err != nil {
@@ -797,6 +803,9 @@ func runClient(args []string) error {
 	if explicit["connections"] {
 		opts.Connections = *connections
 	}
+	if explicit["address-family"] {
+		opts.AddressFamily = *addressFamily
+	}
 	if explicit["server-cert-sha256"] {
 		opts.ServerCertSHA256 = *serverCertSHA256
 	}
@@ -812,6 +821,9 @@ func runClient(args []string) error {
 	}
 	if opts.Connections < 1 || opts.Connections > 64 {
 		return errors.New("--connections must be between 1 and 64")
+	}
+	if opts.AddressFamily != "auto" && opts.AddressFamily != "ipv4" && opts.AddressFamily != "ipv6" {
+		return errors.New("--address-family must be auto, ipv4, or ipv6")
 	}
 	if opts.Transport == "quic" && !opts.InsecureSkipVerify && normalizeFingerprint(opts.ServerCertSHA256) == "" {
 		return errors.New("--server-cert-sha256 is required for quic transport")
@@ -841,7 +853,7 @@ func runClient(args []string) error {
 func clientOnce(transport string, serverAddr string, token string, opts clientOptions) error {
 	switch transport {
 	case "tcp":
-		return tcpClientOnce(serverAddr, token)
+		return tcpClientOnce(serverAddr, token, opts)
 	case "quic":
 		return quicClientOnce(serverAddr, token, opts)
 	default:
@@ -849,7 +861,7 @@ func clientOnce(transport string, serverAddr string, token string, opts clientOp
 	}
 }
 
-func tcpClientOnce(serverAddr string, token string) error {
+func tcpClientOnce(serverAddr string, token string, opts clientOptions) error {
 	conn, err := net.DialTimeout("tcp", serverAddr, 15*time.Second)
 	if err != nil {
 		return err
@@ -874,7 +886,7 @@ func tcpClientOnce(serverAddr string, token string) error {
 		if err != nil {
 			return err
 		}
-		go handleClientStream(stream)
+		go handleClientStream(stream, opts)
 	}
 }
 
@@ -904,11 +916,11 @@ func quicClientOnce(serverAddr string, token string, opts clientOptions) error {
 		if err != nil {
 			return err
 		}
-		go handleClientStream(&quicStreamConn{stream: stream, local: conn.LocalAddr(), remote: conn.RemoteAddr()})
+		go handleClientStream(&quicStreamConn{stream: stream, local: conn.LocalAddr(), remote: conn.RemoteAddr()}, opts)
 	}
 }
 
-func handleClientStream(stream net.Conn) {
+func handleClientStream(stream net.Conn, opts clientOptions) {
 	defer stream.Close()
 	reader := bufio.NewReader(stream)
 	line, err := reader.ReadString('\n')
@@ -917,23 +929,23 @@ func handleClientStream(stream net.Conn) {
 	}
 	target, ok := strings.CutPrefix(strings.TrimSpace(line), "CONNECT ")
 	if ok {
-		handleConnectStream(stream, reader, target)
+		handleConnectStream(stream, reader, target, opts)
 		return
 	}
 	fetchURL, ok := strings.CutPrefix(strings.TrimSpace(line), "FETCH ")
 	if ok {
-		handleFetchStream(stream, fetchURL)
+		handleFetchStream(stream, fetchURL, opts)
 		return
 	}
 	_, _ = io.WriteString(stream, "ERR invalid command\n")
 }
 
-func handleConnectStream(stream net.Conn, reader *bufio.Reader, target string) {
+func handleConnectStream(stream net.Conn, reader *bufio.Reader, target string, opts clientOptions) {
 	if target == "" {
 		_, _ = io.WriteString(stream, "ERR invalid command\n")
 		return
 	}
-	targetConn, err := dialTarget(target)
+	targetConn, err := dialTarget(target, opts.AddressFamily)
 	if err != nil {
 		_, _ = fmt.Fprintf(stream, "ERR %v\n", err)
 		return
@@ -945,7 +957,7 @@ func handleConnectStream(stream net.Conn, reader *bufio.Reader, target string) {
 	pipeBoth(&bufferedConn{Conn: stream, reader: reader}, targetConn)
 }
 
-func handleFetchStream(stream net.Conn, encodedURL string) {
+func handleFetchStream(stream net.Conn, encodedURL string, opts clientOptions) {
 	rawURL, err := base64.RawURLEncoding.DecodeString(encodedURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(stream, "ERR %v\n", err)
@@ -960,7 +972,7 @@ func handleFetchStream(stream net.Conn, encodedURL string) {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{RootCAs: fetchRootCAs()},
 		DialContext: func(_ context.Context, _, addr string) (net.Conn, error) {
-			return dialTarget(addr)
+			return dialTarget(addr, opts.AddressFamily)
 		},
 	}
 	client := &http.Client{Transport: transport, Timeout: 90 * time.Second}
@@ -1011,7 +1023,7 @@ func fetchRootCAs() *x509.CertPool {
 	return pool
 }
 
-func dialTarget(target string) (net.Conn, error) {
+func dialTarget(target string, addressFamily string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(target)
 	if err != nil {
 		return nil, err
@@ -1028,7 +1040,7 @@ func dialTarget(target string) (net.Conn, error) {
 	}
 	var lastErr error
 	dialer := net.Dialer{Timeout: 15 * time.Second}
-	for _, ip := range preferIPv4(ips) {
+	for _, ip := range orderIPs(ips, addressFamily) {
 		conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(ip.IP.String(), port))
 		if err == nil {
 			return conn, nil
@@ -1055,18 +1067,25 @@ func publicResolver() *net.Resolver {
 	}
 }
 
-func preferIPv4(ips []net.IPAddr) []net.IPAddr {
+func orderIPs(ips []net.IPAddr, addressFamily string) []net.IPAddr {
 	if len(ips) < 2 {
 		return ips
 	}
+	if addressFamily == "ipv6" {
+		return preferIPFamily(ips, false)
+	}
+	return preferIPFamily(ips, true)
+}
+
+func preferIPFamily(ips []net.IPAddr, preferIPv4 bool) []net.IPAddr {
 	out := make([]net.IPAddr, 0, len(ips))
 	for _, ip := range ips {
-		if ip.IP.To4() != nil {
+		if (ip.IP.To4() != nil) == preferIPv4 {
 			out = append(out, ip)
 		}
 	}
 	for _, ip := range ips {
-		if ip.IP.To4() == nil {
+		if (ip.IP.To4() != nil) != preferIPv4 {
 			out = append(out, ip)
 		}
 	}
