@@ -21,6 +21,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", server.Health)
 	mux.HandleFunc("/api/client/bootstrap", server.Bootstrap)
+	mux.HandleFunc("/api/client/rotate-ip", server.RotateIP)
 
 	log.Printf("dxhub 已启动：%s", listenAddr)
 	if err := http.ListenAndServe(listenAddr, mux); err != nil {

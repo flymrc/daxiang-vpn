@@ -86,14 +86,20 @@ dxvpn test https://www.yahoo.co.jp
 
 ```bash
 dxvpn rotate-ip
-dxvpn rotate-ip --down-seconds 12 --wait-seconds 45
+dxvpn rotate-ip --down-seconds 12 --wait-seconds 90
 ```
 
-默认读取配置里的 `egress.management_addr`，端口默认 `2022`，私钥默认 `~/.ssh/dxandroid_control`。需要临时覆盖控制面时：
+默认 `dxvpn rotate-ip` 由 Hub API 代为触发 Android 控制面,客户机不需要 Android SSH 私钥。`--wait-seconds` 是最大等待时间,CLI 会轮询到出口恢复或超时。需要临时直连控制面排障时：
 
 ```bash
-dxvpn rotate-ip --phone 10.66.0.101 --port 2022 --key ~/.ssh/dxandroid_control
+dxvpn rotate-ip --direct --phone 10.66.0.101 --port 2022 --key ~/.ssh/dxandroid_control
+dxvpn rotate-ip --direct --jump root@36.50.84.68 --key ~/.ssh/dxandroid_control
 ```
+
+注意:
+
+- 普通 `dxvpn start` 是用户态代理模式,不会给 Windows 系统添加 `10.66.0.0/24` 路由;控制面 SSH 可能需要 `--jump root@36.50.84.68` 经 Hub 跳板。
+- `--direct` 是管理员排障入口,才需要已授权的 Android 控制面私钥。
 
 ### 6. 切换出口
 

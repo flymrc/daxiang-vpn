@@ -88,7 +88,9 @@ func printUsage() {
         需要管理员权限，启动时会弹出 UAC 授权窗口。
 
 rotate-ip：经 Android 控制面 SSH 触发手机端 rotate-ip.sh，
-           用于让手机网络重注册并尝试更换公网出口 IP。`)
+           用于让手机网络重注册并尝试更换公网出口 IP。
+           默认由 Hub 代为触发，客户端不需要 Android SSH 私钥。
+           管理员排障可加 --direct --jump/--key 直连控制面。`)
 }
 
 type startOptions struct {
@@ -374,12 +376,14 @@ type rotateIPOptions struct {
 	port        int
 	keyPath     string
 	proxyAddr   string
+	jumpHost    string
+	direct      bool
 }
 
 func parseRotateIPOptions(args []string, cfg config.Config) (rotateIPOptions, error) {
 	opts := rotateIPOptions{
 		downSeconds: 8,
-		waitSeconds: 30,
+		waitSeconds: 75,
 		port:        2022,
 		keyPath:     defaultAndroidControlKeyPath(),
 		proxyAddr:   cfg.LocalProxy.Addr(),
@@ -452,8 +456,10 @@ func parseRotateIPOptions(args []string, cfg config.Config) (rotateIPOptions, er
 				return opts, err
 			}
 			opts.phone = strings.TrimSpace(value)
+			opts.direct = true
 		case strings.HasPrefix(arg, "--phone="):
 			opts.phone = strings.TrimSpace(strings.TrimPrefix(arg, "--phone="))
+			opts.direct = true
 		case arg == "--port":
 			value, err := readValue("--port")
 			if err != nil {
@@ -464,20 +470,24 @@ func parseRotateIPOptions(args []string, cfg config.Config) (rotateIPOptions, er
 				return opts, err
 			}
 			opts.port = port
+			opts.direct = true
 		case strings.HasPrefix(arg, "--port="):
 			port, err := parsePort(strings.TrimPrefix(arg, "--port="))
 			if err != nil {
 				return opts, err
 			}
 			opts.port = port
+			opts.direct = true
 		case arg == "--key":
 			value, err := readValue("--key")
 			if err != nil {
 				return opts, err
 			}
 			opts.keyPath = expandHome(value)
+			opts.direct = true
 		case strings.HasPrefix(arg, "--key="):
 			opts.keyPath = expandHome(strings.TrimPrefix(arg, "--key="))
+			opts.direct = true
 		case arg == "--proxy":
 			value, err := readValue("--proxy")
 			if err != nil {
@@ -486,6 +496,18 @@ func parseRotateIPOptions(args []string, cfg config.Config) (rotateIPOptions, er
 			opts.proxyAddr = normalizeProxyAddr(value)
 		case strings.HasPrefix(arg, "--proxy="):
 			opts.proxyAddr = normalizeProxyAddr(strings.TrimPrefix(arg, "--proxy="))
+		case arg == "--jump":
+			value, err := readValue("--jump")
+			if err != nil {
+				return opts, err
+			}
+			opts.jumpHost = strings.TrimSpace(value)
+			opts.direct = true
+		case strings.HasPrefix(arg, "--jump="):
+			opts.jumpHost = strings.TrimSpace(strings.TrimPrefix(arg, "--jump="))
+			opts.direct = true
+		case arg == "--direct":
+			opts.direct = true
 		default:
 			return opts, fmt.Errorf("未知参数：%s", arg)
 		}
@@ -515,6 +537,30 @@ func rotateIP(ctx paths.Context, args []string) error {
 
 	before := publicIPOrUnavailable(opts.proxyAddr)
 	fmt.Printf("换 IP 前出口：%s\n", before)
+	if !opts.direct {
+		fmt.Printf("触发 Android rotate-ip（断网 %ds）...\n", opts.downSeconds)
+		if err := bootstrap.RotateIP(cfg.License.Token, opts.downSeconds); err != nil {
+			return err
+		}
+		after := waitForPublicIP(opts.proxyAddr, opts.downSeconds, opts.waitSeconds)
+		fmt.Printf("换 IP 后出口：%s\n", after)
+		if after == unavailableIP {
+			fmt.Println("提示：出口可能还没恢复，过几秒再执行 dxvpn.exe status，或加大 --wait-seconds。")
+		}
+		return nil
+	}
+	if _, err := os.Stat(opts.keyPath); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("Android 控制面 SSH 私钥不存在：%s\n请把当前授权的私钥放到该路径，或使用 --key <路径>。普通用户态 start 还需要 --jump root@36.50.84.68 或改用 start --fast 提供系统路由", opts.keyPath)
+		}
+		return fmt.Errorf("无法读取 Android 控制面 SSH 私钥：%w", err)
+	}
+	if opts.jumpHost == "" {
+		controlAddr := net.JoinHostPort(opts.phone, strconv.Itoa(opts.port))
+		if reachable, _ := netcheck.TCP(controlAddr, 3*time.Second); !reachable {
+			return fmt.Errorf("Android 控制面 %s 不可达。普通 dxvpn.exe start 是用户态代理模式，不会给 Windows 系统添加 10.66.0.0/24 路由；请使用 --jump root@36.50.84.68，或先用 dxvpn.exe start --fast / 管理内网 WireGuard 提供系统路由", controlAddr)
+		}
+	}
 	fmt.Printf("触发 Android rotate-ip（断网 %ds）...\n", opts.downSeconds)
 
 	remote := fmt.Sprintf("sh /data/adb/dxandroid/rotate-ip.sh %d", opts.downSeconds)
@@ -525,9 +571,11 @@ func rotateIP(ctx paths.Context, args []string) error {
 		"-o", "UserKnownHostsFile=" + os.DevNull,
 		"-o", "BatchMode=yes",
 		"-o", "ConnectTimeout=8",
-		"root@" + opts.phone,
-		remote,
 	}
+	if opts.jumpHost != "" {
+		sshArgs = append(sshArgs, "-J", opts.jumpHost)
+	}
+	sshArgs = append(sshArgs, "root@"+opts.phone, remote)
 	cmd := exec.Command("ssh", sshArgs...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -535,10 +583,7 @@ func rotateIP(ctx paths.Context, args []string) error {
 		return fmt.Errorf("触发 rotate-ip 失败：%w", err)
 	}
 
-	fmt.Printf("等待 %ds 让无线电重注册 + 隧道恢复...\n", opts.waitSeconds)
-	time.Sleep(time.Duration(opts.waitSeconds) * time.Second)
-
-	after := publicIPOrUnavailable(opts.proxyAddr)
+	after := waitForPublicIP(opts.proxyAddr, opts.downSeconds, opts.waitSeconds)
 	fmt.Printf("换 IP 后出口：%s\n", after)
 	if after == unavailableIP {
 		fmt.Println("提示：出口可能还没恢复，过几秒再执行 dxvpn.exe status，或加大 --wait-seconds。")
@@ -547,6 +592,29 @@ func rotateIP(ctx paths.Context, args []string) error {
 }
 
 const unavailableIP = "(暂不可达)"
+
+func waitForPublicIP(proxyAddr string, downSeconds, waitSeconds int) string {
+	fmt.Printf("最多等待 %ds 让无线电重注册 + 隧道恢复...\n", waitSeconds)
+	deadline := time.Now().Add(time.Duration(waitSeconds) * time.Second)
+	initialDelay := time.Duration(downSeconds+10) * time.Second
+	if initialDelay > time.Duration(waitSeconds)*time.Second {
+		initialDelay = time.Duration(waitSeconds) * time.Second
+	}
+	time.Sleep(initialDelay)
+
+	interval := 5 * time.Second
+	for {
+		ip := publicIPOrUnavailable(proxyAddr)
+		if ip != unavailableIP {
+			return ip
+		}
+		if time.Now().Add(interval).After(deadline) {
+			break
+		}
+		time.Sleep(interval)
+	}
+	return publicIPOrUnavailable(proxyAddr)
+}
 
 func publicIPOrUnavailable(proxyAddr string) string {
 	ip, err := netcheck.PublicIPViaHTTPProxy(normalizeProxyAddr(proxyAddr))
@@ -593,6 +661,12 @@ func defaultAndroidControlKeyPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		return ""
+	}
+	for _, name := range []string{"dxandroid_control", "dxandroid_control_local"} {
+		path := filepath.Join(home, ".ssh", name)
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
 	}
 	return filepath.Join(home, ".ssh", "dxandroid_control")
 }

@@ -15,7 +15,7 @@ param(
     [string]$Phone = "10.66.0.101",
     [int]$Port = 2022,
     [string]$Key = "$HOME\.ssh\dxandroid_control",
-    [string]$Proxy = "http://127.0.0.1:18081"
+    [string]$Proxy = "http://10.66.0.1:18081"
 )
 
 $sshArgs = @(

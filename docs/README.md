@@ -17,10 +17,10 @@ Hub: 36.50.84.68 / 10.66.0.1
   |
   +-- mac-mini       10.66.0.100:1080 -> 日本住宅出口
   |
-  +-- jp-android-01  dxreverse -> Hub 127.0.0.1:18081 -> 日本手机卡出口
+  +-- jp-android-01  dxreverse -> Hub/WG 10.66.0.1:18081 -> 日本手机卡出口
 ```
 
-Mac 出口仍是远端 mixed 代理。Android 出口数据面已迁到 `dxreverse` 反向 QUIC,旧 `10.66.0.101:1080` 仅作为回滚/历史路径。
+Mac 出口仍是远端 mixed 代理。Android 出口数据面已迁到 `dxreverse` 反向 QUIC,客户端经 WireGuard 访问 Hub 侧 `10.66.0.1:18081`;旧 `10.66.0.101:1080` 仅作为回滚/历史路径。
 
 ## 目录说明
 

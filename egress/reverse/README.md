@@ -10,7 +10,7 @@ The legacy `dxandroid-egress` / sing-box proxy is kept only as a rollback path.
 
 ```text
 Hub egress router/client
-  -> 127.0.0.1:18081 HTTP CONNECT proxy
+  -> 10.66.0.1:18081 HTTP CONNECT proxy
   -> dxreverse server
   -> UDP + QUIC reverse session
   -> dxreverse client on Android
@@ -25,7 +25,7 @@ The proxy also exposes an experimental application-layer fetch endpoint:
 
 ```text
 Hub curl/client
-  -> GET http://127.0.0.1:18081/fetch?url=<absolute-http-or-https-url>
+  -> GET http://10.66.0.1:18081/fetch?url=<absolute-http-or-https-url>
   -> dxreverse server
   -> FETCH <base64url(url)>
   -> dxreverse client on Android
@@ -92,7 +92,7 @@ Server:
   --transport quic \
   --resolve server \
   --listen 0.0.0.0:39093 \
-  --proxy 127.0.0.1:18081 \
+  --proxy 10.66.0.1:18081 \
   --token <shared-token>
 ```
 
@@ -116,11 +116,11 @@ Hub-side probe:
 
 ```sh
 scripts/check-android-reverse-egress.sh
-curl --proxy http://127.0.0.1:18081 https://api.ipify.org
-curl -L --proxy http://127.0.0.1:18081 -o /dev/null \
+curl --proxy http://10.66.0.1:18081 https://api.ipify.org
+curl -L --proxy http://10.66.0.1:18081 -o /dev/null \
   'https://speed.cloudflare.com/__down?bytes=20000000'
 curl -L -o /dev/null \
-  'http://127.0.0.1:18081/fetch?url=https%3A%2F%2Fspeed.cloudflare.com%2F__down%3Fbytes%3D2000000'
+  'http://10.66.0.1:18081/fetch?url=https%3A%2F%2Fspeed.cloudflare.com%2F__down%3Fbytes%3D2000000'
 ```
 
 Remove any temporary public firewall rule after manual testing. The production

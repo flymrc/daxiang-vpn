@@ -85,9 +85,10 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 - 控制面 WireGuard IP：`10.66.0.101`
 - 控制面 SSH：`10.66.0.101:2022`
 - 数据面：`dxreverse` 反向 QUIC
-- Hub 侧代理入口：`127.0.0.1:18081`
+- Hub 侧代理入口：`10.66.0.1:18081`
 - Hub reverse UDP 监听：`0.0.0.0:39093/udp`
 - Android reverse endpoint：Android 主动连 Hub,无手机入站端口
+- Hub 防火墙：UFW 允许 `wg0 -> 10.66.0.1:18081/tcp`
 - 旧代理：`10.66.0.101:1080` / `dxandroid-egress` 已退为回滚路径
 
 当前部署：
@@ -107,10 +108,12 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 当前验证结果：
 
 - `dxreverse-hub.service` 已启用并运行。
-- Hub 监听 `39093/udp` 和 `127.0.0.1:18081`。
+- Hub 监听 `39093/udp` 和 `10.66.0.1:18081`。
+- UFW 已允许 WireGuard 客户端访问 `10.66.0.1:18081/tcp`。
 - Hub 日志显示 Android 4 条 QUIC reverse session 已连接。
 - Android 当前仅运行 `99-dxreverse-egress.sh` supervisor 和 `dxreverse client`。
-- Hub 经 reverse proxy 出口 IP：`59.132.8.186`。
+- Hub 经 reverse proxy 出口 IP：以 `curl --proxy http://10.66.0.1:18081 https://api.ipify.org` 实时结果为准。
+- Android 客户端 token 当前应绑定 `egress.proxy_addr=10.66.0.1:18081`;旧 `10.66.0.101:1080` 只保留回滚,不再分配给 Android 客户端。
 
 常用检查命令：
 
@@ -118,7 +121,7 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 systemctl status dxreverse-hub.service
 journalctl -u dxreverse-hub.service -n 50 --no-pager
 scripts/check-android-reverse-egress.sh
-curl --proxy http://127.0.0.1:18081 https://api.ipify.org
+curl --proxy http://10.66.0.1:18081 https://api.ipify.org
 ssh -i ~/.ssh/dxandroid_control_local -p 2022 root@10.66.0.101 \
   'ps -A -o PID,PPID,ARGS | grep -E "dxreverse|dxandroid-egress|99-dx" | grep -v grep || true'
 ```
@@ -135,7 +138,7 @@ ssh -i ~/.ssh/dxandroid_control_local -p 2022 root@10.66.0.101 \
 - WireGuard 监听端口：`51820/udp`
 - IPv4 转发：已开启
 - WireGuard 服务：`wg-quick@wg0`，已启用并正在运行
-- 防火墙：`ufw` 未启用
+- 防火墙：`ufw` 已启用,默认拒绝入站;显式放行 SSH、WireGuard、dxhub bootstrap、dxreverse UDP 和 `wg0` 上的 `10.66.0.1:18081/tcp`
 - Docker：正在运行 `linuxserver/librespeed`，占用 `80/tcp`
 
 ## 当前 WireGuard Peer

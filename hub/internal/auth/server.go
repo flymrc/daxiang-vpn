@@ -2,9 +2,14 @@ package auth
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -14,6 +19,17 @@ type Server struct {
 
 type bootstrapRequest struct {
 	Token string `json:"token"`
+}
+
+type rotateIPRequest struct {
+	Token       string `json:"token"`
+	DownSeconds int    `json:"down_seconds"`
+}
+
+type rotateIPResponse struct {
+	Status      string `json:"status"`
+	Egress      string `json:"egress"`
+	DownSeconds int    `json:"down_seconds"`
 }
 
 type bootstrapResponse struct {
@@ -63,6 +79,103 @@ func (s *Server) Bootstrap(w http.ResponseWriter, r *http.Request) {
 		LocalProxy: record.LocalProxy,
 		WireGuard:  record.WireGuard,
 	})
+}
+
+func (s *Server) RotateIP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method_not_allowed"})
+		return
+	}
+
+	var req rotateIPRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad_request"})
+		return
+	}
+	if req.DownSeconds == 0 {
+		req.DownSeconds = 8
+	}
+	if req.DownSeconds < 1 || req.DownSeconds > 60 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_down_seconds"})
+		return
+	}
+
+	record, ok := s.store.Resolve(req.Token, time.Now())
+	if !ok {
+		log.Printf("rotate-ip 拒绝 src=%s token=%q reason=invalid_token", clientIP(r), maskToken(req.Token))
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_token"})
+		return
+	}
+	if record.Egress.Name != "jp-android-01" {
+		log.Printf("rotate-ip 拒绝 src=%s token=%q client=%s egress=%s reason=unsupported_egress", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported_egress"})
+		return
+	}
+	if err := triggerAndroidRotateIP(record.Egress.ManagementAddr, req.DownSeconds); err != nil {
+		log.Printf("rotate-ip 失败 src=%s token=%q client=%s egress=%s err=%v", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name, err)
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "control_failed"})
+		return
+	}
+
+	log.Printf("rotate-ip 触发 src=%s token=%q client=%s egress=%s down_seconds=%d", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name, req.DownSeconds)
+	writeJSON(w, http.StatusOK, rotateIPResponse{
+		Status:      "triggered",
+		Egress:      record.Egress.Name,
+		DownSeconds: req.DownSeconds,
+	})
+}
+
+func triggerAndroidRotateIP(managementAddr string, downSeconds int) error {
+	host, port := splitHostPortDefault(managementAddr, "2022")
+	if host == "" {
+		host = "10.66.0.101"
+	}
+	keyPath := strings.TrimSpace(os.Getenv("DXHUB_ANDROID_CONTROL_KEY"))
+	if keyPath == "" {
+		keyPath = "/root/.ssh/dxandroid_control"
+	}
+	if _, err := os.Stat(keyPath); err != nil {
+		return fmt.Errorf("control key unavailable: %w", err)
+	}
+
+	remote := fmt.Sprintf("sh /data/adb/dxandroid/rotate-ip.sh %d", downSeconds)
+	cmd := exec.Command("ssh",
+		"-i", keyPath,
+		"-p", port,
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile="+os.DevNull,
+		"-o", "BatchMode=yes",
+		"-o", "ConnectTimeout=8",
+		"root@"+host,
+		remote,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		text := strings.TrimSpace(string(out))
+		if text != "" {
+			return fmt.Errorf("%w: %s", err, text)
+		}
+		return err
+	}
+	return nil
+}
+
+func splitHostPortDefault(value string, defaultPort string) (string, string) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", defaultPort
+	}
+	host, port, err := net.SplitHostPort(value)
+	if err == nil {
+		return host, port
+	}
+	if strings.Contains(value, ":") {
+		return value, defaultPort
+	}
+	if _, err := strconv.Atoi(defaultPort); err != nil {
+		return value, "2022"
+	}
+	return value, defaultPort
 }
 
 // clientIP 优先取反向代理透传的 X-Forwarded-For 首段，否则用 TCP 远端地址。

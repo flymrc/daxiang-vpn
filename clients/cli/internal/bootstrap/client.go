@@ -17,6 +17,11 @@ type request struct {
 	Token string `json:"token"`
 }
 
+type rotateIPRequest struct {
+	Token       string `json:"token"`
+	DownSeconds int    `json:"down_seconds"`
+}
+
 func Fetch(token string) (config.Config, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -55,6 +60,42 @@ func Fetch(token string) (config.Config, error) {
 	cfg.License.Token = token
 	cfg.ApplyDefaults()
 	return cfg, cfg.Validate()
+}
+
+func RotateIP(token string, downSeconds int) error {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return errors.New("授权码不能为空")
+	}
+	body, err := json.Marshal(rotateIPRequest{Token: token, DownSeconds: downSeconds})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPost, apiBase()+"/api/client/rotate-ip", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 20 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return errors.New("换 IP 服务连接失败")
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return nil
+	case http.StatusUnauthorized:
+		return errors.New("授权码无效或已过期")
+	case http.StatusBadGateway:
+		return errors.New("Hub 未能触发 Android 控制面换 IP，请联系管理员检查控制面 key 或手机状态")
+	case http.StatusBadRequest:
+		return errors.New("当前出口不支持一键换 IP")
+	default:
+		return fmt.Errorf("换 IP 服务异常：%d", resp.StatusCode)
+	}
 }
 
 func apiBase() string {

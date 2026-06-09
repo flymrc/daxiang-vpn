@@ -24,7 +24,7 @@ func TestParseRotateIPOptionsUsesConfigDefaults(t *testing.T) {
 	if opts.proxyAddr != "127.0.0.1:7890" {
 		t.Fatalf("proxyAddr = %q", opts.proxyAddr)
 	}
-	if opts.downSeconds != 8 || opts.waitSeconds != 30 {
+	if opts.downSeconds != 8 || opts.waitSeconds != 75 {
 		t.Fatalf("seconds = down:%d wait:%d", opts.downSeconds, opts.waitSeconds)
 	}
 }
@@ -40,6 +40,7 @@ func TestParseRotateIPOptionsOverrides(t *testing.T) {
 		"--wait-seconds=45",
 		"--key", "~/custom_key",
 		"--proxy", "http://127.0.0.1:18081",
+		"--jump", "root@36.50.84.68",
 	}, cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -55,6 +56,12 @@ func TestParseRotateIPOptionsOverrides(t *testing.T) {
 	}
 	if opts.proxyAddr != "127.0.0.1:18081" {
 		t.Fatalf("proxyAddr = %q", opts.proxyAddr)
+	}
+	if opts.jumpHost != "root@36.50.84.68" {
+		t.Fatalf("jumpHost = %q", opts.jumpHost)
+	}
+	if !opts.direct {
+		t.Fatal("direct = false")
 	}
 }
 

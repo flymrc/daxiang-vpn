@@ -3,7 +3,7 @@
 
 set -eu
 
-PROXY=${PROXY:-http://127.0.0.1:18081}
+PROXY=${PROXY:-http://10.66.0.1:18081}
 TEST_URL=${TEST_URL:-https://api.ipify.org}
 TIMEOUT=${TIMEOUT:-20}
 

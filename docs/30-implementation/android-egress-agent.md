@@ -1,6 +1,6 @@
 # Android 出口节点客户端
 
-> 状态:本文前半部分记录旧 `dxandroid-egress` / sing-box 数据面。当前 Android 生产替代路径已迁到 [egress/reverse](../../egress/reverse/README.md):Android 主动反连 Hub,Hub 侧暴露 `127.0.0.1:18081` HTTP CONNECT proxy。旧 `dxandroid-egress` 只作为回滚路径保留。
+> 状态:本文前半部分记录旧 `dxandroid-egress` / sing-box 数据面。当前 Android 生产替代路径已迁到 [egress/reverse](../../egress/reverse/README.md):Android 主动反连 Hub,Hub 侧暴露 `10.66.0.1:18081` HTTP CONNECT proxy。旧 `dxandroid-egress` 只作为回滚路径保留。
 
 ## 当前生产目标
 

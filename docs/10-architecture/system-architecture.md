@@ -57,7 +57,7 @@ Hub egress router/client
     |
     | HTTP CONNECT
     v
-Hub local dxreverse proxy 127.0.0.1:18081
+Hub/WireGuard dxreverse proxy 10.66.0.1:18081
     |
     | QUIC reverse tunnel, Android actively dials Hub UDP :39093
     v
@@ -68,7 +68,7 @@ Android dxreverse client
 public target
 ```
 
-WireGuard App 仍负责内网控制面,例如 `10.66.0.101:2022` SSH 运维和 watchdog 自愈。旧 `dxandroid-egress` / `10.66.0.101:1080` mixed proxy 不再是 Android 生产主数据面,仅作为回滚路径保留。
+WireGuard App 仍负责内网控制面,例如 `10.66.0.101:2022` SSH 运维和 watchdog 自愈。Android 客户端 token 的 `egress.proxy_addr` 应指向 Hub 的 WireGuard 地址 `10.66.0.1:18081`,不要再指向手机旧入站代理。旧 `dxandroid-egress` / `10.66.0.101:1080` mixed proxy 不再是 Android 生产主数据面,仅作为回滚路径保留。
 
 ## 分阶段设计
 

@@ -24,7 +24,7 @@
 ```text
 客户端 --WireGuard--> Hub(36.50.84.68 / wg0 10.66.0.1/24)
   +--> Mac mini 出口:    10.66.0.100:1080
-  +--> Android 手机出口: Hub 本地 dxreverse proxy 127.0.0.1:18081
+  +--> Android 手机出口: Hub/WireGuard dxreverse proxy 10.66.0.1:18081
 ```
 
 按角色分顶层,Go 代码统一在根 module `daxiang-vpn` 下:

@@ -32,6 +32,7 @@ Remove-Item Env:\GOOS, Env:\GOARCH
 ```text
 DXHUB_TOKENS=/opt/daxiang-vpn/dxhub/tokens.yaml
 DXHUB_LISTEN=0.0.0.0:18080
+DXHUB_ANDROID_CONTROL_KEY=/root/.ssh/dxandroid_control_hub
 ```
 
 ## systemd 服务
@@ -46,6 +47,7 @@ Type=simple
 WorkingDirectory=/opt/daxiang-vpn/dxhub
 Environment=DXHUB_TOKENS=/opt/daxiang-vpn/dxhub/tokens.yaml
 Environment=DXHUB_LISTEN=0.0.0.0:18080
+Environment=DXHUB_ANDROID_CONTROL_KEY=/root/.ssh/dxandroid_control_hub
 ExecStart=/opt/daxiang-vpn/dxhub/dxhub
 Restart=always
 RestartSec=3
@@ -89,3 +91,37 @@ curl http://127.0.0.1:18080/healthz
 ```json
 {"status":"ok"}
 ```
+
+## Android 出口一键换 IP
+
+Hub API 提供客户端无感入口:
+
+```text
+POST /api/client/rotate-ip
+```
+
+客户端只提交自己的授权 token 和断网秒数,Hub 校验 token 后通过 Android 控制面 SSH 触发 `/data/adb/dxandroid/rotate-ip.sh`。客户机不需要 Android SSH 私钥,也不需要知道跳板。
+
+Hub 侧需要一把无 passphrase 的服务专用 key:
+
+```bash
+ssh-keygen -t ed25519 -N "" \
+  -C "dxhub-android-control@36.50.84.68" \
+  -f /root/.ssh/dxandroid_control_hub
+chmod 600 /root/.ssh/dxandroid_control_hub
+```
+
+把公钥追加到 Android:
+
+```bash
+cat /root/.ssh/dxandroid_control_hub.pub
+# 将输出追加到 Android /data/adb/dxandroid/.ssh/authorized_keys
+```
+
+当前 Hub 公钥:
+
+```text
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMFnqYTgTqmQkJ314sFHCuaHd5q4NvrjsWZwNsR8E5H7 dxhub-android-control@36.50.84.68
+```
+
+> 若 API 返回 `control_failed`,优先检查 `DXHUB_ANDROID_CONTROL_KEY` 指向的私钥是否无 passphrase,以及对应公钥是否已在 Android `authorized_keys` 中。

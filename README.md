@@ -68,6 +68,7 @@ dxvpn.exe start            # 本地代理端口默认 7890
 dxvpn.exe start --port 7891  # 端口被占用时换端口（也可用环境变量 DXVPN_LOCAL_PORT）
 dxvpn.exe status
 dxvpn.exe stop
+dxvpn.exe rotate-ip      # Android 手机出口换公网 IP
 ```
 
 ## 关键文档

@@ -20,7 +20,7 @@
 
 - 客户端的 WG IP 由 Hub 按授权码分配（例如当前客户是 `10.66.0.20`）。
 - Mac 出口固定是 `10.66.0.100`，对外住宅 IP 当前是 `118.158.252.9`。
-- Android 出口数据面是 Hub 本地 `127.0.0.1:18081` 的 `dxreverse` proxy，公网 IP 随手机卡或 WiFi 网络变化。
+- Android 出口数据面是 Hub WireGuard 地址 `10.66.0.1:18081` 的 `dxreverse` proxy，公网 IP 随手机卡或 WiFi 网络变化。
 
 ---
 
@@ -196,17 +196,30 @@ cat /usr/local/sbin/dxvpn-sing-box-run.sh
 
 ## 3. Android 出口节点
 
-> 当前 Android 出口数据面已迁到 `dxreverse`:Android 主动反连 Hub,Hub 侧暴露 `127.0.0.1:18081` HTTP CONNECT proxy。
+> 当前 Android 出口数据面已迁到 `dxreverse`:Android 主动反连 Hub,Hub 侧暴露 `10.66.0.1:18081` HTTP CONNECT proxy。
 > WireGuard App 仍作为内网控制面使用,不是主要公网出口数据面。
 
 ### 3.1 Hub 侧验证 Android 出口
 
 ```bash
 scripts/check-android-reverse-egress.sh
-curl -x http://127.0.0.1:18081 -s https://api.ipify.org; echo
-curl -L --max-time 30 -x http://127.0.0.1:18081 -o /dev/null \
+curl -x http://10.66.0.1:18081 -s https://api.ipify.org; echo
+curl -L --max-time 30 -x http://10.66.0.1:18081 -o /dev/null \
   -w "code=%{http_code} bytes=%{size_download} bps=%{speed_download} seconds=%{time_total}\n" \
   "https://speed.cloudflare.com/__down?bytes=50000000"
+```
+
+若 Hub 本机 curl 能通,但 Windows 客户端 `dxvpn.exe status` 获取出口 IP 失败,检查 UFW 是否允许 WireGuard 客户端访问 Hub proxy:
+
+```bash
+ufw status verbose
+iptables -L ufw-user-input -n -v --line-numbers | grep 18081
+```
+
+正常应有类似规则:
+
+```text
+10.66.0.1 18081/tcp on wg0 ALLOW IN Anywhere
 ```
 
 判断：
@@ -243,7 +256,7 @@ curl -L --max-time 30 -x http://127.0.0.1:18081 -o /dev/null \
 .\scripts\measure-android-egress.ps1 -Runs 5
 ```
 
-脚本会从 Hub 侧走 `127.0.0.1:18081` 连续测速，并输出平均、最小、最大 Mbps。
+脚本会从 Hub 侧走 `10.66.0.1:18081` 连续测速，并输出平均、最小、最大 Mbps。
 该脚本不依赖 ADB，适合手机不在身边但 Android 出口仍在线时使用。
 
 ### 3.4 不用 ADB 远程控制 Android
@@ -317,7 +330,7 @@ wg show
 # ② 在 Hub 上：转发开着吗？端到端出口通吗？
 sysctl net.ipv4.ip_forward
 curl -x http://10.66.0.100:1080 -s https://api.ipify.org; echo
-curl -x http://127.0.0.1:18081 -s https://api.ipify.org; echo
+curl -x http://10.66.0.1:18081 -s https://api.ipify.org; echo
 
 # ③ 若 ② 不通，再上 Mac 看 sing-box 和日志
 sudo /opt/homebrew/bin/wg show
