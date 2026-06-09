@@ -347,7 +347,32 @@ tail -n 50 /usr/local/var/log/dxvpn/*.log
 | 出口 IP 不是 `118.158.252.9` | Mac 的 WAN/住宅网络变了，或走了别的出口 |
 | Android 手机卡直连快但代理慢 | 多半是手机上行到 Hub 慢，不是手机下行慢 |
 | Android 日志大量 `message too long` | Android WireGuard/sing-box 发包路径仍需优化 |
+| 客户端提示授权码正在其他网络使用 | 同一 token 正在另一个公网来源 bootstrap，等待约 30 秒或先断开另一台设备 |
 | `ip_forward = 0` | Hub 没开转发，流量到 Hub 就断 |
+
+---
+
+## 4.1 客户端重复与 token 冲突排查
+
+本机是否启动了两个客户端，优先在 Windows 看监听端口和进程树：
+
+```powershell
+Get-Process dxvpn,dxvpn-desktop -ErrorAction SilentlyContinue
+netstat -ano | findstr 7890
+```
+
+正常形态是一个 `dxvpn-desktop.exe` 加一个长期运行的 `dxvpn.exe __engine`，本地只监听 `127.0.0.1:7890`。短暂的 `dxvpn.exe status --json` 子进程可以出现，但新版 GUI 会串行化状态轮询，避免前端和托盘同时刷状态造成堆积。
+
+同一个 token 是否在不同地方登录，优先看 Hub 日志：
+
+```bash
+journalctl -u dxhub.service --since "10 min ago" --no-pager | grep -E 'bootstrap|token_in_use'
+wg show wg0 endpoints
+```
+
+- `bootstrap 拒绝 ... reason=token_in_use` 表示同 token 在不同公网来源的 30 秒租约内被拒绝。
+- `wg show wg0 endpoints` 里客户 peer 的 endpoint 是当前 WireGuard 最后来源。若这个 IP 等于本机直连公网 IP，不能单独判断为异地登录。
+- Hub 只信任本机或内网反代传入的 `X-Forwarded-For`；公网客户端伪造 XFF 不会影响 token 冲突判断。
 
 ---
 

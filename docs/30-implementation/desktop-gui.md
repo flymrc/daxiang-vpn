@@ -223,3 +223,4 @@ clients/desktop-gui/
   - 验证：`tauri build` 产出 `bundle/nsis/大象 VPN_0.1.0_x64-setup.exe`（7.5MB，sidecar `dxvpn.exe` 17.2MB 随包置于主程序旁）。踩坑：`category` 只接受 Apple 枚举（`Network` 非法→`Utility`）；unicode `productName` 让 WiX MSI 失败→去掉 MSI 只留 NSIS。
   - 架构文档：`system-architecture.md` 角色表新增「桌面 GUI」。
 - **桌面 GUI 四个里程碑（M1–M4）代码与打包完成**；剩真实出口下的端到端人工点验，及后置项：代码签名、macOS（M5，需先补 `shared/proxy` mac 引擎）。
+- **状态轮询加固已完成**（2026-06-10）：主界面 `refresh()` 会跳过正在进行中的刷新，Rust 后端 `status_impl` 用全局 async mutex 串行化 `dxvpn status --json`。主窗口和托盘同时存在时，不再堆积多个 status sidecar 子进程，降低本机代理卡顿和误判断线的概率。

@@ -33,6 +33,7 @@ Remove-Item Env:\GOOS, Env:\GOARCH
 DXHUB_TOKENS=/opt/daxiang-vpn/dxhub/tokens.yaml
 DXHUB_LISTEN=0.0.0.0:18080
 DXHUB_ANDROID_CONTROL_KEY=/root/.ssh/dxandroid_control_hub
+DXHUB_TOKEN_LEASE_SECONDS=30
 ```
 
 ## systemd 服务
@@ -48,6 +49,7 @@ WorkingDirectory=/opt/daxiang-vpn/dxhub
 Environment=DXHUB_TOKENS=/opt/daxiang-vpn/dxhub/tokens.yaml
 Environment=DXHUB_LISTEN=0.0.0.0:18080
 Environment=DXHUB_ANDROID_CONTROL_KEY=/root/.ssh/dxandroid_control_hub
+Environment=DXHUB_TOKEN_LEASE_SECONDS=30
 ExecStart=/opt/daxiang-vpn/dxhub/dxhub
 Restart=always
 RestartSec=3
@@ -91,6 +93,16 @@ curl http://127.0.0.1:18080/healthz
 ```json
 {"status":"ok"}
 ```
+
+## 客户端 token 单来源租约
+
+`/api/client/bootstrap` 会按 token 记录最近一次成功 bootstrap 的来源 IP。默认 `DXHUB_TOKEN_LEASE_SECONDS=30`：
+
+- 同一个 token 在同一公网来源继续 bootstrap，会刷新租约。
+- 同一个 token 在不同公网来源 30 秒内再次 bootstrap，会返回 `409 {"error":"token_in_use"}`。
+- 设置 `DXHUB_TOKEN_LEASE_SECONDS=0` 可关闭该保护。
+
+来源识别只信任本机或内网反向代理传入的 `X-Forwarded-For`；公网客户端直连时按 TCP 源地址计算，避免客户端伪造来源绕过 token 租约。
 
 ## Android 出口一键换 IP
 

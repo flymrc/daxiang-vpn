@@ -49,6 +49,9 @@ func Fetch(token string) (config.Config, error) {
 	if resp.StatusCode == http.StatusUnauthorized {
 		return config.Config{}, errors.New("授权码无效或已过期")
 	}
+	if resp.StatusCode == http.StatusConflict {
+		return config.Config{}, errors.New("授权码正在其他网络使用，请先断开另一台设备或等待约 30 秒后重试")
+	}
 	if resp.StatusCode != http.StatusOK {
 		return config.Config{}, fmt.Errorf("授权服务异常：%d", resp.StatusCode)
 	}

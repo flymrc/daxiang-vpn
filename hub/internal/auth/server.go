@@ -10,11 +10,20 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Server struct {
-	store *TokenStore
+	store         *TokenStore
+	tokenLeases   map[string]tokenLease
+	tokenLeasesMu sync.Mutex
+	tokenLeaseTTL time.Duration
+}
+
+type tokenLease struct {
+	sourceIP string
+	seenAt   time.Time
 }
 
 type bootstrapRequest struct {
@@ -45,7 +54,11 @@ type clientResponse struct {
 }
 
 func NewServer(store *TokenStore) *Server {
-	return &Server{store: store}
+	return &Server{
+		store:         store,
+		tokenLeases:   map[string]tokenLease{},
+		tokenLeaseTTL: tokenLeaseTTLFromEnv(),
+	}
 }
 
 func (s *Server) Health(w http.ResponseWriter, _ *http.Request) {
@@ -70,8 +83,14 @@ func (s *Server) Bootstrap(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_token"})
 		return
 	}
+	src := clientIP(r)
+	if !s.claimToken(req.Token, src, time.Now()) {
+		log.Printf("bootstrap 拒绝 src=%s token=%q client=%s reason=token_in_use", src, maskToken(req.Token), record.ClientName)
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "token_in_use"})
+		return
+	}
 
-	log.Printf("bootstrap 通过 src=%s token=%q client=%s egress=%s", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name)
+	log.Printf("bootstrap 通过 src=%s token=%q client=%s egress=%s", src, maskToken(req.Token), record.ClientName, record.Egress.Name)
 	writeJSON(w, http.StatusOK, bootstrapResponse{
 		Client:     clientResponse{Name: record.ClientName},
 		Hub:        record.Hub,
@@ -79,6 +98,37 @@ func (s *Server) Bootstrap(w http.ResponseWriter, r *http.Request) {
 		LocalProxy: record.LocalProxy,
 		WireGuard:  record.WireGuard,
 	})
+}
+
+func (s *Server) claimToken(token string, sourceIP string, now time.Time) bool {
+	token = strings.TrimSpace(token)
+	sourceIP = strings.TrimSpace(sourceIP)
+	if token == "" || sourceIP == "" || s.tokenLeaseTTL <= 0 {
+		return true
+	}
+
+	s.tokenLeasesMu.Lock()
+	defer s.tokenLeasesMu.Unlock()
+
+	lease, ok := s.tokenLeases[token]
+	if ok && lease.sourceIP != sourceIP && now.Sub(lease.seenAt) < s.tokenLeaseTTL {
+		return false
+	}
+	s.tokenLeases[token] = tokenLease{sourceIP: sourceIP, seenAt: now}
+	return true
+}
+
+func tokenLeaseTTLFromEnv() time.Duration {
+	text := strings.TrimSpace(os.Getenv("DXHUB_TOKEN_LEASE_SECONDS"))
+	if text == "" {
+		return 30 * time.Second
+	}
+	seconds, err := strconv.Atoi(text)
+	if err != nil || seconds < 0 {
+		log.Printf("DXHUB_TOKEN_LEASE_SECONDS 无效: %q, 使用默认 30s", text)
+		return 30 * time.Second
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 func (s *Server) RotateIP(w http.ResponseWriter, r *http.Request) {
@@ -178,19 +228,29 @@ func splitHostPortDefault(value string, defaultPort string) (string, string) {
 	return value, defaultPort
 }
 
-// clientIP 优先取反向代理透传的 X-Forwarded-For 首段，否则用 TCP 远端地址。
+// clientIP only trusts X-Forwarded-For from local/private reverse proxies.
+// Public clients connect directly today, so a client-supplied XFF must not
+// affect token lease ownership.
 func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if i := indexComma(xff); i >= 0 {
-			return trimSpace(xff[:i])
-		}
-		return trimSpace(xff)
-	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		host = r.RemoteAddr
+	}
+	remoteIP := net.ParseIP(strings.Trim(host, "[]"))
+	if remoteIP != nil && trustedForwarderIP(remoteIP) {
+		xff := r.Header.Get("X-Forwarded-For")
+		if i := indexComma(xff); i >= 0 {
+			xff = xff[:i]
+		}
+		if forwarded := trimSpace(xff); forwarded != "" {
+			return forwarded
+		}
 	}
 	return host
+}
+
+func trustedForwarderIP(ip net.IP) bool {
+	return ip.IsLoopback() || ip.IsPrivate()
 }
 
 // maskToken 只保留首尾，避免把完整授权码写进日志。

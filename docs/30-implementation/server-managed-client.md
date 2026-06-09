@@ -126,6 +126,7 @@ Authorization: Bearer <token>
 - `runtime` 是服务端给客户端程序使用的运行参数。
 - 客户端程序可以使用它，但不在界面上展示。
 - 不把它写进客户可编辑配置文件。
+- 同一个 token 默认只允许一个公网来源持续 bootstrap。Hub 记录 30 秒来源租约；不同公网来源在租约内复用同 token 会得到 `409 token_in_use`，客户端提示用户先断开另一台设备或等待约 30 秒后重试。
 
 ## 服务端职责
 
@@ -133,6 +134,7 @@ Authorization: Bearer <token>
 
 - 客户账号。
 - 客户 token。
+- token 当前来源租约。
 - 客户端 Peer。
 - WireGuard IP 分配。
 - 出口节点列表。
@@ -225,4 +227,3 @@ egress:
 4. 临时从本地隐藏 runtime 文件读取运行配置。
 5. 后续在 Hub 上实现 `/api/v1/client/bootstrap`。
 6. 客户端改为向 Hub API 拉取运行配置。
-

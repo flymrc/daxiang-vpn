@@ -1,11 +1,15 @@
 mod sysproxy;
 
 use serde_json::{json, Value};
+use std::sync::OnceLock;
 use std::time::Duration;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, WindowEvent};
 use tauri_plugin_shell::ShellExt;
+use tokio::sync::Mutex;
+
+static STATUS_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 // Run the bundled dxvpn sidecar and return (success, stdout, stderr).
 // All the hard parts (UAC elevation for --fast, detached engine, PID files)
@@ -55,7 +59,10 @@ fn split_host_port(addr: &str) -> Option<(String, u16)> {
 }
 
 fn connected_in(status: &Value) -> bool {
-    status.get("running").and_then(|x| x.as_bool()).unwrap_or(false)
+    status
+        .get("running")
+        .and_then(|x| x.as_bool())
+        .unwrap_or(false)
         || status
             .get("proxy_reachable")
             .and_then(|x| x.as_bool())
@@ -65,6 +72,7 @@ fn connected_in(status: &Value) -> bool {
 // ---- shared action implementations (used by both #[command]s and the tray) ----
 
 async fn status_impl(app: &AppHandle) -> Result<Value, String> {
+    let _guard = STATUS_LOCK.get_or_init(|| Mutex::new(())).lock().await;
     let (_ok, stdout, stderr) = sidecar(app, &["status", "--json"]).await?;
     parse_json(&stdout, &stderr)
 }
@@ -182,8 +190,7 @@ pub fn run() {
             // 托盘菜单（仿 Tailscale）：状态行 + 连接/断开/换IP + 打开/退出。
             let status_item = MenuItem::with_id(app, "status", "○ 检查中…", false, None::<&str>)?;
             let connect_item = MenuItem::with_id(app, "connect", "连接", true, None::<&str>)?;
-            let disconnect_item =
-                MenuItem::with_id(app, "disconnect", "断开", true, None::<&str>)?;
+            let disconnect_item = MenuItem::with_id(app, "disconnect", "断开", true, None::<&str>)?;
             let rotate_item = MenuItem::with_id(app, "rotate", "换 IP", true, None::<&str>)?;
             let show_item = MenuItem::with_id(app, "show", "打开主界面", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;

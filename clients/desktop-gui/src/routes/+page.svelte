@@ -10,16 +10,21 @@
   let info = $state("");
   let status = $state<Status | null>(null);
   let poll: ReturnType<typeof setInterval> | undefined;
+  let refreshing = false;
 
   const connected = $derived(!!status && (status.running || status.proxy_reachable));
 
   async function refresh() {
+    if (refreshing) return;
+    refreshing = true;
     try {
       const s = await api.status();
       status = s;
       view = s.error && s.error.includes("未找到配置") ? "login" : "main";
     } catch (e) {
       errMsg = String(e);
+    } finally {
+      refreshing = false;
     }
   }
 
