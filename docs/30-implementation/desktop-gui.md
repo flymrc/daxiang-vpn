@@ -180,7 +180,7 @@ clients/desktop-gui/
 | 里程碑 | 内容 | 预估 |
 | --- | --- | --- |
 | **M1** ✅ | CLI 机器接口：`status/login/rotate-ip --json` + 测试 | 已完成 |
-| **M2** | Tauri 工程骨架 + sidecar 打包 + `connect/disconnect/status` 走通（先默认用户态，手动验证代理） | 1–2 天 |
+| **M2** ✅ | Tauri 工程骨架 + sidecar 打包 + `connect/disconnect/status` 走通 | 已完成 |
 | **M3** | Rust 系统代理开关 + 换 IP + 全局模式 + 托盘 + 状态轮询 + UI | 2–3 天 |
 | **M4** | NSIS/MSI 安装包 + 桌面快捷方式 + 文档四件套 + worklog | 1 天 |
 | **M5（后置）** | 先补 `shared/proxy` macOS 引擎，再开 macOS 包 | 单列 |
@@ -203,4 +203,11 @@ clients/desktop-gui/
   - 实现：`clients/cli/internal/app/app.go`、`clients/cli/main.go`（新增 `app.ErrSilent`：JSON 命令失败时退出非 0 但不再向 stderr 重复打印）。
   - `printJSON` 关闭 HTML 转义，`<授权码>` 等保持可读；JSON 命令失败输出 `{"ok":false,"error":…}`（status 为 `{"running":false,…,"error":…}`）并退出非 0。
   - 测试：`go test ./clients/cli/...` 通过；新增 `wantJSON`/`hasFlag`/`--json` 解析用例。
-- 下一步：M2（Tauri 工程骨架 + sidecar 打包 + `connect/disconnect/status` 走通）。
+- **M2 已完成**（2026-06-09）：Tauri v2 + SvelteKit 工程在 `clients/desktop-gui/`，sidecar 调用现成 `dxvpn.exe` 跑通。
+  - 工程：`create-tauri-app`（svelte-ts，Tauri v2）；前端 `src/routes/+page.svelte` + `src/lib/api.ts`（登录 / 连接开关 / 状态 / 出口 IP）。
+  - 后端：`src-tauri/src/lib.rs` 用 `tauri-plugin-shell` 调 sidecar，四个命令 `login/connect/disconnect/status`（见 README 映射表）；`tauri.conf.json` `externalBin: binaries/dxvpn`，窗口标题「大象 VPN」。
+  - sidecar：`build.ps1` 用 `go build -tags with_gvisor` 产出 `dxvpn-<triple>.exe`（不入库，`.gitignore`）。
+  - 工具链：本机新装 Rust 1.96（MSVC）+ VS Build Tools 2022（C++ 工作负载）。
+  - 验证：`cargo build` 通过；`npm run build` 通过；`tauri build` 产出 MSI/NSIS（sidecar 以 17.2MB `dxvpn.exe` 随包，置于主程序旁）；运行 release 程序，窗口正常，`status` 命令实际拉起 `target\release\dxvpn.exe status --json`（runtime sidecar 走通）。
+  - 尚未做（属 M3）：系统代理自动设/还原、换 IP、全局模式开关、托盘、登录→连接→真实代理的端到端人工点验。
+- 下一步：M3（Rust 系统代理开关 + 换 IP + 全局模式 + 托盘 + 状态轮询完善 + UI）。
