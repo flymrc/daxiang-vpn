@@ -87,10 +87,7 @@ func printUsage() {
 --fast：高性能模式，使用系统网络栈（延迟更低、速度更快），
         需要管理员权限，启动时会弹出 UAC 授权窗口。
 
-rotate-ip：经 Android 控制面 SSH 触发手机端 rotate-ip.sh，
-           用于让手机网络重注册并尝试更换公网出口 IP。
-           默认由 Hub 代为触发，客户端不需要 Android SSH 私钥。
-           管理员排障可加 --direct --jump/--key 直连控制面。`)
+rotate-ip：更换当前手机卡出口 IP，并等待出口恢复。`)
 }
 
 type startOptions struct {

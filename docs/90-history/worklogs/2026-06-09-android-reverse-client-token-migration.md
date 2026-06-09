@@ -172,3 +172,13 @@ dxvpn.exe rotate-ip
 - `--wait-seconds` 仍表示最大等待时间。
 - CLI 先等待 `downSeconds + 10s` 避免误读旧 IP,之后每 5s 轮询出口公网 IP,恢复即返回。
 - 文档示例将较长断网场景更新为 `--wait-seconds 90`。
+
+## 同日追加：客户侧 help 文案简化
+
+`dxvpn.exe help` 中原先暴露了 Android 控制面、Hub 代触发、SSH 私钥、`--direct` 等运维细节。该信息对普通客户过于复杂,已改为只展示客户视角:
+
+```text
+rotate-ip：更换当前手机卡出口 IP，并等待出口恢复。
+```
+
+管理员排障细节保留在运维文档中。
