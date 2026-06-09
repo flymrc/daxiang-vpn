@@ -64,8 +64,8 @@ Production Hub `/etc/daxiang/dxreverse/server.yaml` now uses:
 
 ```yaml
 server:
-  max_proxy_connections: 32
-  max_proxy_connections_per_client: 12
+  max_proxy_connections: 96
+  max_proxy_connections_per_client: 48
 ```
 
 When the guard is hit, `dxreverse` returns HTTP 429 instead of allowing unbounded client-side CONNECTs to pile up inside the Android mobile tunnel.
@@ -76,13 +76,21 @@ Deployment:
 - Backed up Hub binary and config.
 - Replaced `/opt/daxiang/dxreverse/dxreverse`.
 - Restarted `dxreverse-hub.service`.
-- Hub log confirmed: `max_proxy_connections=32 max_proxy_connections_per_client=12`.
+- Hub log confirmed: `max_proxy_connections=96 max_proxy_connections_per_client=48`.
 
 Post-deploy validation:
 
 - `check-android-egress-health.ps1`: PASS.
 - Hub showed 2 established reverse TCP sessions from Android public IP `133.106.154.188`.
 - 2 MB reverse proxy x3 after deploy: average `2.43 Mbps`, min `1.73 Mbps`, max `3.07 Mbps`.
+
+Follow-up after GUI testing:
+
+- User reported frequent disconnects in the desktop GUI.
+- Local repro showed `curl -x http://127.0.0.1:7890 https://api.ipify.org` succeeded a few times, then returned repeated `curl (35) Recv failure: Connection was reset`.
+- Hub showed exactly 12 established client connections to `10.66.0.1:18081`, matching the previous per-client cap.
+- Raised production limits from `32/12` to `96/48`.
+- After the change, 8 consecutive local proxy IP checks succeeded without reset.
 
 ## Next
 

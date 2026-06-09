@@ -110,7 +110,7 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 - `dxreverse-hub.service` 已启用并运行。
 - Hub 监听 `39093/tcp` 和 `10.66.0.1:18081`。
 - Android 当前 `transport: tcp`、`connections: 2`;`client.server_cert_sha256` 保留用于 QUIC 回滚。
-- Hub 当前 `max_proxy_connections=32`、`max_proxy_connections_per_client=12`,用于保护 Android 手机出口免受客户端突发并发拖死。
+- Hub 当前 `max_proxy_connections=96`、`max_proxy_connections_per_client=48`,用于保护 Android 手机出口免受客户端突发并发拖死,同时避免误伤浏览器常驻连接。
 - UFW 已允许 WireGuard 客户端访问 `10.66.0.1:18081/tcp`。
 - Hub 日志显示 Android 2 条 TCP reverse session 已连接。
 - Android 当前仅运行 `99-dxreverse-egress.sh` supervisor 和 `dxreverse client`。

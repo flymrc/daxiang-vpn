@@ -308,7 +308,7 @@ $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 - `ip route get 36.50.84.68` 是走 `rmnet_data*` 还是 `wlan0`。
 - 日志中是否有 `connected to reverse tcp server`。
 - 当前 `connections` 是否为预期值（生产为 2）。
-- Hub `dxreverse-hub.service` 启动日志是否显示 `max_proxy_connections=32 max_proxy_connections_per_client=12`。
+- Hub `dxreverse-hub.service` 启动日志是否显示 `max_proxy_connections=96 max_proxy_connections_per_client=48`。
 - WireGuard App 是否创建了 `tun0 / 10.66.0.101`。
 - 若 `tun0` 缺失,watchdog 会最多每 120s 发一次 WireGuard App `SET_TUNNEL_UP` intent;若 `tun0` 存在但 Hub 内网 ping 失败,watchdog 会 `SET_TUNNEL_DOWN` 后再 `SET_TUNNEL_UP` 强制重拨。可看 `/data/local/tmp/dxandroid-control.log` 中的 `wireguard unhealthy` 记录。
 

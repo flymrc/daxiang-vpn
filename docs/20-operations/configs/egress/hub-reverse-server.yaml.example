@@ -17,7 +17,7 @@ server:
     - 10.66.0.0/24
   # Protect the Android mobile egress from client-side burst concurrency.
   # Excess CONNECT requests fail fast with HTTP 429 instead of piling up in the tunnel.
-  max_proxy_connections: 32
-  max_proxy_connections_per_client: 12
+  max_proxy_connections: 96
+  max_proxy_connections_per_client: 48
   # Diagnostic /fetch endpoint is disabled unless explicitly enabled.
   enable_fetch: false
