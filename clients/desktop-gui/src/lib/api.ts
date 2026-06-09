@@ -19,9 +19,20 @@ export type LoginResult = {
 };
 
 // connect/disconnect wrap `start`/`stop` (human output → {ok, message}).
+// connect may also carry a `warning` (e.g. system proxy auto-set failed).
 export type ActionResult = {
   ok: boolean;
   message: string;
+  warning?: string;
+};
+
+// Mirrors dxvpn `rotate-ip --json`.
+export type RotateResult = {
+  ok: boolean;
+  before?: string;
+  after?: string;
+  egress?: string;
+  error?: string;
 };
 
 export const api = {
@@ -29,4 +40,5 @@ export const api = {
   login: (token: string) => invoke<LoginResult>("login", { token }),
   connect: (fast: boolean) => invoke<ActionResult>("connect", { fast }),
   disconnect: () => invoke<ActionResult>("disconnect"),
+  rotateIp: () => invoke<RotateResult>("rotate_ip"),
 };

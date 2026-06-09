@@ -7,6 +7,7 @@
   let fast = $state(false);
   let busy = $state(false);
   let errMsg = $state("");
+  let info = $state("");
   let status = $state<Status | null>(null);
   let poll: ReturnType<typeof setInterval> | undefined;
 
@@ -44,9 +45,27 @@
   async function toggle() {
     busy = true;
     errMsg = "";
+    info = "";
     try {
       const r = connected ? await api.disconnect() : await api.connect(fast);
       if (!r.ok) errMsg = r.message || "操作失败";
+      else if (r.warning) errMsg = r.warning;
+      await refresh();
+    } catch (e) {
+      errMsg = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function rotate() {
+    busy = true;
+    errMsg = "";
+    info = "";
+    try {
+      const r = await api.rotateIp();
+      if (r.ok) info = `已换 IP：${r.before ?? "?"} → ${r.after ?? "?"}`;
+      else errMsg = r.error || "换 IP 失败";
       await refresh();
     } catch (e) {
       errMsg = String(e);
@@ -109,9 +128,16 @@
         <dt>本地代理</dt>
         <dd>{status?.proxy ?? "—"}</dd>
       </dl>
+
+      {#if connected}
+        <button class="rotate" onclick={rotate} disabled={busy}>换 IP</button>
+      {/if}
     </section>
   {/if}
 
+  {#if info}
+    <p class="info-msg">{info}</p>
+  {/if}
   {#if errMsg}
     <p class="error">{errMsg}</p>
   {/if}
@@ -227,6 +253,19 @@
     margin: 0;
     text-align: right;
     font-variant-numeric: tabular-nums;
+  }
+  .rotate {
+    background: #f3f4f6;
+    color: #1a1a1a;
+    border: 1px solid #d1d5db;
+    font-size: 13px;
+    padding: 8px 16px;
+  }
+  .info-msg {
+    color: #166534;
+    font-size: 13px;
+    text-align: center;
+    margin: 0;
   }
   .error {
     color: #b91c1c;

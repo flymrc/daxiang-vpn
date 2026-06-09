@@ -181,7 +181,7 @@ clients/desktop-gui/
 | --- | --- | --- |
 | **M1** ✅ | CLI 机器接口：`status/login/rotate-ip --json` + 测试 | 已完成 |
 | **M2** ✅ | Tauri 工程骨架 + sidecar 打包 + `connect/disconnect/status` 走通 | 已完成 |
-| **M3** | Rust 系统代理开关 + 换 IP + 全局模式 + 托盘 + 状态轮询 + UI | 2–3 天 |
+| **M3** ✅ | Rust 系统代理开关 + 换 IP + 全局模式 + 托盘 + 状态轮询 + UI（代码完成，待人工点验） | 已完成 |
 | **M4** | NSIS/MSI 安装包 + 桌面快捷方式 + 文档四件套 + worklog | 1 天 |
 | **M5（后置）** | 先补 `shared/proxy` macOS 引擎，再开 macOS 包 | 单列 |
 
@@ -210,4 +210,10 @@ clients/desktop-gui/
   - 工具链：本机新装 Rust 1.96（MSVC）+ VS Build Tools 2022（C++ 工作负载）。
   - 验证：`cargo build` 通过；`npm run build` 通过；`tauri build` 产出 MSI/NSIS（sidecar 以 17.2MB `dxvpn.exe` 随包，置于主程序旁）；运行 release 程序，窗口正常，`status` 命令实际拉起 `target\release\dxvpn.exe status --json`（runtime sidecar 走通）。
   - 尚未做（属 M3）：系统代理自动设/还原、换 IP、全局模式开关、托盘、登录→连接→真实代理的端到端人工点验。
-- 下一步：M3（Rust 系统代理开关 + 换 IP + 全局模式 + 托盘 + 状态轮询完善 + UI）。
+- **M3 已完成**（2026-06-09，代码层，待人工点验）：
+  - 系统代理：`src-tauri/src/sysproxy.rs`（`sysproxy` crate）。`connect` 在用户态模式下自动把 Windows 系统代理指向本地代理（`--fast` 不设）；`disconnect` 还原。首次打开把原状态写 `proxy-backup.json`，还原后删除——**崩溃也能恢复**：启动时若备份存在且代理实际未运行则自动还原。
+  - 托盘：`tauri` 加 `tray-icon` feature；左键开主界面、右键菜单 打开/退出；**关窗收进托盘**（保持连接），退出走托盘「退出」并还原系统代理。
+  - 换 IP：`rotate_ip` 命令（`dxvpn rotate-ip --json`）+ 主界面「换 IP」按钮。
+  - 全局模式：UI 复选框 → `connect(fast=true)`（系统 TUN，弹一次 UAC，不设系统代理）。
+  - 验证：`cargo build` 通过（1m，含 `sysproxy`/`tray-icon`）；`npm run build` 通过；运行 debug 程序窗口「大象 VPN」正常、托盘 setup 未 panic。**待人工点验**：登录→连接（看浏览器是否免设置直连日本）→断开（系统代理还原）→换 IP→关窗到托盘→托盘退出。
+- 下一步：M4（NSIS/MSI 打包细化 + 品牌图标 + 文档/验收）。
