@@ -203,26 +203,26 @@ Kotlin/Java Android App
 
 ## 与当前仓库的对应关系
 
-当前仓库已经为路线一准备了第一版入口：
+当前仓库的生产入口已经从早期 `egress/proxy` 迁到 `egress/reverse`：
 
 ```text
-egress/proxy
+egress/reverse
 ```
 
 相关文档：
 
-- [Android 出口节点客户端](./ANDROID_EGRESS_AGENT.md)
+- [Android 出口节点实现](./android-egress-agent.md)
 
 因此，当前实际开发顺序应是：
 
-1. 继续完善 `dxandroid-egress`
-2. 在 rooted 安卓机上完成联机验证
-3. 基于 Android 出口到 Hub 的 25 秒 WireGuard keepalive 继续补自恢复
-4. 需要时再加 Android 外壳
+1. 继续完善 `dxreverse` 反向数据面
+2. 在 rooted 安卓机上保持 Magisk service.d + watchdog 常驻
+3. 保留 WireGuard App 作为控制面
+4. 需要时再加 Android 管理外壳
 
 ## 一句话结论
 
-如果目标是“今晚先把 rooted 安卓手机变成可用出口节点”，选 `Go 直跑`。
+如果目标是“把 rooted 安卓手机变成可用出口节点”，当前生产选择是 `dxreverse` Go 二进制直跑。
 
 如果目标是“后面做成更像产品的 Android 节点管理 App”，再演进到 `Go + Kotlin 外壳`。
 

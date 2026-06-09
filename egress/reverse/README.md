@@ -4,7 +4,8 @@
 mobile egress node. Android actively dials the Hub and the Hub exposes a local
 HTTP CONNECT proxy for the egress router/client layer.
 
-The legacy `dxandroid-egress` / sing-box proxy is kept only as a rollback path.
+The legacy Android `dxandroid-egress` / sing-box proxy has been removed from
+the production path. Android production data must use `dxreverse`.
 
 ## Shape
 
@@ -89,8 +90,9 @@ chmod 700 /data/adb/dxreverse/bin/dxreverse /data/adb/service.d/99-dxreverse-egr
 chmod 600 /data/adb/dxreverse/client.yaml /data/adb/dxreverse/token
 ```
 
-The Android service script stops the legacy `dxandroid-egress` supervisor by
-default, then keeps `dxreverse client --config /data/adb/dxreverse/client.yaml`
+The Android service script disables the legacy `dxandroid-egress` supervisor,
+keeps Wi-Fi off for mobile-SIM egress, applies conservative UDP/socket buffer
+tuning, then keeps `dxreverse client --config /data/adb/dxreverse/client.yaml`
 running.
 
 ## Manual test run

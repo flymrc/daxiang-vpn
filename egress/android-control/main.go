@@ -8,7 +8,7 @@
 //     真正可达仍取决于隧道是否已建立。
 //   - 进程由 Magisk 以 root 拉起,因此拉起的 shell 即 root。
 //
-// 纯 Go,交叉编译 linux/arm64 即可在本机(已验证 dxandroid-egress 同样方式运行)。
+// 纯 Go,交叉编译 linux/arm64 即可在本机运行。
 package main
 
 import (
@@ -247,8 +247,8 @@ func startCommand(ch ssh.Channel, pr *ptyReq, shellPath, command string) (*os.Fi
 			return nil, err
 		}
 		pty.Setsize(f, &pty.Winsize{Rows: uint16(pr.h), Cols: uint16(pr.w)})
-		go func() { io.Copy(f, ch) }()      // ch -> pty (stdin)
-		go func() { io.Copy(ch, f) }()      // pty -> ch (stdout+stderr)
+		go func() { io.Copy(f, ch) }() // ch -> pty (stdin)
+		go func() { io.Copy(ch, f) }() // pty -> ch (stdout+stderr)
 		go waitAndClose(cmd, ch, f)
 		return f, nil
 	}

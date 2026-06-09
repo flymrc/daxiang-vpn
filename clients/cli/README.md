@@ -31,6 +31,6 @@ CLI 可以让当前手机卡出口重注册并尝试更换公网出口 IP：
 
 ## 出口节点说明
 
-Android root 出口节点守护进程已经拆到 `egress/proxy`，安卓状态 App 在 `egress/android-status`。
+Android root 出口节点生产数据面在 `egress/reverse`，安卓状态 App 在 `egress/android-status`。
 
 相关文档：`docs/30-implementation/android-egress-agent.md`

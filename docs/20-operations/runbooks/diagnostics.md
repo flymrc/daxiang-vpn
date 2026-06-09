@@ -230,7 +230,7 @@ iptables -L ufw-user-input -n -v --line-numbers | grep 18081
 
 ### 3.2 Windows 一键健康检查
 
-旧 `check-android-egress-health.ps1` 仍可检查 WireGuard 控制面和老代理回滚路径。新版数据面优先在 Hub 上运行：
+`check-android-egress-health.ps1` 仍可检查 WireGuard 控制面和 Hub 侧 reverse proxy。Android 生产数据面优先在 Hub 上运行：
 
 ```bash
 ./scripts/check-android-reverse-egress.sh
@@ -315,7 +315,7 @@ $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 
 - 手机 App 测到的高速下载不等于出口可用下载速度。
 - 作为出口时，电脑下载需要手机把数据上传回 Hub，因此手机上行是关键瓶颈。
-- 若仍看到 `dxandroid-egress` 进程,说明旧回滚服务被误启动;当前默认应只有 `99-dxreverse-egress.sh` 和 `dxreverse client`。
+- 若仍看到 `dxandroid-egress` 进程,说明旧服务残留被误启动;当前默认应只有 `99-dxreverse-egress.sh` 和 `dxreverse client`。
 
 ---
 

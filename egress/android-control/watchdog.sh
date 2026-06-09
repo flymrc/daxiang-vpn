@@ -20,6 +20,9 @@ WG_HUB_IP=10.66.0.1
 WG_TUNNEL_NAME=jp-android-01
 WG_INTENT_COOLDOWN=120
 INTERVAL=30
+NETWORK_TUNE_INTERVAL=300
+DISABLE_WIFI=1
+TUNE_BUFFERS=1
 
 EGRESS_NAME=dxreverse
 EGRESS_LAUNCH=/data/adb/service.d/99-dxreverse-egress.sh
@@ -30,6 +33,7 @@ REBOOT_HOUR=""
 LOG=/data/local/tmp/dxandroid-control.log
 STAMP=$BASE/.last-reboot-day
 WG_LAST_INTENT_FILE=$BASE/.last-wg-intent
+NETWORK_LAST_TUNE_FILE=$BASE/.last-network-tune
 
 log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
 
@@ -39,6 +43,53 @@ control_up() { pgrep -f "$CONTROL_BIN" >/dev/null 2>&1; }
 egress_up()  { pgrep -f 99-dxreverse-egress >/dev/null 2>&1; }
 wg_addr_up() { ip addr 2>/dev/null | grep -q "$WG_IP/"; }
 wg_hub_reachable() { ping -c 1 -W 2 "$WG_HUB_IP" >/dev/null 2>&1; }
+
+set_sysctl() {
+    key=$1
+    value=$2
+    sysctl -w "$key=$value" >/dev/null 2>&1 && log "sysctl $key=$value" || true
+}
+
+disable_legacy_egress() {
+    legacy=/data/adb/service.d/99-dxandroid-egress.sh
+    if [ -f "$legacy" ]; then
+        mv "$legacy" "$legacy.disabled" 2>/dev/null || chmod 000 "$legacy" 2>/dev/null || true
+        log "disabled legacy service $legacy"
+    fi
+    for pattern in '99-dxandroid-egress' 'dxandroid-egress'; do
+        pids=$(pgrep -f "$pattern" 2>/dev/null || true)
+        if [ -n "$pids" ]; then
+            kill $pids 2>/dev/null || true
+            log "stopped legacy process pattern=$pattern pids=$pids"
+        fi
+    done
+}
+
+ensure_network_baseline() {
+    now=$(date +%s)
+    last=$(cat "$NETWORK_LAST_TUNE_FILE" 2>/dev/null || echo 0)
+    if [ $((now - last)) -lt "$NETWORK_TUNE_INTERVAL" ]; then
+        return 0
+    fi
+    echo "$now" > "$NETWORK_LAST_TUNE_FILE"
+
+    settings put global stay_on_while_plugged_in 3 >/dev/null 2>&1 || true
+    dumpsys deviceidle disable >/dev/null 2>&1 || true
+    if [ "$DISABLE_WIFI" = "1" ]; then
+        svc wifi disable >/dev/null 2>&1 || true
+    fi
+    if [ "$TUNE_BUFFERS" = "1" ]; then
+        set_sysctl net.core.rmem_max 8388608
+        set_sysctl net.core.wmem_max 8388608
+        set_sysctl net.ipv4.udp_rmem_min 65536
+        set_sysctl net.ipv4.udp_wmem_min 65536
+    fi
+    route=$(ip route get 1.1.1.1 2>/dev/null || true)
+    case "$route" in
+        *" dev wlan"*) log "WARN default route is Wi-Fi: $route" ;;
+    esac
+    disable_legacy_egress
+}
 
 start_control() {
     if [ -x "$CONTROL_BIN" ]; then
@@ -110,6 +161,7 @@ maybe_reboot() {
 log "watchdog start (interval=${INTERVAL}s, reboot_hour='${REBOOT_HOUR}')"
 
 while true; do
+    ensure_network_baseline
     ensure_wg
     control_up || start_control
     egress_up  || start_egress

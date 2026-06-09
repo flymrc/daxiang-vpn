@@ -31,7 +31,7 @@
 
 - `clients/` — **客户端**(终端用户侧)。`clients/cli/` = CLI 客户端;`clients/desktop-gui/` = mac/windows PC 单一跨平台 GUI(🅿️ 预留)。
 - `hub/` — **Hub 服务端**(授权 API)。
-- `egress/` — **出口节点**(基础设施侧,非终端客户端)。`egress/reverse/` = Android 反向 QUIC 出口数据面(`dxreverse`,当前生产替代路径,Android 主动连 Hub);`egress/proxy/` = 旧 sing-box 出口代理(Android 上仅保留回滚,Mac/PC 出口🅿️预留);`egress/android-status/` = 安卓出口监控 App;`egress/android-control/` = 安卓出口远程控制+自愈(自研 Go SSH 服务 `dxandroid-control` 绑隧道 IP 10.66.0.101:2022、仅公钥 + 看门狗)。
+- `egress/` — **出口节点**(基础设施侧,非终端客户端)。`egress/reverse/` = Android 反向 QUIC 出口数据面(`dxreverse`,当前生产路径,Android 主动连 Hub);`egress/proxy/` = sing-box 出口代理(Mac/PC 出口🅿️预留,不再用于 Android 生产);`egress/android-status/` = 安卓出口监控 App;`egress/android-control/` = 安卓出口远程控制+自愈(自研 Go SSH 服务 `dxandroid-control` 绑隧道 IP 10.66.0.101:2022、仅公钥 + 看门狗)。
 - `shared/` — 客户端与出口共用的 Go 包(`config`、`paths`、`proxy`)。
 - `scripts/` — 运维脚本(如 `check-android-egress-health.ps1`、`measure-android-egress.ps1`)。
 

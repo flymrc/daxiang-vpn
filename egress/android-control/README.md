@@ -4,7 +4,7 @@
 从 Hub 经 WireGuard 隧道(`10.66.0.101`)登录并控制安卓出口机。
 
 控制面是一个**自研的极简 Go SSH 服务**(`dxandroid-control`),不依赖 dropbear/Termux,
-用和 `dxandroid-egress` 同一套 Go 工具链交叉编译到 `linux/arm64`。
+用仓库现有 Go 工具链交叉编译到 `linux/arm64`。
 
 ## 组成
 
@@ -21,7 +21,7 @@
 
 ## 为什么用 Go SSH 而不是 dropbear
 
-- **工具链现成且已验证**:`dxandroid-egress` 就是同样 `GOOS=linux GOARCH=arm64 go build` 交叉编译后跑在这台手机上的,无需 NDK/WSL/dropbear 源码。
+- **工具链现成且已验证**:`dxreverse` 和 `dxandroid-control` 都是 `GOOS=linux GOARCH=arm64 go build` 交叉编译后跑在这台手机上的,无需 NDK/WSL/dropbear 源码。
 - **自己的代码,可审计**,不引入外部二进制(供应链更干净)。
 - **天生只绑隧道 IP**:生产 watchdog 以 `-listen 10.66.0.101:2022` 启动,公网网卡上不开端口——dropbear 的核心优点它也有。
 - **依赖已在仓库**:`golang.org/x/crypto/ssh` 早已是 go.mod 间接依赖,只新增 `github.com/creack/pty`(PTY 支持)。

@@ -59,16 +59,16 @@ func Run(args []string) error {
 }
 
 func printUsage() {
-	fmt.Println(`dxandroid-egress
+	fmt.Println(`dxegress-proxy
 
 用法：
-  dxandroid-egress validate --config <配置文件>
-  dxandroid-egress render --config <配置文件> [--workdir <目录>]
-  dxandroid-egress run --config <配置文件> [--workdir <目录>]
+  dxegress-proxy validate --config <配置文件>
+  dxegress-proxy render --config <配置文件> [--workdir <目录>]
+  dxegress-proxy run --config <配置文件> [--workdir <目录>]
 
 说明：
-  第一版定位为 Android root 出口节点守护进程。
-  先以 shell / adb 启动，后续再补 Android App 外壳与保活。`)
+  预留给 Mac/PC 出口节点的 sing-box 代理封装。
+  Android 生产出口请使用 egress/reverse 的 dxreverse 反向数据面。`)
 }
 
 func parseCommonArgs(args []string) (configPath string, workdir string, err error) {
@@ -100,7 +100,7 @@ func parseCommonArgs(args []string) (configPath string, workdir string, err erro
 }
 
 func filepathOrDefault(configPath string) string {
-	if root := os.Getenv("DXANDROID_HOME"); root != "" {
+	if root := os.Getenv("DXEGRESS_PROXY_HOME"); root != "" {
 		return root
 	}
 	return configPath + ".workdir"
@@ -145,8 +145,8 @@ func run(configPath string, workdir string) error {
 
 // ensureWGRouting 在系统 WG 模式下，等待 wg0 接口就绪后添加一条策略路由规则，
 // 让发往 WG 子网（含 Hub 内网地址）的流量走 main 路由表，从而命中 wg0 的连接路由。
-// Android 使用基于 fwmark 的策略路由，默认不查 main 表，导致回 Hub 的 SYN-ACK
-// 误走蜂窝/WiFi 默认路由而丢失。此规则修复该问题。
+// 部分系统使用基于 fwmark 的策略路由，默认不查 main 表，导致回 Hub 的 SYN-ACK
+// 误走默认路由而丢失。此规则修复该问题。
 func ensureWGRouting(cfg egressconfig.Config) {
 	subnet, err := cfg.WireGuard.SubnetCIDR()
 	if err != nil {

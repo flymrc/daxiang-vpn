@@ -100,7 +100,7 @@ $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 - **引号里的 `|`/`-flag` 被层层 shell 拆掉**:`pgrep/pkill -f '带空格 或 -开头 的模式'`、`grep 'a|b'` 经 adb→su 会被误解析。用单 token 模式(如 `pkill -f 2223`),或写进脚本。
 - **`adb forward` 只能连设备 `127.0.0.1`**:测绑在 `10.66.0.101` 的生产实例时用 forward 会 EOF/连不上;要么起一个绑 `127.0.0.1` 的临时实例测,要么从隧道内(Hub)直接连。
 - **后台进程要 `setsid` + 重定向**:`su -c` 里直接 `&` 起的进程会随该 shell 退出被挂断;`setsid ... >/dev/null 2>&1 </dev/null &` 才常驻、且不挂住 adb。
-- **重启后出口失败、但控制面正常**:典型症状——`2022` 通、`1080` 不通、WG 握手新鲜。八成是 `/data/adb/service.d/99-dxandroid-egress.sh` **丢了可执行位**(adb push 覆盖后常变成 `-rw-`),导致 Magisk 开机不执行它、看门狗 `[ -x ]` 也跳过它。修复:`chmod 755` 该脚本即可(watchdog 现已改用 `[ -f ]`+`sh` 执行,对缺 +x 免疫,但 Magisk 开机仍需 +x)。排查正是经控制面 `2022` SSH 进去做的——这就是控制面的价值:**出口挂了,控制面还在,能进去自救。**
+- **看到旧 `dxandroid-egress` 进程**:说明旧 Android 数据面残留被误启动。当前生产脚本会禁用 `/data/adb/service.d/99-dxandroid-egress.sh` 并停止 `dxandroid-egress`;正常状态只应看到 `99-dxreverse-egress.sh` 和 `dxreverse client`。
 
 ## 7. 切换出口公网 IP(不重启)
 

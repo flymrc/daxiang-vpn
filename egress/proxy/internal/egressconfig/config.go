@@ -30,7 +30,7 @@ type HubConfig struct {
 type WireGuardConfig struct {
 	// Mode:
 	//   embedded: sing-box 自己创建 WireGuard endpoint（默认）
-	//   external: 外部 WireGuard App/内核隧道负责 10.66.0.0/24，dxandroid-egress 只做代理
+	//   external: 外部 WireGuard App/内核隧道负责 10.66.0.0/24，dxegress-proxy 只做代理
 	Mode       string `json:"mode,omitempty" yaml:"mode,omitempty"`
 	Address    string `json:"address" yaml:"address"`
 	PrivateKey string `json:"private_key" yaml:"private_key"`

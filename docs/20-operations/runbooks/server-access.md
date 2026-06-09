@@ -89,7 +89,7 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 - Hub reverse UDP 监听：`0.0.0.0:39093/udp`
 - Android reverse endpoint：Android 主动连 Hub,无手机入站端口
 - Hub 防火墙：UFW 允许 `wg0 -> 10.66.0.1:18081/tcp`
-- 旧代理：`10.66.0.101:1080` / `dxandroid-egress` 已退为回滚路径
+- 旧代理：`10.66.0.101:1080` / `dxandroid-egress` 已从 Android 生产入口拆除
 
 当前部署：
 
@@ -104,7 +104,6 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 | Android config | `/data/adb/dxreverse/client.yaml` |
 | Android token | `/data/adb/dxreverse/token` |
 | Android service | `/data/adb/service.d/99-dxreverse-egress.sh` |
-| Legacy backup | `/data/adb/service.d/99-dxandroid-egress.sh.disabled` |
 
 当前验证结果：
 
@@ -115,7 +114,7 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 - Hub 日志显示 Android 4 条 QUIC reverse session 已连接。
 - Android 当前仅运行 `99-dxreverse-egress.sh` supervisor 和 `dxreverse client`。
 - Hub 经 reverse proxy 出口 IP：以 `curl --proxy http://10.66.0.1:18081 https://api.ipify.org` 实时结果为准。
-- Android 客户端 token 当前应绑定 `egress.proxy_addr=10.66.0.1:18081`;旧 `10.66.0.101:1080` 只保留回滚,不再分配给 Android 客户端。
+- Android 客户端 token 当前应绑定 `egress.proxy_addr=10.66.0.1:18081`;旧 `10.66.0.101:1080` 不再分配给 Android 客户端。
 
 常用检查命令：
 

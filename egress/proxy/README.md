@@ -6,13 +6,10 @@
 
 | 平台 | 用途 | 状态 |
 | --- | --- | --- |
-| `linux/arm64` | 安卓手机出口(`dxandroid-egress`,配合 WireGuard App + [android-status](../android-status/)) | 回滚路径 |
 | `darwin/arm64` | **Mac 出口**(当前 Mac mini `10.66.0.100` 出口,计划从裸 sing-box+launchd 迁到本代码) | 🅿️ 预留 |
 | `windows/amd64` | **Windows PC 出口** | 🅿️ 预留 |
 
 ```bash
-# 旧安卓出口回滚路径(部署名仍为 dxandroid-egress)
-GOOS=linux  GOARCH=arm64 go build -tags with_gvisor -o dist/dxandroid-egress ./egress/proxy
 # Mac 出口(预留)
 GOOS=darwin GOARCH=arm64 go build -tags with_gvisor -o dist/dxegress-macos   ./egress/proxy
 # Windows 出口(预留)
