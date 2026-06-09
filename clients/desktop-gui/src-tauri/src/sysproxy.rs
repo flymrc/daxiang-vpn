@@ -13,8 +13,10 @@ use sysproxy::Sysproxy;
 use tauri::Manager;
 
 // 不走代理的地址：本机回环 + 内网段（含 WireGuard 隧道 10.66.0.0/16）。
+// `*.localhost` 必须有：Tauri 在 Windows 用 http://tauri.localhost 提供自身界面，
+// 不排除的话连接后 WebView 会把自己的资源请求丢去走代理，导致 app 窗口里显示错误页。
 const BYPASS: &str =
-    "localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;192.168.*;<local>";
+    "localhost;*.localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;192.168.*;<local>";
 
 #[derive(Serialize, Deserialize)]
 struct ProxyState {
@@ -37,12 +39,21 @@ fn current() -> Result<Sysproxy, String> {
 pub fn enable(app: &tauri::AppHandle, host: &str, port: u16) -> Result<(), String> {
     let path = backup_path(app)?;
     if !path.exists() {
-        let cur = current()?;
-        let st = ProxyState {
-            enable: cur.enable,
-            host: cur.host,
-            port: cur.port,
-            bypass: cur.bypass,
+        // 读当前系统代理做备份；读失败（本来没设代理，或注册表里是 ":0" 这类空值，
+        // sysproxy 解析会报 "failed to parse string"）就备份一个"关闭"状态，不要因此中断设置。
+        let st = match current() {
+            Ok(cur) => ProxyState {
+                enable: cur.enable,
+                host: cur.host,
+                port: cur.port,
+                bypass: cur.bypass,
+            },
+            Err(_) => ProxyState {
+                enable: false,
+                host: String::new(),
+                port: 0,
+                bypass: String::new(),
+            },
         };
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;

@@ -23,6 +23,16 @@
 - sidecar 确认随包：`target/release/dxvpn.exe`（17.2MB，由 `dxvpn-x86_64-pc-windows-msvc.exe` 去 triple 后缀复制而来）。
 - 主程序 `dxvpn-desktop.exe` 11.2MB，嵌入品牌图标。
 
+## 点验中发现并修复（M4 后）
+
+真机点验时发现并修掉两个 runtime bug + 加了富托盘：
+
+1. **`failed to parse string`**：`sysproxy` crate 读取当前系统代理时，遇到空值 / `:0` 这类会解析失败。改：`enable` 读不出当前代理就备份一个「关闭」状态继续设，不中断。
+2. **app 窗口里出现浏览器错误页**：连接后系统代理被设上，WebView2 把自己界面（`http://tauri.localhost`）的请求也丢去走代理 → 加载失败显示错误页；WinINET 的 `*.localhost` bypass 对 WebView2 不可靠。改：启动时设 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--no-proxy-server`，WebView 永不走代理（界面只加载本地资源、功能走 Rust 命令，无需代理）。界面在任何网络/代理状态下都稳定。
+3. **富托盘菜单（仿 Tailscale）**：状态行（实时「● 已连接 · IP / ○ 未连接」，5s 刷新）+ 连接/断开/换 IP + 打开主界面/退出，可直接在托盘操作。`connect/disconnect/rotate/status` 抽成共享 impl，命令与托盘复用。
+
+附：构建产物只应有单一 `大象 VPN_…setup.exe`（含内置 CLI sidecar，NSIS LZMA 压缩约 7.5MB）；调试期改名/改格式残留的旧包（`Daxiang VPN…msi/exe`）已清理。沿用 `cargo build`（非 `tauri build`）跑出的二进制会指向 dev server，只能 `npm run tauri dev` 或装/跑 `tauri build` 产物。
+
 ## 状态
 
 桌面 GUI **M1–M4 代码与打包完成**。剩：
