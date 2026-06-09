@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bufio"
+	"context"
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -74,3 +77,62 @@ func TestProxyAllowedCIDRs(t *testing.T) {
 		t.Fatal("expected non-WireGuard client to be denied")
 	}
 }
+
+func TestOpenCommandDropsStaleSession(t *testing.T) {
+	oldTimeout := reverseCommandTimeout
+	reverseCommandTimeout = 20 * time.Millisecond
+	defer func() { reverseCommandTimeout = oldTimeout }()
+
+	stale := &fakeTunnelSession{
+		remote: dummyAddr("stale"),
+		handler: func(conn net.Conn) {
+			defer conn.Close()
+			_, _ = bufio.NewReader(conn).ReadString('\n')
+			time.Sleep(200 * time.Millisecond)
+		},
+	}
+	healthy := &fakeTunnelSession{
+		remote: dummyAddr("healthy"),
+		handler: func(conn net.Conn) {
+			defer conn.Close()
+			_, _ = bufio.NewReader(conn).ReadString('\n')
+			_, _ = io.WriteString(conn, "OK\n")
+		},
+	}
+	manager := &sessionManager{sessions: []tunnelSession{stale, healthy}}
+
+	stream, _, status, err := manager.openCommand("CONNECT example.com:443")
+	if err != nil {
+		t.Fatalf("open command: %v", err)
+	}
+	defer stream.Close()
+	if status != "OK" {
+		t.Fatalf("status = %q", status)
+	}
+	if len(manager.sessions) != 1 || manager.sessions[0] != healthy {
+		t.Fatalf("stale session was not removed: %#v", manager.sessions)
+	}
+}
+
+type fakeTunnelSession struct {
+	remote  net.Addr
+	handler func(net.Conn)
+}
+
+func (s *fakeTunnelSession) OpenStream(context.Context) (net.Conn, error) {
+	client, server := net.Pipe()
+	go s.handler(server)
+	return client, nil
+}
+
+func (s *fakeTunnelSession) Close() error { return nil }
+
+func (s *fakeTunnelSession) IsClosed() bool { return false }
+
+func (s *fakeTunnelSession) RemoteAddr() net.Addr { return s.remote }
+
+type dummyAddr string
+
+func (a dummyAddr) Network() string { return "test" }
+
+func (a dummyAddr) String() string { return string(a) }

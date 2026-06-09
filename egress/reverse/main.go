@@ -36,6 +36,8 @@ import (
 const protocolHello = "DXREV1"
 const quicALPN = "dxreverse/1"
 
+var reverseCommandTimeout = 20 * time.Second
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		log.Fatal(err)
@@ -462,7 +464,8 @@ func (m *sessionManager) clearCurrent(session tunnelSession) {
 }
 
 func (m *sessionManager) openStream() (net.Conn, error) {
-	for attempt := 0; attempt < 2; attempt++ {
+	attempts := m.sessionCount()
+	for attempt := 0; attempt < attempts; attempt++ {
 		session := m.pickSession()
 		if session == nil {
 			return nil, errors.New("reverse client is not connected")
@@ -477,6 +480,73 @@ func (m *sessionManager) openStream() (net.Conn, error) {
 		m.clearCurrent(session)
 	}
 	return nil, errors.New("no usable reverse client session")
+}
+
+func (m *sessionManager) openCommand(command string) (net.Conn, *bufio.Reader, string, error) {
+	attempts := m.sessionCount()
+	for attempt := 0; attempt < attempts; attempt++ {
+		session := m.pickSession()
+		if session == nil {
+			return nil, nil, "", errors.New("reverse client is not connected")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		stream, err := session.OpenStream(ctx)
+		cancel()
+		if err != nil {
+			log.Printf("open stream via %s failed: %v", session.RemoteAddr(), err)
+			m.clearCurrent(session)
+			continue
+		}
+		if err := stream.SetDeadline(time.Now().Add(reverseCommandTimeout)); err != nil {
+			_ = stream.Close()
+			log.Printf("set reverse command deadline via %s failed: %v", session.RemoteAddr(), err)
+			m.clearCurrent(session)
+			continue
+		}
+		if _, err := fmt.Fprintf(stream, "%s\n", command); err != nil {
+			_ = stream.Close()
+			log.Printf("write reverse command via %s failed: %v", session.RemoteAddr(), err)
+			m.clearCurrent(session)
+			continue
+		}
+		reader := bufio.NewReader(stream)
+		status, err := reader.ReadString('\n')
+		if err != nil {
+			_ = stream.Close()
+			log.Printf("read reverse command response via %s failed: %v", session.RemoteAddr(), err)
+			m.clearCurrent(session)
+			continue
+		}
+		if err := stream.SetDeadline(time.Time{}); err != nil {
+			_ = stream.Close()
+			log.Printf("clear reverse command deadline via %s failed: %v", session.RemoteAddr(), err)
+			m.clearCurrent(session)
+			continue
+		}
+		return stream, reader, strings.TrimSpace(status), nil
+	}
+	return nil, nil, "", errors.New("no usable reverse client session")
+}
+
+func (m *sessionManager) sessionCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	count := 0
+	filtered := m.sessions[:0]
+	for _, session := range m.sessions {
+		if session.IsClosed() {
+			continue
+		}
+		filtered = append(filtered, session)
+		count++
+	}
+	m.sessions = filtered
+	if len(m.sessions) == 0 {
+		m.next = 0
+	} else if m.next >= len(m.sessions) {
+		m.next %= len(m.sessions)
+	}
+	return count
 }
 
 func (m *sessionManager) pickSession() tunnelSession {
@@ -516,13 +586,6 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "CONNECT only", http.StatusMethodNotAllowed)
 		return
 	}
-	stream, err := m.openStream()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	defer stream.Close()
-
 	target := req.Host
 	if m.resolve == "server" {
 		resolvedTarget, err := resolveTarget(req.Host)
@@ -532,16 +595,12 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 		}
 		target = resolvedTarget
 	}
-	if _, err := fmt.Fprintf(stream, "CONNECT %s\n", target); err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		return
-	}
-	streamReader := bufio.NewReader(stream)
-	status, err := streamReader.ReadString('\n')
+	stream, streamReader, status, err := m.openCommand("CONNECT " + target)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
+	defer stream.Close()
 	if strings.TrimSpace(status) != "OK" {
 		http.Error(w, strings.TrimSpace(status), http.StatusBadGateway)
 		return
@@ -610,25 +669,14 @@ func (m *sessionManager) handleFetch(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "url must be absolute http(s)", http.StatusBadRequest)
 		return
 	}
-	stream, err := m.openStream()
+	encodedURL := base64.RawURLEncoding.EncodeToString([]byte(rawURL))
+	stream, reader, statusLine, err := m.openCommand("FETCH " + encodedURL)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 	defer stream.Close()
 
-	encodedURL := base64.RawURLEncoding.EncodeToString([]byte(rawURL))
-	if _, err := fmt.Fprintf(stream, "FETCH %s\n", encodedURL); err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		return
-	}
-	reader := bufio.NewReader(stream)
-	statusLine, err := reader.ReadString('\n')
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		return
-	}
-	statusLine = strings.TrimSpace(statusLine)
 	if strings.HasPrefix(statusLine, "ERR ") {
 		http.Error(w, strings.TrimPrefix(statusLine, "ERR "), http.StatusBadGateway)
 		return

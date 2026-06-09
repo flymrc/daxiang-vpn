@@ -127,6 +127,11 @@ server round-robins CONNECT requests across them. Use `--resolve client` to have
 the Android side resolve target hostnames via public DNS, which helps test
 CDN/DNS selection effects.
 
+The Hub server applies a deadline while sending `CONNECT`/`FETCH` commands and
+waiting for the Android-side response. If a reverse QUIC session is half-dead,
+the server removes that session from the pool and retries another session
+instead of letting the HTTP proxy request hang behind a stale tunnel.
+
 Hub-side probe:
 
 ```sh

@@ -27,6 +27,7 @@ ssh -i ~/.ssh/dxandroid_control -p 2022 root@10.66.0.101
 | 反向出口二进制 | `/data/adb/dxreverse/bin/dxreverse` |
 | 看门狗 | `/data/adb/dxandroid/watchdog.sh` |
 | 开机自启 | `/data/adb/service.d/98-dxandroid-control.sh` |
+| 受控 TCP ADB 救援入口 | `/data/adb/service.d/97-dxadb-tcp-wg-only.sh` |
 | 出口自启 | `/data/adb/service.d/99-dxreverse-egress.sh` |
 | 授权公钥 | `/data/adb/dxandroid/.ssh/authorized_keys` |
 | 主机私钥(daemon 自生成) | `/data/adb/dxandroid/keys/ssh_host_ed25519_key` |
@@ -92,6 +93,31 @@ $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 ```
 
 新增允许登录的公钥:把公钥追加到 `/data/adb/dxandroid/.ssh/authorized_keys`(daemon 每次连接重读,免重启)。
+
+### 受控远程 ADB
+
+USB 不在现场时,可使用受控 TCP ADB 作为救援入口。该入口由 [97-dxadb-tcp-wg-only.sh](../../../egress/android-control/service.d/97-dxadb-tcp-wg-only.sh) 开启:
+
+- `adbd` 监听 `5555/tcp`。
+- iptables 只允许 `tun0` 上的 `10.66.0.0/24` 访问。
+- 非 WireGuard 接口和 IPv6 的 `5555/tcp` 会被 drop。
+- ADB 仍依赖 Android 自身的 host key 授权,不是免认证入口。
+
+推荐从本机经 Hub 转发:
+
+```powershell
+ssh -L 127.0.0.1:15555:10.66.0.101:5555 root@36.50.84.68
+adb connect 127.0.0.1:15555
+adb -s 127.0.0.1:15555 shell id
+```
+
+Hub 侧检查:
+
+```bash
+nc -zv 10.66.0.101 5555
+ssh -i /root/.ssh/dxandroid_control_hub -p 2022 root@10.66.0.101 \
+  'getprop service.adb.tcp.port; ss -lntup | grep 5555; iptables -S DXADB_TCP'
+```
 
 ## 6. 踩坑备忘(真机部署中踩过)
 

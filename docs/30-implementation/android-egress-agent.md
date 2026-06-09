@@ -42,6 +42,8 @@ WireGuard App 仍保留为控制面,用于:
 
 watchdog [watchdog.sh](../../egress/android-control/watchdog.sh) 会周期性重放这些底层基线,并确保 WireGuard 控制面、`dxandroid-control` 和 `dxreverse` supervisor 都在运行。
 
+Hub 侧 `dxreverse server` 对每次 `CONNECT` / `FETCH` 反向命令设置超时。若某条 QUIC reverse session 半死、能被选中但不再回应,Hub 会把它从 session 池剔除并重试其它 session,避免 `10.66.0.1:18081` 的 HTTP proxy 请求长期卡住。
+
 ## 部署验证
 
 Hub 侧:

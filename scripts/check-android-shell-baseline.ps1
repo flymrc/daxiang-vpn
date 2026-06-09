@@ -1,6 +1,7 @@
 param(
     [string]$ReverseService = "egress/reverse/service.d/99-dxreverse-egress.sh",
-    [string]$Watchdog = "egress/android-control/watchdog.sh"
+    [string]$Watchdog = "egress/android-control/watchdog.sh",
+    [string]$AdbTcpService = "egress/android-control/service.d/97-dxadb-tcp-wg-only.sh"
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,7 +29,7 @@ function Assert-Balanced([string]$Path, [string]$Open, [string]$Close, [string]$
     }
 }
 
-foreach ($path in @($ReverseService, $Watchdog)) {
+foreach ($path in @($ReverseService, $Watchdog, $AdbTcpService)) {
     if (-not (Test-Path $path)) {
         throw "missing script: $path"
     }
@@ -46,5 +47,12 @@ Assert-Contains $Watchdog "ensure_network_baseline" "runtime network baseline"
 Assert-Contains $Watchdog "svc wifi disable" "runtime Wi-Fi disable"
 Assert-Contains $Watchdog "99-dxandroid-egress\.sh" "runtime legacy service disable"
 Assert-Contains $Watchdog "99-dxreverse-egress" "reverse supervisor check"
+
+Assert-Contains $AdbTcpService "PORT=.*5555" "TCP ADB port"
+Assert-Contains $AdbTcpService "WG_IF=.*tun0" "WireGuard-only interface"
+Assert-Contains $AdbTcpService "WG_CIDR=.*10\.66\.0\.0/24" "WireGuard CIDR allowlist"
+Assert-Contains $AdbTcpService "iptables" "IPv4 firewall guard"
+Assert-Contains $AdbTcpService "ip6tables" "IPv6 firewall guard"
+Assert-Contains $AdbTcpService "DROP" "non-WireGuard ADB drop"
 
 Write-Host "PASS android shell baseline checks"
