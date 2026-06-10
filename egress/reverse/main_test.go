@@ -36,10 +36,10 @@ func TestLoadReverseConfigExamples(t *testing.T) {
 	if client.Transport != "tcp" {
 		t.Fatalf("client transport = %q", client.Transport)
 	}
-	if client.Connections != 2 {
+	if client.Connections != 1 {
 		t.Fatalf("client connections = %d", client.Connections)
 	}
-	if client.AddressFamily != "auto" {
+	if client.AddressFamily != "ipv6" {
 		t.Fatalf("client address family = %q", client.AddressFamily)
 	}
 	if got := normalizeFingerprint(client.ServerCertSHA256); len(got) != 64 {

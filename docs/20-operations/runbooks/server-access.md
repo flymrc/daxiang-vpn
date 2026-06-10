@@ -82,8 +82,9 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 ## Android 手机出口节点
 
 - 角色：日本手机卡出口节点
-- 控制面 WireGuard IP：`10.66.0.101`
-- 控制面 SSH：`10.66.0.101:2022`
+- 当前数据面设备：Google Pixel 7a（`lynx`）
+- 控制面 WireGuard IP：`10.66.0.101`（Pixel 迁移后待重新配置）
+- 控制面 SSH：`10.66.0.101:2022`（Pixel 迁移后待重新配置）
 - 数据面：`dxreverse` 反向 TCP/yamux
 - Hub 侧代理入口：`10.66.0.1:18081`
 - Hub reverse TCP 监听：`0.0.0.0:39093/tcp`
@@ -109,12 +110,13 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 
 - `dxreverse-hub.service` 已启用并运行。
 - Hub 监听 `39093/tcp` 和 `10.66.0.1:18081`。
-- Android 当前 `transport: tcp`、`connections: 2`;`client.server_cert_sha256` 保留用于 QUIC 回滚。
+- Android 当前 `transport: tcp`、`connections: 1`、`address_family: ipv6`;`client.server_cert_sha256` 保留用于 QUIC 回滚。
+- Hub 当前 `resolve: client`(2026-06-10 起):目标域名在手机侧解析并优先 IPv6 直拨,绕开乐天 F5 BIG-IP 透明代理故障率高的 v4 侧,详见 `docs/90-history/worklogs/2026-06-10-pixel-7a-speed-audit.md`。
 - Hub 当前 `max_proxy_connections=96`、`max_proxy_connections_per_client=48`,用于保护 Android 手机出口免受客户端突发并发拖死,同时避免误伤浏览器常驻连接。
 - UFW 已允许 WireGuard 客户端访问 `10.66.0.1:18081/tcp`。
-- Hub 日志显示 Android 2 条 TCP reverse session 已连接。
+- Hub 日志显示 Pixel Android 1 条 TCP reverse session 已连接。
 - Android 当前仅运行 `99-dxreverse-egress.sh` supervisor 和 `dxreverse client`。
-- Hub 经 reverse proxy 出口 IP：以 `curl --proxy http://10.66.0.1:18081 https://api.ipify.org` 实时结果为准。
+- Hub 经 reverse proxy 出口 IP：以 `curl --proxy http://10.66.0.1:18081 https://ifconfig.me/ip` 等实时结果为准。2026-06-10 Pixel 测得公网 IP 为 `133.106.34.62`。
 - Android 客户端 token 当前应绑定 `egress.proxy_addr=10.66.0.1:18081`;旧 `10.66.0.101:1080` 不再分配给 Android 客户端。
 
 常用检查命令：

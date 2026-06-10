@@ -7,8 +7,10 @@ client:
   # SHA-256 fingerprint of the Hub QUIC server certificate DER. Required only
   # when transport is quic, but kept here for rollback safety.
   server_cert_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
-  # auto/ipv4 keep the historical IPv4-first behavior; ipv6 is useful on
-  # Japanese mobile networks where IPv4 CDN paths are degraded.
-  address_family: auto
-  connections: 2
+  # ipv6 is production default since 2026-06-10: Rakuten terminates all
+  # 80/443 TCP on an F5 BIG-IP transparent proxy whose IPv4 side stalls and
+  # resets flows, while the IPv6 side is healthy. See the 2026-06-10 speed
+  # audit worklog. auto/ipv4 keep the historical IPv4-first behavior.
+  address_family: ipv6
+  connections: 1
   reconnect: 3s

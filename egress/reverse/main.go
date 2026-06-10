@@ -324,6 +324,10 @@ func handleTCPTunnelConn(conn net.Conn, token string, manager *sessionManager) {
 	cfg := yamux.DefaultConfig()
 	cfg.EnableKeepAlive = true
 	cfg.KeepAliveInterval = 10 * time.Second
+	// 蜂窝链路负载时 RTT 可达 0.5-1.5s:默认 256KB 流窗口会把单流吞吐压到
+	// 1-4 Mbps,默认 10s 写超时会在缓冲膨胀时误杀整个会话。
+	cfg.MaxStreamWindowSize = 4 * 1024 * 1024
+	cfg.ConnectionWriteTimeout = 30 * time.Second
 	session, err := yamux.Server(conn, cfg)
 	if err != nil {
 		log.Printf("yamux server error: %v", err)
@@ -953,6 +957,8 @@ func tcpClientOnce(serverAddr string, token string, opts clientOptions) error {
 	cfg := yamux.DefaultConfig()
 	cfg.EnableKeepAlive = true
 	cfg.KeepAliveInterval = 10 * time.Second
+	cfg.MaxStreamWindowSize = 4 * 1024 * 1024
+	cfg.ConnectionWriteTimeout = 30 * time.Second
 	session, err := yamux.Client(conn, cfg)
 	if err != nil {
 		return err
@@ -1110,17 +1116,21 @@ func dialTarget(target string, addressFamily string) (net.Conn, error) {
 	if net.ParseIP(host) != nil {
 		return net.DialTimeout("tcp", target, 15*time.Second)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	// Hub-side openCommand gives the whole CONNECT 20s, so keep DNS and the
+	// dial attempts on separate budgets instead of sharing one context.
+	dnsCtx, dnsCancel := context.WithTimeout(context.Background(), 6*time.Second)
 	resolver := publicResolver()
-	ips, err := resolver.LookupIPAddr(ctx, host)
+	ips, err := resolver.LookupIPAddr(dnsCtx, host)
+	dnsCancel()
 	if err != nil {
 		return nil, err
 	}
 	var lastErr error
-	dialer := net.Dialer{Timeout: 15 * time.Second}
-	for _, ip := range orderIPs(ips, addressFamily) {
-		conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(ip.IP.String(), port))
+	for attempt, ip := range orderIPs(ips, addressFamily) {
+		if attempt >= 2 {
+			break
+		}
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip.IP.String(), port), 6*time.Second)
 		if err == nil {
 			return conn, nil
 		}
@@ -1137,11 +1147,17 @@ func publicResolver() *net.Resolver {
 		PreferGo: true,
 		Dial: func(ctx context.Context, network string, address string) (net.Conn, error) {
 			dialer := net.Dialer{Timeout: 5 * time.Second}
-			conn, err := dialer.DialContext(ctx, "udp", "1.1.1.1:53")
-			if err == nil {
-				return conn, nil
+			// Rakuten 蜂窝网上 IPv4 UDP/53 经 CGNAT 间歇丢包,IPv6 路径实测
+			// 健康得多,因此 v6 解析器优先。
+			var lastErr error
+			for _, server := range []string{"[2606:4700:4700::1111]:53", "1.1.1.1:53", "[2001:4860:4860::8888]:53", "8.8.8.8:53"} {
+				conn, err := dialer.DialContext(ctx, "udp", server)
+				if err == nil {
+					return conn, nil
+				}
+				lastErr = err
 			}
-			return dialer.DialContext(ctx, "udp", "8.8.8.8:53")
+			return nil, lastErr
 		},
 	}
 }
