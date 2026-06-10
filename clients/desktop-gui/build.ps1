@@ -2,7 +2,11 @@
 # Build the Daxiang VPN desktop client: dxvpn sidecar, frontend, Rust app, installer.
 param(
     [ValidateSet("amd64", "arm64", "host")]
-    [string]$Target = "amd64"
+    [string]$Target = "amd64",
+
+    # auto: use cargo-xwin when building Windows targets from non-Windows hosts.
+    [ValidateSet("auto", "cargo", "cargo-xwin")]
+    [string]$Runner = "auto"
 )
 
 $ErrorActionPreference = "Stop"
@@ -43,15 +47,21 @@ function Build-Sidecar([string]$targetTriple, [string]$goArch) {
     Write-Host "==> go build sidecar ($goArch) -> $out"
     $oldGoos = $env:GOOS
     $oldGoarch = $env:GOARCH
+    $oldGoamd64 = $env:GOAMD64
     try {
         $env:GOOS = "windows"
         $env:GOARCH = $goArch
+        if ($goArch -eq "amd64") {
+            # Maximum compatibility with older Intel i5 / Win10 machines.
+            $env:GOAMD64 = "v1"
+        }
         go build -tags with_gvisor -trimpath -ldflags "-s -w" -o $out (Join-Path $repo "clients\cli")
         if ($LASTEXITCODE -ne 0) { throw "go build sidecar failed for $targetTriple" }
     }
     finally {
         if ($null -eq $oldGoos) { Remove-Item Env:GOOS -ErrorAction SilentlyContinue } else { $env:GOOS = $oldGoos }
         if ($null -eq $oldGoarch) { Remove-Item Env:GOARCH -ErrorAction SilentlyContinue } else { $env:GOARCH = $oldGoarch }
+        if ($null -eq $oldGoamd64) { Remove-Item Env:GOAMD64 -ErrorAction SilentlyContinue } else { $env:GOAMD64 = $oldGoamd64 }
     }
 }
 
@@ -63,12 +73,24 @@ try {
     Write-Host "==> npm install"
     npm install
     if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
-    Write-Host "==> npm run tauri build -- --target $triple"
-    npm run tauri build -- --target $triple
+    $buildArgs = @("run", "tauri", "build", "--", "--target", $triple)
+    $isWindowsHost = $hostTriple -like "*-pc-windows-msvc"
+    if ($Runner -eq "cargo-xwin" -or ($Runner -eq "auto" -and -not $isWindowsHost)) {
+        if (-not (Get-Command cargo-xwin -ErrorAction SilentlyContinue)) {
+            throw "cargo-xwin is required for cross-building Windows targets from this host. Install with: cargo install --locked cargo-xwin"
+        }
+        $buildArgs += @("--runner", "cargo-xwin")
+    } elseif ($Runner -eq "cargo-xwin") {
+        $buildArgs += @("--runner", "cargo-xwin")
+    }
+    Write-Host "==> npm $($buildArgs -join ' ')"
+    & npm @buildArgs
     if ($LASTEXITCODE -ne 0) { throw "tauri build failed" }
 }
 finally {
     Pop-Location
 }
 
-Write-Host "==> done. Installer: src-tauri/target/release/bundle/"
+$bundleDir = Join-Path $root "src-tauri\target\$triple\release\bundle\nsis"
+if (-not (Test-Path $bundleDir)) { $bundleDir = Join-Path $root "src-tauri\target\release\bundle\nsis" }
+Write-Host "==> done. Installer: $bundleDir"
