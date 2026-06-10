@@ -43,3 +43,17 @@ GUI 连接后经常出现卡顿和断线感，排查时提出两个风险：
 
 - 需要用户安装或重启新版 GUI 后，GUI 状态轮询串行化才会在桌面端生效。
 - token 租约是当前静态 token 模型下的保守保护；长期产品化仍建议升级到设备绑定、公私钥本地生成、token 换短期会话。
+
+## 同日追加：GUI 0.3.0 amd64 客户包
+
+用户要求给客户发 Windows amd64 GUI 包，并把版本升到 `0.3.0`。第一次按旧脚本打出的安装包文件名虽然是 `x64`，但开发机 Rust host 是 `aarch64-pc-windows-msvc`，Tauri 主程序实际编成了 ARM64，导致普通 x64 客户机打不开。
+
+已修复：
+
+- 版本号同步到 `0.3.0`：`package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`、`tauri.conf.json`。
+- `clients/desktop-gui/build.ps1` 增加 `-Target amd64|arm64|host` 参数，默认 `amd64`，并显式执行 `tauri build --target x86_64-pc-windows-msvc`。
+- `clients/desktop-gui/README.md` 同步打包命令为 `./build.ps1 -Target amd64`。
+- 已重新生成客户包：`dist/windows-amd64/大象 VPN_0.3.0_x64-setup.exe`。
+- PE header 校验通过：
+  - `dxvpn-desktop.exe` machine `0x8664`，`x64/amd64`。
+  - `dxvpn.exe` machine `0x8664`，`x64/amd64`。

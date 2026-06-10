@@ -39,10 +39,10 @@ npm run tauri dev
 ## 打包
 
 ```powershell
-./build.ps1
+./build.ps1 -Target amd64
 ```
 
-产出 NSIS 安装包（按用户安装，免管理员）于 `src-tauri/target/release/bundle/nsis/`，sidecar `dxvpn.exe` 随包。
+产出 Windows x64 / amd64 NSIS 安装包（按用户安装，免管理员）于 `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`，sidecar `dxvpn.exe` 随包。若只想构建当前开发机架构，可用 `./build.ps1 -Target host`。
 WebView2 用 downloadBootstrapper（Win11 自带，旧系统自动拉起安装）。
 
 ## Rust 命令 ↔ CLI 映射

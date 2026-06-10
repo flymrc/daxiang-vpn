@@ -1,14 +1,38 @@
 #!/usr/bin/env pwsh
 # Build the Daxiang VPN desktop client: dxvpn sidecar, frontend, Rust app, installer.
+param(
+    [ValidateSet("amd64", "arm64", "host")]
+    [string]$Target = "amd64"
+)
+
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repo = Resolve-Path (Join-Path $root "..\..")
 
-# 1. Rust host target triple. Tauri externalBin expects this sidecar suffix.
-$triple = (rustc -Vv | Select-String '^host:\s*(.+)$').Matches.Groups[1].Value.Trim()
-if (-not $triple) { throw "could not get rustc host triple; is Rust installed?" }
-Write-Host "==> target triple: $triple"
+# 1. Resolve Rust target triple. Tauri externalBin expects this sidecar suffix.
+$hostTriple = (rustc -Vv | Select-String '^host:\s*(.+)$').Matches.Groups[1].Value.Trim()
+if (-not $hostTriple) { throw "could not get rustc host triple; is Rust installed?" }
+
+$triple = switch ($Target) {
+    "amd64" { "x86_64-pc-windows-msvc" }
+    "arm64" { "aarch64-pc-windows-msvc" }
+    "host" { $hostTriple }
+}
+$goArch = switch ($triple) {
+    "x86_64-pc-windows-msvc" { "amd64" }
+    "aarch64-pc-windows-msvc" { "arm64" }
+    default { throw "unsupported Windows Rust target triple: $triple" }
+}
+Write-Host "==> host triple: $hostTriple"
+Write-Host "==> target triple: $triple ($goArch)"
+
+$installedTargets = rustup target list --installed
+if ($installedTargets -notcontains $triple) {
+    Write-Host "==> rustup target add $triple"
+    rustup target add $triple
+    if ($LASTEXITCODE -ne 0) { throw "rustup target add failed for $triple" }
+}
 
 # 2. Build dxvpn sidecars.
 $binDir = Join-Path $root "src-tauri\binaries"
@@ -31,23 +55,7 @@ function Build-Sidecar([string]$targetTriple, [string]$goArch) {
     }
 }
 
-$sidecars = @()
-if ($triple -eq "aarch64-pc-windows-msvc") {
-    $sidecars += @{ Triple = $triple; Arch = "arm64" }
-} elseif ($triple -eq "x86_64-pc-windows-msvc") {
-    $sidecars += @{ Triple = $triple; Arch = "amd64" }
-} else {
-    throw "unsupported Windows Rust host triple: $triple"
-}
-
-# Tauri v2 currently bundles x64 NSIS on Windows ARM64, so keep the x64 sidecar present too.
-if ($sidecars.Triple -notcontains "x86_64-pc-windows-msvc") {
-    $sidecars += @{ Triple = "x86_64-pc-windows-msvc"; Arch = "amd64" }
-}
-
-foreach ($sidecar in $sidecars) {
-    Build-Sidecar $sidecar.Triple $sidecar.Arch
-}
+Build-Sidecar $triple $goArch
 
 # 3. Tauri build: frontend, Rust, bundle.
 Push-Location $root
@@ -55,8 +63,8 @@ try {
     Write-Host "==> npm install"
     npm install
     if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
-    Write-Host "==> npm run tauri build"
-    npm run tauri build
+    Write-Host "==> npm run tauri build -- --target $triple"
+    npm run tauri build -- --target $triple
     if ($LASTEXITCODE -ne 0) { throw "tauri build failed" }
 }
 finally {
