@@ -263,16 +263,22 @@ iptables -L ufw-user-input -n -v --line-numbers | grep 18081
 
 目标方案见 [egress/android-control](../../../egress/android-control/README.md)：手机端由 Magisk `service.d` 拉起 watchdog，watchdog 保证 Go SSH 控制面 `zhandroid-control` 只监听 WireGuard 内网 `10.66.0.101:2022`，并且只允许密钥登录。
 
+从 Hub 侧连接手机：
+
+```bash
+ssh -i /root/.ssh/zhandroid_control_hub -p 2022 root@10.66.0.101
+```
+
 从已经通过 VPN/WireGuard 进入 `10.66.0.0/24` 的管理机直连手机：
 
 ```powershell
-ssh -i $env:USERPROFILE\.ssh\zhandroid_control -p 2022 root@10.66.0.101
+ssh -i $env:USERPROFILE\.ssh\zhandroid_control_local -p 2022 root@10.66.0.101
 ```
 
-从 Hub 侧也可以连，但 Hub 只是 WireGuard 路由/中转节点，不是日常必需跳板：
+TCP ADB 也可以从 Hub 侧临时使用,端口只允许 WireGuard 内网来源：
 
 ```bash
-ssh -i ~/.ssh/zhandroid_control -p 2022 root@10.66.0.101
+timeout 3 bash -lc '</dev/tcp/10.66.0.101/5555' && echo adb-tcp-open
 ```
 
 登录后常用控制命令：
@@ -282,12 +288,16 @@ ps -A -o PID,PPID,ARGS | grep zhreverse
 tail -80 /data/local/tmp/zhreverse-egress.log
 sh /data/adb/service.d/99-zhreverse-egress.sh
 tail -80 /data/local/tmp/zhandroid-control.log
+tail -80 /data/local/tmp/zhadb-tcp.log
+/data/adb/zhandroid/sim-info.sh
 ```
 
 安全边界：
 
 - `zhandroid-control` 必须只绑定 `10.66.0.101:2022`，不要监听 `0.0.0.0`。
 - 只用 SSH key 登录，禁止密码登录。
+- `zhandroid-control` 当前生产由 watchdog 等 `tun0` 地址就绪后以 `-freebind=false` 启动；如果日志出现大量 `accept4: invalid argument`，说明仍有旧进程或旧 watchdog，需要杀掉后重启 `/data/adb/zhandroid/watchdog.sh`。
+- WireGuard App 的“授权外部控制”必须开启；watchdog 用 root broadcast 拉起 `jp-android-01`。bounce 时应先等 `tun0` 地址消失再 UP，避免出现“有 `tun0` 但无新握手”的半坏状态。
 - 带内控制依赖 WireGuard 隧道在线；手机没电、关机、无网、隧道未起时仍需要物理接触或 ADB 兜底。
 
 ### 3.5 Android 本机检查
@@ -310,7 +320,7 @@ $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 - 当前 `connections` 是否为预期值（Pixel 当前生产为 1）。
 - Hub `zhreverse-hub.service` 启动日志是否显示 `max_proxy_connections=96 max_proxy_connections_per_client=48`。
 - WireGuard App 是否创建了 `tun0 / 10.66.0.101`。
-- 若 `tun0` 缺失,watchdog 会最多每 120s 发一次 WireGuard App `SET_TUNNEL_UP` intent;若 `tun0` 存在但 Hub 内网 ping 失败,watchdog 会 `SET_TUNNEL_DOWN` 后再 `SET_TUNNEL_UP` 强制重拨。可看 `/data/local/tmp/zhandroid-control.log` 中的 `wireguard unhealthy` 记录。
+- 若 `tun0` 缺失,watchdog 会最多每 120s 发一次 WireGuard App `SET_TUNNEL_UP` intent;若 `tun0` 存在但 Hub 内网 ping 失败,watchdog 会 `SET_TUNNEL_DOWN`,等待 `10.66.0.101` 地址消失,再 `SET_TUNNEL_UP` 强制重拨。可看 `/data/local/tmp/zhandroid-control.log` 中的 `wireguard unhealthy` 记录。
 
 ### 3.6 当前已知性能判断
 

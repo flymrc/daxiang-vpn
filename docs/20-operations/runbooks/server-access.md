@@ -83,8 +83,9 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 
 - 角色：日本手机卡出口节点
 - 当前数据面设备：Google Pixel 7a（`lynx`）
-- 控制面 WireGuard IP：`10.66.0.101`（Pixel 迁移后待重新配置）
-- 控制面 SSH：`10.66.0.101:2022`（Pixel 迁移后待重新配置）
+- 控制面 WireGuard IP：`10.66.0.101`
+- 控制面 SSH：`10.66.0.101:2022`（`zhandroid-control`,仅公钥,Hub 可登录）
+- 控制面 TCP ADB：`10.66.0.101:5555`（仅允许 `tun0` / `10.66.0.0/24`）
 - 数据面：`zhreverse` 反向 TCP/yamux
 - Hub 侧代理入口：`10.66.0.1:18081`
 - Hub reverse TCP 监听：`0.0.0.0:39093/tcp`
@@ -105,11 +106,21 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 | Android config | `/data/adb/zhreverse/client.yaml` |
 | Android token | `/data/adb/zhreverse/token` |
 | Android service | `/data/adb/service.d/99-zhreverse-egress.sh` |
+| Android control binary | `/data/adb/zhandroid/bin/zhandroid-control` |
+| Android control watchdog | `/data/adb/zhandroid/watchdog.sh` |
+| Android control service | `/data/adb/service.d/98-zhandroid-control.sh` |
+| Android WG-only TCP ADB service | `/data/adb/service.d/97-zhadb-tcp-wg-only.sh` |
+| Android authorized keys | `/data/adb/zhandroid/.ssh/authorized_keys` |
 
 当前验证结果：
 
 - `zhreverse-hub.service` 已启用并运行。
 - Hub 监听 `39093/tcp` 和 `10.66.0.1:18081`。
+- Pixel 7a 已安装官方 WireGuard App `1.0.20260315`,导入 `jp-android-01`,地址 `10.66.0.101/24`,MTU `1120`,远程控制开关已开启。
+- Hub `wg0` 中 `10.66.0.101/32` 已切到 Pixel 新 peer;2026-06-11 验证最新握手、Hub ping、控制 SSH 均正常。
+- `zhandroid-control` 生产路径等 `tun0` 地址就绪后绑定 `10.66.0.101:2022`,不使用 `IP_FREEBIND`,避免 Pixel 上 `accept4: invalid argument`。
+- Hub 可通过 `/root/.ssh/zhandroid_control_hub` 登录 `root@10.66.0.101:2022`;本机可用 `~/.ssh/zhandroid_control_local` 作为另一把授权钥匙。
+- TCP ADB 已启用在 `5555`,并由 `97-zhadb-tcp-wg-only.sh` 用 iptables 限制为 WireGuard 内网来源。
 - Android 当前 `transport: tcp`、`connections: 1`、`address_family: ipv6`;`client.server_cert_sha256` 保留用于 QUIC 回滚。
 - Hub 当前 `resolve: client`(2026-06-10 起):目标域名在手机侧解析并优先 IPv6 直拨,绕开乐天 F5 BIG-IP 透明代理故障率高的 v4 侧,详见 `docs/90-history/worklogs/2026-06-10-pixel-7a-speed-audit.md`。
 - Hub 当前 `max_proxy_connections=96`、`max_proxy_connections_per_client=48`,用于保护 Android 手机出口免受客户端突发并发拖死,同时避免误伤浏览器常驻连接。
@@ -170,6 +181,7 @@ ssh -i ~/.ssh/zhandroid_control_local -p 2022 root@10.66.0.101 \
 | --- | --- | --- |
 | `windows-client-1` | `10.66.0.10/32` | 之前有握手记录，当前无法 ping 通 |
 | `mac-mini` | `10.66.0.100/32` | 已握手，Hub 可 ping 通 |
+| `pixel-7a-android-control` | `10.66.0.101/32` | 已握手，Hub 可 ping 通，控制 SSH/TCP ADB 可达 |
 | `admin-innernet` | `10.66.0.40/32` | 管理专用内网 peer,只路由 `10.66.0.0/24`,不承载公网出口流量 |
 
 ## 当前模式

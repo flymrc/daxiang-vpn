@@ -71,15 +71,17 @@
 
 ## 5. WireGuard 控制面迁移到 Pixel
 
+**状态（2026-06-11）**：已完成。Pixel 7a 已接管 `10.66.0.101` WireGuard 控制面，Hub 可 SSH 到 `10.66.0.101:2022`，TCP ADB 已限制在 `10.66.0.0/24 -> 10.66.0.101:5555`，watchdog 的 WireGuard UP 与 DOWN-wait-UP 自愈均已演练通过。
+
 **动机**：Pixel 上 `10.66.0.101` 控制面未迁移，zhandroid-control/watchdog 自愈缺位，人不在手机旁出问题只能干等。数据面已稳，这是当前最大的运维风险敞口。
 
 **步骤**（参照 [2026-06-08-android-wireguard-self-heal.md](../90-history/worklogs/2026-06-08-android-wireguard-self-heal.md) 与 [android-egress-agent.md](./android-egress-agent.md)）：
 
-1. WireGuard App 安装并导入 `jp-android-01.conf`（10.66.0.101，Hub peer 已存在）。
-2. **Doze 白名单**（历史坑）：`su -c "dumpsys deviceidle whitelist +com.wireguard.android"`。
-3. 部署 zhandroid-control（绑 10.66.0.101:2022）+ watchdog 脚本到 `/data/adb/`。
-4. 验收：Hub `ssh -i ~/.ssh/zhandroid_control_local -p 2022 root@10.66.0.101` 通；拔 USB 熄屏 >15min 后握手仍新鲜；watchdog DOWN/UP 自愈演练一次。
-5. 更新 `server-access.md` 的"Pixel 迁移后待重新配置"两行。
+1. 已安装 WireGuard App `1.0.20260315` 并导入 `jp-android-01.conf`（10.66.0.101，Hub peer 已替换为 Pixel 新公钥）。
+2. 已开启 WireGuard App “授权外部控制”，watchdog 可通过 root broadcast 拉起 `jp-android-01`。
+3. 已部署 zhandroid-control（`10.66.0.101:2022`）+ watchdog + WG-only TCP ADB 脚本到 `/data/adb/`。
+4. 已验收：Hub `ssh -i /root/.ssh/zhandroid_control_hub -p 2022 root@10.66.0.101` 通；Hub ping 通；watchdog UP 与 DOWN-wait-UP 自愈演练通过。
+5. 已更新 `server-access.md` / `diagnostics.md` 并新增 2026-06-11 工作日志。
 
 ## 6. Hub VPS 启用 IPv6（待调研）
 

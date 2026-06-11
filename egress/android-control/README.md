@@ -29,7 +29,7 @@
 ## 关键设计
 
 - **只绑隧道 IP**:生产监听 `10.66.0.101:2022`。`10.66.0.101` 是配置钉死的(WireGuard App `Address` + Hub `AllowedIPs`),永不变,不存在绑错值。
-- **绑定时机**:用 `IP_FREEBIND` 允许在 tun0/地址尚未就绪时也能 bind,开机即可监听,隧道一通立即可用;watchdog 再兜底保活。
+- **绑定时机**:watchdog 先确认 `tun0` 已有 `10.66.0.101`,再以 `-freebind=false` 启动控制服务并检查端口 LISTEN。`zhandroid-control` 仍保留 `IP_FREEBIND` 能力,但 Pixel 7a/Android 生产路径不用它,避免 `accept4: invalid argument` 兼容性问题。
 - **WG 自愈**:watchdog 检查 `10.66.0.101` 地址和 Hub 内网 `10.66.0.1` 可达性;地址缺失时通过 WireGuard Android 官方 broadcast intent 请求拉起 `jp-android-01` 隧道,地址存在但 Hub 不通时先 DOWN 再 UP 强制重拨,并用 120 秒冷却避免反复刷屏。
 - **仅公钥认证**:每次连接重新读 `authorized_keys`,改公钥免重启;无密码登录。
 - **root shell**:进程由 Magisk 以 root 拉起,登录即 root。支持交互式 PTY(top/vi 可用)与 `ssh host "cmd"` 一次性执行。

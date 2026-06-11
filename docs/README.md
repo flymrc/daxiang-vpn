@@ -22,6 +22,8 @@ Hub: 36.50.84.68 / 10.66.0.1
 
 Mac 出口仍是远端 mixed 代理。Android 出口数据面已迁到 `zhreverse` 反向 TCP/yamux,客户端经 WireGuard 访问 Hub 侧 `10.66.0.1:18081`;旧 `10.66.0.101:1080` 路径已从生产入口拆除,只在历史记录中保留。
 
+Android 控制面仍保留 WireGuard App:`jp-android-01` 使用 `10.66.0.101`,Hub 可通过 `10.66.0.101:2022` 登录 `zhandroid-control`,TCP ADB `10.66.0.101:5555` 仅允许 WireGuard 内网来源。
+
 ## 目录说明
 
 ```text
@@ -77,3 +79,4 @@ Mac 出口仍是远端 mixed 代理。Android 出口数据面已迁到 `zhrevers
 ## 90 History
 
 - [2026-06-06 Android 出口节点上线](90-history/worklogs/2026-06-06-android-egress.md)
+- [2026-06-11 Pixel 7a 控制面迁移](90-history/worklogs/2026-06-11-pixel-control-plane-migration.md)

@@ -3,8 +3,8 @@
 #
 # 部署目标:/data/adb/zhandroid/watchdog.sh,由 Magisk service.d 在开机后拉起。
 # 负责:
-#   1. 保证 zhandroid-control(Go SSH 服务)在跑 —— 它用 IP_FREEBIND 绑
-#      10.66.0.101:2022,无需等隧道就绪即可启动,隧道一通即可连。
+#   1. 保证 zhandroid-control(Go SSH 服务)在跑 —— 隧道 IP 就绪后绑定
+#      10.66.0.101:2022,避免 Android 上 IP_FREEBIND/accept4 兼容性问题。
 #   2. external 模式下尝试拉起 WireGuard App 隧道。
 #   3. 保证 zhreverse 反向出口数据面在跑,挂了用新版启动脚本重拉。
 #   4. (可选)每日定时重启,清理长期运行的内存/状态泄漏。
@@ -37,7 +37,11 @@ NETWORK_LAST_TUNE_FILE=$BASE/.last-network-tune
 
 log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
 
-control_up() { pgrep -f "$CONTROL_BIN" >/dev/null 2>&1; }
+control_up() {
+    pgrep -f "$CONTROL_BIN" >/dev/null 2>&1 || return 1
+    # 10.66.0.101:2022 in /proc/net/tcp little endian, state 0A = LISTEN.
+    grep -qi '6500420A:07E6 .* 0A ' /proc/net/tcp 2>/dev/null
+}
 # 看的是新版 reverse egress 监督脚本(99-zhreverse-egress.sh,自带 while 循环保活 binary)
 # 在不在,而不是 binary 本身——避免在 binary 短暂缺失时重复拉起多个监督循环。
 egress_up()  { pgrep -f 99-zhreverse-egress >/dev/null 2>&1; }
@@ -92,8 +96,18 @@ ensure_network_baseline() {
 }
 
 start_control() {
+    if ! wg_addr_up; then
+        log "control deferred; $WG_IP not present yet"
+        return 0
+    fi
     if [ -x "$CONTROL_BIN" ]; then
-        "$CONTROL_BIN" -listen "$CONTROL_LISTEN" >> "$LOG" 2>&1 &
+        pids=$(pgrep -f "$CONTROL_BIN" 2>/dev/null || true)
+        if [ -n "$pids" ]; then
+            kill $pids 2>/dev/null || true
+            log "stopped stale zhandroid-control pids=$pids"
+            sleep 1
+        fi
+        "$CONTROL_BIN" -listen "$CONTROL_LISTEN" -freebind=false >> "$LOG" 2>&1 &
         log "started zhandroid-control on $CONTROL_LISTEN"
     else
         log "WARN $CONTROL_BIN missing or not executable"
@@ -132,7 +146,13 @@ recover_wg() {
     echo "$now" > "$WG_LAST_INTENT_FILE"
     if [ "$mode" = "bounce" ]; then
         send_wg_intent DOWN
-        sleep 3
+        # WireGuard App teardown can lag a few seconds. If UP is sent while the
+        # old tun0 is still present, Android may leave a tunnel with an address
+        # but no fresh Hub handshake.
+        for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            wg_addr_up || break
+            sleep 1
+        done
     fi
     send_wg_intent UP
 }
