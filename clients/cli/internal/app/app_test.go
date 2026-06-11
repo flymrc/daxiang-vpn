@@ -101,6 +101,22 @@ func TestWantJSON(t *testing.T) {
 	}
 }
 
+func TestParseStatusOptions(t *testing.T) {
+	opts, err := parseStatusOptions([]string{"--json", "--no-ip-check"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !opts.jsonOut {
+		t.Fatal("jsonOut = false")
+	}
+	if opts.checkIP {
+		t.Fatal("checkIP = true")
+	}
+	if _, err := parseStatusOptions([]string{"--bad"}); err == nil {
+		t.Fatal("expected error for unknown status arg")
+	}
+}
+
 func TestHasFlag(t *testing.T) {
 	if !hasFlag([]string{"a", "--json", "b"}, "--json") {
 		t.Fatal("expected --json found")

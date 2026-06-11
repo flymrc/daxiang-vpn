@@ -7,6 +7,8 @@ export type Status = {
   proxy_reachable: boolean;
   egress?: string;
   egress_ip?: string;
+  egress_ipv4?: string;
+  egress_ipv6?: string;
   error?: string;
 };
 
@@ -38,6 +40,8 @@ export type RotateResult = {
 
 export const api = {
   status: () => invoke<Status>("status"),
+  statusIp: () => invoke<Status>("status_ip"),
+  appVersion: () => invoke<string>("app_version"),
   login: (token: string) => invoke<LoginResult>("login", { token }),
   connect: (globalProxy: boolean, fast: boolean) =>
     invoke<ActionResult>("connect", { globalProxy, fast }),

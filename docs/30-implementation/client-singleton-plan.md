@@ -11,9 +11,9 @@
 - 运行配置变化时，`start` 自动停止旧代理并启动新代理。
 - 如果本地端口被其它进程占用，`start` 报错，不再误判为自身已运行。
 
-但这还不是严格的系统级全局单例。下面按优先级列出后续实现项。
+2026-06-11 起，GUI 主程序已用 Windows 命名 Mutex 做应用级单例，重复打开第二个 `zhvpn-desktop.exe` 会直接退出；CLI 的同一实例操作也已补命名 Mutex。下面保留边界与后续增强项。
 
-## P0：同一实例并发 start 互斥
+## P0：同一实例并发 start 互斥（已完成）
 
 ### 问题
 
@@ -29,10 +29,10 @@
 
 Windows 侧使用命名 Mutex。
 
-建议命名：
+当前实现：
 
 ```text
-Local\ZonghengVPN-{sha256(ZHVPN_HOME)}
+Local\ZonghengVPN-{first 8 bytes of sha256(ZHVPN_HOME) as hex}
 ```
 
 原因：
@@ -45,7 +45,9 @@ Local\ZonghengVPN-{sha256(ZHVPN_HOME)}
 
 - `start`
 - `stop`
-- `login` 后如果未来支持自动重启，也要进入同一把锁
+- `login`
+- `import`
+- `logout`
 - 隐藏命令 `__engine` 不需要拿锁，它是被管理的后台进程
 
 ### 验收
@@ -200,8 +202,22 @@ P0 -> P1 -> P2 -> P3
 - P2 是产品语义收口。
 - P3 是高级能力边界，不急于限制。
 
+## GUI 主程序单例
+
+GUI 主程序单独使用一把固定的当前会话 Mutex：
+
+```text
+Local\ZonghengVPNDesktop
+```
+
+目标是防止用户重复双击打开多个窗口、多个托盘、多个状态轮询。第二个 GUI 进程发现 Mutex 已存在后直接退出；已有窗口保持运行。
+
 ## 当前结论
 
-当前版本已经解决“出口配置变化但旧进程仍连接旧出口”的问题。
+当前版本已经解决：
 
-下一步要把它从“默认场景单例”升级成“同一实例严格单例”，优先实现 P0 命名 Mutex。
+- 出口配置变化但旧进程仍连接旧出口的问题。
+- GUI 主程序重复打开的问题。
+- 同一 `ZHVPN_HOME` 下 `start/stop/login/import/logout` 并发进入临界区的问题。
+
+后续重点是 P1：PID 文件损坏、PID 复用、端口残留等极端状态下的更强自愈与防误杀。

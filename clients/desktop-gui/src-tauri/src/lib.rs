@@ -10,6 +10,56 @@ use tauri_plugin_shell::ShellExt;
 use tokio::sync::Mutex;
 
 static STATUS_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static INSTANCE_MUTEX: OnceLock<WindowsInstanceMutex> = OnceLock::new();
+
+#[cfg(windows)]
+struct WindowsInstanceMutex(winapi::shared::ntdef::HANDLE);
+
+#[cfg(windows)]
+unsafe impl Send for WindowsInstanceMutex {}
+#[cfg(windows)]
+unsafe impl Sync for WindowsInstanceMutex {}
+
+#[cfg(windows)]
+impl Drop for WindowsInstanceMutex {
+    fn drop(&mut self) {
+        unsafe {
+            winapi::um::handleapi::CloseHandle(self.0);
+        }
+    }
+}
+
+#[cfg(windows)]
+fn acquire_single_instance() -> bool {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use winapi::shared::winerror::ERROR_ALREADY_EXISTS;
+    use winapi::um::errhandlingapi::GetLastError;
+    use winapi::um::synchapi::CreateMutexW;
+
+    let name: Vec<u16> = OsStr::new("Local\\ZonghengVPNDesktop")
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    let handle = unsafe { CreateMutexW(std::ptr::null_mut(), 1, name.as_ptr()) };
+    if handle.is_null() {
+        return true;
+    }
+    let already_exists = unsafe { GetLastError() } == ERROR_ALREADY_EXISTS;
+    if already_exists {
+        unsafe {
+            winapi::um::handleapi::CloseHandle(handle);
+        }
+        return false;
+    }
+    let _ = INSTANCE_MUTEX.set(WindowsInstanceMutex(handle));
+    true
+}
+
+#[cfg(not(windows))]
+fn acquire_single_instance() -> bool {
+    true
+}
 
 // Run the bundled zhvpn sidecar and return (success, stdout, stderr).
 // All the hard parts (UAC elevation for --fast, detached engine, PID files)
@@ -70,7 +120,7 @@ fn connected_in(status: &Value) -> bool {
 }
 
 async fn enable_system_proxy_from_status(app: &AppHandle) -> Result<(), String> {
-    let (_ok, s_out, s_err) = sidecar(app, &["status", "--json"]).await?;
+    let (_ok, s_out, s_err) = sidecar(app, &["status", "--json", "--no-ip-check"]).await?;
     let v = parse_json(&s_out, &s_err)?;
     let (host, port) = v
         .get("proxy")
@@ -83,6 +133,12 @@ async fn enable_system_proxy_from_status(app: &AppHandle) -> Result<(), String> 
 // ---- shared action implementations (used by both #[command]s and the tray) ----
 
 async fn status_impl(app: &AppHandle) -> Result<Value, String> {
+    let _guard = STATUS_LOCK.get_or_init(|| Mutex::new(())).lock().await;
+    let (_ok, stdout, stderr) = sidecar(app, &["status", "--json", "--no-ip-check"]).await?;
+    parse_json(&stdout, &stderr)
+}
+
+async fn status_ip_impl(app: &AppHandle) -> Result<Value, String> {
     let _guard = STATUS_LOCK.get_or_init(|| Mutex::new(())).lock().await;
     let (_ok, stdout, stderr) = sidecar(app, &["status", "--json"]).await?;
     parse_json(&stdout, &stderr)
@@ -141,6 +197,16 @@ async fn status(app: AppHandle) -> Result<Value, String> {
 }
 
 #[tauri::command]
+async fn status_ip(app: AppHandle) -> Result<Value, String> {
+    status_ip_impl(&app).await
+}
+
+#[tauri::command]
+fn app_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
+#[tauri::command]
 async fn login(app: AppHandle, token: String) -> Result<Value, String> {
     login_impl(&app, &token).await
 }
@@ -175,6 +241,10 @@ fn show_main(app: &AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if !acquire_single_instance() {
+        return;
+    }
+
     // WebView 只加载打包进来的本地界面、所有功能走 Rust 命令，不发外部请求，
     // 因此不该走系统代理。连接后我们会把系统代理指向本地代理；若不强制 WebView
     // 绕过，它会把自己界面的请求也丢去走代理，代理处理不了内部域名 -> app 窗口里
@@ -186,7 +256,14 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
-            status, login, connect, disconnect, rotate_ip, logout
+            status,
+            status_ip,
+            app_version,
+            login,
+            connect,
+            disconnect,
+            rotate_ip,
+            logout
         ])
         .setup(|app| {
             // 托盘菜单（仿 Tailscale）：状态行 + 连接/断开/换IP + 打开/退出。

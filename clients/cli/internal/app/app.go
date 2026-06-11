@@ -45,22 +45,22 @@ func Run(args []string) error {
 		}
 		return proxy.KillPID(pid)
 	case "login":
-		return loginCmd(ctx, args[1:])
+		return withOperationLock(ctx, func() error { return loginCmd(ctx, args[1:]) })
 	case "import":
 		if len(args) != 2 {
 			return errors.New("用法：zhvpn.exe import <配置文件>")
 		}
-		return importConfig(ctx, args[1])
+		return withOperationLock(ctx, func() error { return importConfig(ctx, args[1]) })
 	case "start":
-		return start(ctx, args[1:])
+		return withOperationLock(ctx, func() error { return start(ctx, args[1:]) })
 	case "stop":
-		return stop(ctx)
+		return withOperationLock(ctx, func() error { return stop(ctx) })
 	case "status":
 		return status(ctx, args[1:])
 	case "rotate-ip":
 		return rotateIP(ctx, args[1:])
 	case "logout":
-		return logout(ctx, args[1:])
+		return withOperationLock(ctx, func() error { return logout(ctx, args[1:]) })
 	case "help", "-h", "--help":
 		printUsage()
 		return nil
@@ -112,6 +112,8 @@ type statusResult struct {
 	ProxyReachable bool   `json:"proxy_reachable"`
 	Egress         string `json:"egress,omitempty"`
 	EgressIP       string `json:"egress_ip,omitempty"`
+	EgressIPv4     string `json:"egress_ipv4,omitempty"`
+	EgressIPv6     string `json:"egress_ipv6,omitempty"`
 	Error          string `json:"error,omitempty"`
 }
 
@@ -143,6 +145,26 @@ func wantJSON(args []string) (bool, error) {
 		}
 	}
 	return jsonOut, nil
+}
+
+type statusOptions struct {
+	jsonOut bool
+	checkIP bool
+}
+
+func parseStatusOptions(args []string) (statusOptions, error) {
+	opts := statusOptions{checkIP: true}
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			opts.jsonOut = true
+		case "--no-ip-check":
+			opts.checkIP = false
+		default:
+			return opts, fmt.Errorf("未知参数：%s", arg)
+		}
+	}
+	return opts, nil
 }
 
 func hasFlag(args []string, flag string) bool {
@@ -439,14 +461,14 @@ func runtimeFingerprint(cfg config.Config, fast bool) string {
 }
 
 func status(ctx paths.Context, args []string) error {
-	jsonOut, err := wantJSON(args)
+	opts, err := parseStatusOptions(args)
 	if err != nil {
 		return err
 	}
 
 	cfg, err := loadInstalledConfig(ctx)
 	if err != nil {
-		if jsonOut {
+		if opts.jsonOut {
 			_ = printJSON(statusResult{Error: err.Error()})
 			return ErrSilent
 		}
@@ -456,7 +478,7 @@ func status(ctx paths.Context, args []string) error {
 	running, _ := proxy.IsRunning(ctx)
 	localReachable, _ := netcheck.TCP(cfg.LocalProxy.Addr(), netcheck.ShortTimeout)
 
-	if jsonOut {
+	if opts.jsonOut {
 		res := statusResult{
 			Running:        running || localReachable,
 			Proxy:          cfg.LocalProxy.Addr(),
@@ -464,8 +486,16 @@ func status(ctx paths.Context, args []string) error {
 			Egress:         cfg.Egress.CustomerName(),
 		}
 		if localReachable {
-			if ip, err := netcheck.PublicIPViaHTTPProxy(cfg.LocalProxy.Addr()); err == nil && ip != "" {
-				res.EgressIP = ip
+			if opts.checkIP {
+				if ips, err := netcheck.PublicIPsViaHTTPProxy(cfg.LocalProxy.Addr()); err == nil {
+					res.EgressIPv4 = ips.IPv4
+					res.EgressIPv6 = ips.IPv6
+					if ips.IPv6 != "" {
+						res.EgressIP = ips.IPv6
+					} else {
+						res.EgressIP = ips.IPv4
+					}
+				}
 			}
 		}
 		return printJSON(res)
@@ -480,10 +510,22 @@ func status(ctx paths.Context, args []string) error {
 	printBool(localReachable)
 	fmt.Printf("出口：%s\n", cfg.Egress.CustomerName())
 	if localReachable {
-		if ip, err := netcheck.PublicIPViaHTTPProxy(cfg.LocalProxy.Addr()); err == nil && ip != "" {
-			fmt.Printf("出口 IP：%s\n", ip)
+		if opts.checkIP {
+			if ips, err := netcheck.PublicIPsViaHTTPProxy(cfg.LocalProxy.Addr()); err == nil {
+				if ips.IPv6 != "" {
+					fmt.Printf("出口 IPv6：%s\n", ips.IPv6)
+				}
+				if ips.IPv4 != "" {
+					fmt.Printf("出口 IPv4：%s\n", ips.IPv4)
+				}
+				if ips.IPv4 == "" && ips.IPv6 == "" {
+					fmt.Println("出口 IP：获取失败")
+				}
+			} else {
+				fmt.Println("出口 IP：获取失败")
+			}
 		} else {
-			fmt.Println("出口 IP：获取失败")
+			fmt.Println("出口 IP：未探测")
 		}
 	} else {
 		fmt.Println("出口 IP：未连接")

@@ -12,17 +12,56 @@
   let errMsg = $state("");
   let info = $state("");
   let status = $state<Status | null>(null);
+  let appVersion = $state("0.4.4");
+  let lastIPv4 = $state("");
+  let lastIPv6 = $state("");
+  let ipRefreshing = $state(false);
+  let lastIPRefreshAt = 0;
   let poll: ReturnType<typeof setInterval> | undefined;
   let refreshing = false;
 
   const connected = $derived(!!status && (status.running || status.proxy_reachable));
+  const IP_REFRESH_INTERVAL_MS = 60_000;
 
   function loadLastToken() {
     const saved = localStorage.getItem(LAST_TOKEN_KEY);
     if (saved && !token.trim()) token = saved;
   }
 
-  async function refresh() {
+  function isConnected(s: Status | null) {
+    return !!s && (s.running || s.proxy_reachable);
+  }
+
+  function rememberIPs(s: Status) {
+    if (s.egress_ipv4) lastIPv4 = s.egress_ipv4;
+    if (s.egress_ipv6) lastIPv6 = s.egress_ipv6;
+    if (!s.egress_ipv4 && !s.egress_ipv6 && s.egress_ip) {
+      if (s.egress_ip.includes(":")) lastIPv6 = s.egress_ip;
+      else lastIPv4 = s.egress_ip;
+    }
+  }
+
+  async function refreshIp(force = false) {
+    if (ipRefreshing || !isConnected(status)) return;
+    const now = Date.now();
+    if (!force && now - lastIPRefreshAt < IP_REFRESH_INTERVAL_MS) return;
+    ipRefreshing = true;
+    try {
+      const s = await api.statusIp();
+      if (isConnected(s)) {
+        status = { ...(status ?? s), ...s };
+        rememberIPs(s);
+      }
+    } catch (e) {
+      // Keep the last known IPs; public-IP probes are observational and may
+      // fail even while the proxy data path is healthy.
+    } finally {
+      lastIPRefreshAt = Date.now();
+      ipRefreshing = false;
+    }
+  }
+
+  async function refresh(forceIp = false) {
     if (refreshing) return;
     refreshing = true;
     try {
@@ -30,6 +69,13 @@
       status = s;
       view = s.error && s.error.includes("未找到配置") ? "login" : "main";
       if (view === "login") loadLastToken();
+      if (!isConnected(s)) {
+        lastIPv4 = "";
+        lastIPv6 = "";
+        lastIPRefreshAt = 0;
+      } else {
+        void refreshIp(forceIp);
+      }
     } catch (e) {
       errMsg = String(e);
     } finally {
@@ -47,7 +93,7 @@
       if (r.ok) {
         localStorage.setItem(LAST_TOKEN_KEY, trimmed);
         token = "";
-        await refresh();
+        await refresh(true);
       } else {
         errMsg = r.error ?? "登录失败";
       }
@@ -66,7 +112,7 @@
       const r = connected ? await api.disconnect() : await api.connect(globalProxy, fastMode);
       if (!r.ok) errMsg = r.message || "操作失败";
       else if (r.warning) errMsg = r.warning;
-      await refresh();
+      await refresh(!connected);
     } catch (e) {
       errMsg = String(e);
     } finally {
@@ -82,7 +128,8 @@
       const r = await api.rotateIp();
       if (r.ok) info = `已换 IP：${r.before ?? "?"} → ${r.after ?? "?"}`;
       else errMsg = r.error || "换 IP 失败";
-      await refresh();
+      lastIPRefreshAt = 0;
+      await refresh(true);
     } catch (e) {
       errMsg = String(e);
     } finally {
@@ -106,7 +153,8 @@
 
   onMount(() => {
     loadLastToken();
-    refresh();
+    api.appVersion().then((v) => (appVersion = v)).catch(() => {});
+    refresh(true);
     poll = setInterval(() => {
       if (view === "main" && !busy) refresh();
     }, 5000);
@@ -159,8 +207,10 @@
       <dl class="info">
         <dt>出口</dt>
         <dd>{status?.egress ?? "—"}</dd>
-        <dt>出口 IP</dt>
-        <dd>{status?.egress_ip ?? (connected ? "获取中…" : "—")}</dd>
+        <dt>出口 IPv6</dt>
+        <dd>{lastIPv6 || (connected && ipRefreshing ? "获取中…" : "—")}</dd>
+        <dt>出口 IPv4</dt>
+        <dd>{lastIPv4 || (connected && ipRefreshing ? "获取中…" : "—")}</dd>
         <dt>本地代理</dt>
         <dd>{status?.proxy ?? "—"}</dd>
       </dl>
@@ -170,6 +220,7 @@
       {/if}
     </section>
     <button class="link" onclick={logout} disabled={busy}>登出</button>
+    <p class="version">v{appVersion}</p>
   {/if}
 
   {#if info}
@@ -342,5 +393,11 @@
     .mode-option {
       color: #9ca3af;
     }
+  }
+  .version {
+    color: #9ca3af;
+    font-size: 11px;
+    text-align: center;
+    margin: -8px 0 0;
   }
 </style>

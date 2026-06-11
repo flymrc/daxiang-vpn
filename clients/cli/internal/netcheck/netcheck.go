@@ -13,6 +13,11 @@ import (
 
 const ShortTimeout = 3 * time.Second
 
+type PublicIPs struct {
+	IPv4 string
+	IPv6 string
+}
+
 func TCP(addr string, timeout time.Duration) (bool, error) {
 	conn, err := net.DialTimeout("tcp", addr, timeout)
 	if err != nil {
@@ -23,28 +28,61 @@ func TCP(addr string, timeout time.Duration) (bool, error) {
 }
 
 func PublicIPViaHTTPProxy(proxyAddr string) (string, error) {
-	proxyURL, err := url.Parse("http://" + proxyAddr)
+	ips, err := PublicIPsViaHTTPProxy(proxyAddr)
 	if err != nil {
 		return "", err
 	}
+	if ips.IPv6 != "" {
+		return ips.IPv6, nil
+	}
+	if ips.IPv4 != "" {
+		return ips.IPv4, nil
+	}
+	return "", errors.New("public ip endpoints returned no ip")
+}
 
-	endpoints := []string{
+func PublicIPsViaHTTPProxy(proxyAddr string) (PublicIPs, error) {
+	proxyURL, err := url.Parse("http://" + proxyAddr)
+	if err != nil {
+		return PublicIPs{}, err
+	}
+
+	v6Endpoints := []string{
+		"https://api6.ipify.org",
 		"https://api64.ipify.org",
 		"https://ifconfig.me/ip",
+	}
+	v4Endpoints := []string{
 		"https://api.ipify.org",
+		"https://ipv4.icanhazip.com",
 	}
 
 	var errs []error
-	for _, endpoint := range endpoints {
+	var result PublicIPs
+	for _, endpoint := range v6Endpoints {
 		ip, err := publicIPViaHTTPProxyEndpoint(proxyURL, endpoint)
-		if err == nil && ip != "" {
-			return ip, nil
+		if err == nil && ip != "" && strings.Contains(ip, ":") {
+			result.IPv6 = ip
+			break
 		}
 		if err != nil {
 			errs = append(errs, err)
 		}
 	}
-	return "", errors.Join(errs...)
+	for _, endpoint := range v4Endpoints {
+		ip, err := publicIPViaHTTPProxyEndpoint(proxyURL, endpoint)
+		if err == nil && ip != "" && strings.Contains(ip, ".") {
+			result.IPv4 = ip
+			break
+		}
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if result.IPv4 != "" || result.IPv6 != "" {
+		return result, nil
+	}
+	return PublicIPs{}, errors.Join(errs...)
 }
 
 func publicIPViaHTTPProxyEndpoint(proxyURL *url.URL, endpoint string) (string, error) {
