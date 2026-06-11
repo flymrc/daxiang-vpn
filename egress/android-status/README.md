@@ -1,6 +1,6 @@
-# Daxiang Android Status
+# Zongheng Android Status
 
-Minimal native Android app for checking the rooted `dxreverse` process on the phone.
+Minimal native Android app for checking the rooted `zhreverse` process on the phone.
 
 ## Features
 
@@ -8,7 +8,7 @@ Minimal native Android app for checking the rooted `dxreverse` process on the ph
 - Simple native status screen.
 - Reads live status through `su`:
   - root availability
-  - `dxreverse` PID
+  - `zhreverse` PID
   - cellular/default route
   - `10.66.0.101` control-plane address
   - active reverse tunnel sockets
@@ -33,8 +33,8 @@ Install:
 ```powershell
 $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 & $adb install -r app\build\outputs\apk\debug\app-debug.apk
-& $adb shell "pm grant dev.daxiang.dxandroidstatus android.permission.POST_NOTIFICATIONS"
-& $adb shell "am start -n dev.daxiang.dxandroidstatus/.MainActivity"
+& $adb shell "pm grant dev.zongheng.zhandroidstatus android.permission.POST_NOTIFICATIONS"
+& $adb shell "am start -n dev.zongheng.zhandroidstatus/.MainActivity"
 ```
 
-The app is intentionally a status surface only. The actual network service is owned by Magisk and `/data/adb/service.d/99-dxreverse-egress.sh`.
+The app is intentionally a status surface only. The actual network service is owned by Magisk and `/data/adb/service.d/99-zhreverse-egress.sh`.

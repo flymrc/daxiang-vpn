@@ -2,7 +2,7 @@
 
 ## 背景
 
-在 `dxreverse` 数据面稳定后,继续调查 Android 设备更底层的蜂窝优化空间,重点看是否能通过 root/ADB 尝试频段、小区、网络制式等无线侧变量。
+在 `zhreverse` 数据面稳定后,继续调查 Android 设备更底层的蜂窝优化空间,重点看是否能通过 root/ADB 尝试频段、小区、网络制式等无线侧变量。
 
 ## 只读发现
 
@@ -82,7 +82,7 @@ cmd phone set-allowed-network-types-for-users -s 0 11001111101111111111
 
 ## 数据面传输试验
 
-频段侧没有低风险收益后,继续验证“移动网底层路径”对 `dxreverse` 的影响:
+频段侧没有低风险收益后,继续验证“移动网底层路径”对 `zhreverse` 的影响:
 
 - Android 直连强制 IPv4 到 Cloudflare 2MB 出现超时,强制 IPv6 可通但速度波动。
 - 尝试 Hub `resolve: client` + Android `address_family: ipv6`,未提升稳定性,2MB 平均约 `2.21 Mbps` 且仍有失败。
@@ -92,8 +92,8 @@ cmd phone set-allowed-network-types-for-users -s 0 11001111101111111111
 
 线上最终保留:
 
-- Hub `/etc/daxiang/dxreverse/server.yaml`: `transport: tcp`, `resolve: server`。
-- Android `/data/adb/dxreverse/client.yaml`: `transport: tcp`, `connections: 1`, `address_family: auto`。
+- Hub `/etc/zongheng/zhreverse/server.yaml`: `transport: tcp`, `resolve: server`。
+- Android `/data/adb/zhreverse/client.yaml`: `transport: tcp`, `connections: 1`, `address_family: auto`。
 - Hub UFW 新增 `39093/tcp`,保留 `39093/udp` 作为 QUIC 回滚入口。
 - Hub 新增持久化 QUIC cert/key,Android config 保留 `server_cert_sha256` 供 QUIC 回滚。
 

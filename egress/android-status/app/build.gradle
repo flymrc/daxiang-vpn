@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace "dev.daxiang.dxandroidstatus"
+    namespace "dev.zongheng.zhandroidstatus"
     compileSdk 35
 
     defaultConfig {
-        applicationId "dev.daxiang.dxandroidstatus"
+        applicationId "dev.zongheng.zhandroidstatus"
         minSdk 26
         targetSdk 35
         versionCode 1

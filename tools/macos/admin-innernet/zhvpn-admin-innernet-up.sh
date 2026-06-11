@@ -2,10 +2,10 @@
 set -eu
 
 PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
-CONF="${DXVPN_ADMIN_INNERNET_CONF:-/usr/local/etc/dxvpn/wireguard/admin-innernet.conf}"
-LOG="${DXVPN_ADMIN_INNERNET_LOG:-/usr/local/var/log/dxvpn/admin-innernet.log}"
-IP="${DXVPN_ADMIN_INNERNET_IP:-10.66.0.40}"
-MAC_EGRESS_IP="${DXVPN_MAC_EGRESS_IP:-10.66.0.100}"
+CONF="${ZHVPN_ADMIN_INNERNET_CONF:-/usr/local/etc/zhvpn/wireguard/admin-innernet.conf}"
+LOG="${ZHVPN_ADMIN_INNERNET_LOG:-/usr/local/var/log/zhvpn/admin-innernet.log}"
+IP="${ZHVPN_ADMIN_INNERNET_IP:-10.66.0.40}"
+MAC_EGRESS_IP="${ZHVPN_MAC_EGRESS_IP:-10.66.0.100}"
 
 mkdir -p "$(dirname "$LOG")"
 

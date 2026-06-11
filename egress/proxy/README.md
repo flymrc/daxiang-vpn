@@ -11,9 +11,9 @@
 
 ```bash
 # Mac 出口(预留)
-GOOS=darwin GOARCH=arm64 go build -tags with_gvisor -o dist/dxegress-macos   ./egress/proxy
+GOOS=darwin GOARCH=arm64 go build -tags with_gvisor -o dist/zhegress-macos   ./egress/proxy
 # Windows 出口(预留)
-GOOS=windows GOARCH=amd64 go build -tags with_gvisor -o dist/dxegress-win.exe ./egress/proxy
+GOOS=windows GOARCH=amd64 go build -tags with_gvisor -o dist/zhegress-win.exe ./egress/proxy
 ```
 
 > 配置示例见 [docs/20-operations/configs/egress/](../../docs/20-operations/configs/egress/)。

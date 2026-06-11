@@ -14,11 +14,11 @@ import (
 	"strings"
 	"time"
 
-	"daxiang-vpn/clients/cli/internal/bootstrap"
-	"daxiang-vpn/clients/cli/internal/netcheck"
-	"daxiang-vpn/shared/config"
-	"daxiang-vpn/shared/paths"
-	"daxiang-vpn/shared/proxy"
+	"zongheng-vpn/clients/cli/internal/bootstrap"
+	"zongheng-vpn/clients/cli/internal/netcheck"
+	"zongheng-vpn/shared/config"
+	"zongheng-vpn/shared/paths"
+	"zongheng-vpn/shared/proxy"
 )
 
 func Run(args []string) error {
@@ -48,7 +48,7 @@ func Run(args []string) error {
 		return loginCmd(ctx, args[1:])
 	case "import":
 		if len(args) != 2 {
-			return errors.New("用法：dxvpn.exe import <配置文件>")
+			return errors.New("用法：zhvpn.exe import <配置文件>")
 		}
 		return importConfig(ctx, args[1])
 	case "start":
@@ -70,20 +70,20 @@ func Run(args []string) error {
 }
 
 func printUsage() {
-	fmt.Println(`大象 VPN CLI
+	fmt.Println(`纵横 VPN CLI
 
 用法：
-  dxvpn.exe login <授权码>
-  dxvpn.exe start [--port <端口>] [--fast]
-  dxvpn.exe status
-  dxvpn.exe rotate-ip [--down-seconds <秒>] [--wait-seconds <秒>]
-  dxvpn.exe stop
-  dxvpn.exe logout
-  dxvpn.exe help
+  zhvpn.exe login <授权码>
+  zhvpn.exe start [--port <端口>] [--fast]
+  zhvpn.exe status
+  zhvpn.exe rotate-ip [--down-seconds <秒>] [--wait-seconds <秒>]
+  zhvpn.exe stop
+  zhvpn.exe logout
+  zhvpn.exe help
 
 本地代理端口默认 7890，可临时指定其它端口：
-  dxvpn.exe start --port 7891
-也可用环境变量 DXVPN_LOCAL_PORT 指定（--port 优先）。
+  zhvpn.exe start --port 7891
+也可用环境变量 ZHVPN_LOCAL_PORT 指定（--port 优先）。
 
 --fast：高性能模式，使用系统网络栈（延迟更低、速度更快），
         需要管理员权限，启动时会弹出 UAC 授权窗口。
@@ -160,7 +160,7 @@ type startOptions struct {
 }
 
 // parseStartOptions parses the `start` flags.
-// Port precedence: --port flag > DXVPN_LOCAL_PORT env > 0 (use Hub/config value).
+// Port precedence: --port flag > ZHVPN_LOCAL_PORT env > 0 (use Hub/config value).
 func parseStartOptions(args []string) (startOptions, error) {
 	var opts startOptions
 	portText := ""
@@ -182,7 +182,7 @@ func parseStartOptions(args []string) (startOptions, error) {
 		}
 	}
 	if portText == "" {
-		portText = strings.TrimSpace(os.Getenv("DXVPN_LOCAL_PORT"))
+		portText = strings.TrimSpace(os.Getenv("ZHVPN_LOCAL_PORT"))
 	}
 	if portText != "" {
 		port, err := strconv.Atoi(portText)
@@ -216,7 +216,7 @@ func loginCmd(ctx paths.Context, args []string) error {
 		positional = append(positional, arg)
 	}
 	if len(positional) != 1 {
-		return errors.New("用法：dxvpn.exe login <授权码> [--json]")
+		return errors.New("用法：zhvpn.exe login <授权码> [--json]")
 	}
 	return login(ctx, positional[0], jsonOut)
 }
@@ -299,7 +299,7 @@ func loadInstalledConfig(ctx paths.Context) (config.Config, error) {
 	cfg, err := config.Load(ctx.ConfigPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return config.Config{}, errors.New("未找到配置，请先执行 dxvpn.exe login <授权码>")
+			return config.Config{}, errors.New("未找到配置，请先执行 zhvpn.exe login <授权码>")
 		}
 		return config.Config{}, err
 	}
@@ -678,7 +678,7 @@ func rotateIP(ctx paths.Context, args []string) error {
 	}
 	fmt.Printf("换 IP 后出口：%s\n", after)
 	if after == unavailableIP {
-		fmt.Println("提示：出口可能还没恢复，过几秒再执行 dxvpn.exe status，或加大 --wait-seconds。")
+		fmt.Println("提示：出口可能还没恢复，过几秒再执行 zhvpn.exe status，或加大 --wait-seconds。")
 	}
 	return nil
 }
@@ -711,14 +711,14 @@ func performRotate(cfg config.Config, opts rotateIPOptions, quiet bool) (string,
 	if opts.jumpHost == "" {
 		controlAddr := net.JoinHostPort(opts.phone, strconv.Itoa(opts.port))
 		if reachable, _ := netcheck.TCP(controlAddr, 3*time.Second); !reachable {
-			return before, "", fmt.Errorf("Android 控制面 %s 不可达。普通 dxvpn.exe start 是用户态代理模式，不会给 Windows 系统添加 10.66.0.0/24 路由；请使用 --jump root@36.50.84.68，或先用 dxvpn.exe start --fast / 管理内网 WireGuard 提供系统路由", controlAddr)
+			return before, "", fmt.Errorf("Android 控制面 %s 不可达。普通 zhvpn.exe start 是用户态代理模式，不会给 Windows 系统添加 10.66.0.0/24 路由；请使用 --jump root@36.50.84.68，或先用 zhvpn.exe start --fast / 管理内网 WireGuard 提供系统路由", controlAddr)
 		}
 	}
 	if !quiet {
 		fmt.Printf("触发 Android rotate-ip（断网 %ds）...\n", opts.downSeconds)
 	}
 
-	remote := fmt.Sprintf("sh /data/adb/dxandroid/rotate-ip.sh %d", opts.downSeconds)
+	remote := fmt.Sprintf("sh /data/adb/zhandroid/rotate-ip.sh %d", opts.downSeconds)
 	sshArgs := []string{
 		"-i", opts.keyPath,
 		"-p", strconv.Itoa(opts.port),
@@ -816,13 +816,13 @@ func defaultAndroidControlKeyPath() string {
 	if err != nil || home == "" {
 		return ""
 	}
-	for _, name := range []string{"dxandroid_control", "dxandroid_control_local"} {
+	for _, name := range []string{"zhandroid_control", "zhandroid_control_local"} {
 		path := filepath.Join(home, ".ssh", name)
 		if _, err := os.Stat(path); err == nil {
 			return path
 		}
 	}
-	return filepath.Join(home, ".ssh", "dxandroid_control")
+	return filepath.Join(home, ".ssh", "zhandroid_control")
 }
 
 func expandHome(path string) string {

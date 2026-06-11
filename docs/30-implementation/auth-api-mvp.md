@@ -2,12 +2,12 @@
 
 ## 目标
 
-第一版先解决一个问题：客户不能拿到 `dxvpn.exe` 后随便输入授权码就使用出口。
+第一版先解决一个问题：客户不能拿到 `zhvpn.exe` 后随便输入授权码就使用出口。
 
 现在流程改为：
 
 ```text
-dxvpn.exe login <授权码>
+zhvpn.exe login <授权码>
 -> 请求 Hub 授权 API
 -> Hub 校验 tokens.yaml
 -> 校验通过后返回运行配置
@@ -57,7 +57,7 @@ POST /api/client/bootstrap
 
 ```json
 {
-  "token": "DX-JP-TEST-001"
+  "token": "ZH-JP-TEST-001"
 }
 ```
 

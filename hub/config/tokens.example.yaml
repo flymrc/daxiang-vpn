@@ -1,5 +1,5 @@
 tokens:
-  DX-JP-TEST-001:
+  ZH-JP-TEST-001:
     enabled: true
     client_name: cn-client-01
     expires_at: 2026-07-01

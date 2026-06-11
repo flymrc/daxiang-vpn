@@ -14,7 +14,7 @@
 | Peer name | `admin-innernet` |
 | WireGuard IP | `10.66.0.40/32` |
 | Client config | `local/wireguard/admin-innernet.conf` |
-| Installed config | `~/.dxvpn/wireguard/admin-innernet.conf` |
+| Installed config | `~/.zhvpn/wireguard/admin-innernet.conf` |
 | Template | `docs/20-operations/configs/client/admin-innernet.conf.example` |
 
 真实配置含私钥,放在仓库本机私有目录 `local/wireguard/`,该目录已被 `.gitignore` 忽略。
@@ -27,16 +27,16 @@
 
 | 项 | 路径 |
 | --- | --- |
-| App binary | `local/apps/DaxiangInnernetStatus` |
-| LaunchAgent | `~/Library/LaunchAgents/com.daxiang.dxvpn.innernet-status.plist` |
-| Helper scripts | `~/.dxvpn/bin/dxvpn-admin-innernet-*.sh` |
+| App binary | `local/apps/ZonghengInnernetStatus` |
+| LaunchAgent | `~/Library/LaunchAgents/com.zongheng.zhvpn.innernet-status.plist` |
+| Helper scripts | `~/.zhvpn/bin/zhvpn-admin-innernet-*.sh` |
 
 启动/停止状态栏:
 
 ```bash
-launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.daxiang.dxvpn.innernet-status.plist
-launchctl kickstart -k "gui/$(id -u)/com.daxiang.dxvpn.innernet-status"
-launchctl bootout "gui/$(id -u)" ~/Library/LaunchAgents/com.daxiang.dxvpn.innernet-status.plist
+launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.zongheng.zhvpn.innernet-status.plist
+launchctl kickstart -k "gui/$(id -u)/com.zongheng.zhvpn.innernet-status"
+launchctl bootout "gui/$(id -u)" ~/Library/LaunchAgents/com.zongheng.zhvpn.innernet-status.plist
 ```
 
 状态栏菜单提供:
@@ -72,7 +72,7 @@ AllowedIPs = 0.0.0.0/0
 ping 10.66.0.1
 ping 10.66.0.100
 ping 10.66.0.101
-ssh -i ~/.ssh/dxandroid_control_local -p 2022 root@10.66.0.101 id
+ssh -i ~/.ssh/zhandroid_control_local -p 2022 root@10.66.0.101 id
 ```
 
 不应改变普通公网出口 IP。

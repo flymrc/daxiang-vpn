@@ -4,13 +4,13 @@
 
 GUI 连接后经常出现卡顿和断线感，排查时提出两个风险：
 
-- 本机是否同时启动了多个 `dxvpn` 客户端或状态查询进程。
+- 本机是否同时启动了多个 `zhvpn` 客户端或状态查询进程。
 - 同一个客户端 token 是否可能在不同地方登录，导致同一个 WireGuard peer 被不同 endpoint 来回抢占。
 
 ## 排查结论
 
-- 本机长期运行形态是一个 `dxvpn-desktop.exe` 加一个 `dxvpn.exe __engine`，监听 `127.0.0.1:7890`。
-- 曾看到多个短暂或滞留的 `dxvpn.exe status --json` 子进程，来源是 GUI 主窗口和托盘状态轮询可能重叠。
+- 本机长期运行形态是一个 `zhvpn-desktop.exe` 加一个 `zhvpn.exe __engine`，监听 `127.0.0.1:7890`。
+- 曾看到多个短暂或滞留的 `zhvpn.exe status --json` 子进程，来源是 GUI 主窗口和托盘状态轮询可能重叠。
 - Hub 上 `10.66.0.30` 的 endpoint 公网 IP 等于本机直连公网 IP，因此这次没有证据证明 token 正在异地使用。
 - Hub token 配置中未发现重复 WireGuard 地址。
 
@@ -18,9 +18,9 @@ GUI 连接后经常出现卡顿和断线感，排查时提出两个风险：
 
 - 桌面 GUI：
   - 前端 `refresh()` 增加进行中保护，跳过重叠刷新。
-  - Rust 后端 `status_impl` 增加全局 async mutex，串行化所有 `dxvpn status --json` sidecar 调用。
+  - Rust 后端 `status_impl` 增加全局 async mutex，串行化所有 `zhvpn status --json` sidecar 调用。
 - Hub 授权 API：
-  - `/api/client/bootstrap` 增加 token 来源租约，默认 `DXHUB_TOKEN_LEASE_SECONDS=30`。
+  - `/api/client/bootstrap` 增加 token 来源租约，默认 `ZHHUB_TOKEN_LEASE_SECONDS=30`。
   - 同 token 同来源会刷新租约；同 token 不同公网来源在租约内返回 `409 {"error":"token_in_use"}`。
   - 来源识别只信任本机或内网反代传入的 `X-Forwarded-For`，公网直连客户端无法伪造 XFF 绕过租约。
 - CLI：
@@ -32,12 +32,12 @@ GUI 连接后经常出现卡顿和断线感，排查时提出两个风险：
 - `npm run build` 通过。
 - `cargo fmt --manifest-path .\clients\desktop-gui\src-tauri\Cargo.toml` 通过。
 - `cargo check --manifest-path .\clients\desktop-gui\src-tauri\Cargo.toml` 通过。
-- Hub 新版 `dxhub` 已部署并重启，`dxhub.service` active。
+- Hub 新版 `zhhub` 已部署并重启，`zhhub.service` active。
 - 线上 token 租约验证通过：
   - 本机先正常 bootstrap 后，从 Hub 本机以可信 `X-Forwarded-For: 203.0.113.200` 模拟异地来源，返回 `409 {"error":"token_in_use"}`。
   - 从公网直连 Hub 时伪造同一个 XFF，Hub 忽略该头并按真实 TCP 来源处理，返回 `200`。
-- GUI 安装包已用临时 `CARGO_TARGET_DIR` 打出，避免覆盖当前正在运行的 release 程序：`clients/desktop-gui/src-tauri/target-build-tmp/release/bundle/nsis/大象 VPN_0.1.0_x64-setup.exe`。
-- 当前本机 `dxvpn status --json` 可返回 Android 手机卡出口 IP。
+- GUI 安装包已用临时 `CARGO_TARGET_DIR` 打出，避免覆盖当前正在运行的 release 程序：`clients/desktop-gui/src-tauri/target-build-tmp/release/bundle/nsis/纵横 VPN_0.1.0_x64-setup.exe`。
+- 当前本机 `zhvpn status --json` 可返回 Android 手机卡出口 IP。
 
 ## 后续
 
@@ -53,7 +53,7 @@ GUI 连接后经常出现卡顿和断线感，排查时提出两个风险：
 - 版本号同步到 `0.3.0`：`package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`、`tauri.conf.json`。
 - `clients/desktop-gui/build.ps1` 增加 `-Target amd64|arm64|host` 参数，默认 `amd64`，并显式执行 `tauri build --target x86_64-pc-windows-msvc`。
 - `clients/desktop-gui/README.md` 同步打包命令为 `./build.ps1 -Target amd64`。
-- 已重新生成客户包：`dist/windows-amd64/大象 VPN_0.3.0_x64-setup.exe`。
+- 已重新生成客户包：`dist/windows-amd64/纵横 VPN_0.3.0_x64-setup.exe`。
 - PE header 校验通过：
-  - `dxvpn-desktop.exe` machine `0x8664`，`x64/amd64`。
-  - `dxvpn.exe` machine `0x8664`，`x64/amd64`。
+  - `zhvpn-desktop.exe` machine `0x8664`，`x64/amd64`。
+  - `zhvpn.exe` machine `0x8664`，`x64/amd64`。

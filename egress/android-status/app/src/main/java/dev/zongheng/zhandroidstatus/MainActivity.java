@@ -1,4 +1,4 @@
-package dev.daxiang.dxandroidstatus;
+package dev.zongheng.zhandroidstatus;
 
 import android.Manifest;
 import android.app.Activity;
@@ -64,7 +64,7 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(0xFFF8FAF9);
 
         TextView title = new TextView(this);
-        title.setText("Daxiang VPN 出口");
+        title.setText("Zongheng VPN 出口");
         title.setTextSize(24);
         title.setTextColor(0xFF10201D);
         title.setGravity(Gravity.START);

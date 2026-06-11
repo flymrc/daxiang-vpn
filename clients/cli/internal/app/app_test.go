@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"daxiang-vpn/shared/config"
+	"zongheng-vpn/shared/config"
 )
 
 func TestParseRotateIPOptionsUsesConfigDefaults(t *testing.T) {

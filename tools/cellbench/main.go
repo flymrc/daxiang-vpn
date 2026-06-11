@@ -1,5 +1,5 @@
 // cellbench: minimal cellular path benchmark for the Android egress phone.
-// Runs as a static linux/arm64 binary from a Magisk root shell, like dxreverse.
+// Runs as a static linux/arm64 binary from a Magisk root shell, like zhreverse.
 //
 //	cellbench rtt  <host:port> <rounds>
 //	cellbench down <url> [stallTimeoutSec]

@@ -1,28 +1,28 @@
 #!/system/bin/sh
 # Magisk service.d entry for the production Android reverse egress data plane.
-# Deploy to /data/adb/service.d/99-dxreverse-egress.sh and chmod 700.
+# Deploy to /data/adb/service.d/99-zhreverse-egress.sh and chmod 700.
 
-BASE=${DXREVERSE_HOME:-/data/adb/dxreverse}
-BIN=${DXREVERSE_BIN:-$BASE/bin/dxreverse}
-CONFIG=${DXREVERSE_CONFIG:-$BASE/client.yaml}
-LOG=${DXREVERSE_LOG:-/data/local/tmp/dxreverse-egress.log}
-RESTART_DELAY=${DXREVERSE_RESTART_DELAY:-5}
-DISABLE_WIFI=${DXREVERSE_DISABLE_WIFI:-1}
-TUNE_BUFFERS=${DXREVERSE_TUNE_BUFFERS:-1}
+BASE=${ZHREVERSE_HOME:-/data/adb/zhreverse}
+BIN=${ZHREVERSE_BIN:-$BASE/bin/zhreverse}
+CONFIG=${ZHREVERSE_CONFIG:-$BASE/client.yaml}
+LOG=${ZHREVERSE_LOG:-/data/local/tmp/zhreverse-egress.log}
+RESTART_DELAY=${ZHREVERSE_RESTART_DELAY:-5}
+DISABLE_WIFI=${ZHREVERSE_DISABLE_WIFI:-1}
+TUNE_BUFFERS=${ZHREVERSE_TUNE_BUFFERS:-1}
 
 log() {
     echo "$(date '+%F %T') $*" >> "$LOG"
 }
 
 stop_legacy() {
-    # Android 生产数据面只允许 dxreverse;旧 dxandroid-egress service 会被禁用。
-    for script in /data/adb/service.d/99-dxandroid-egress.sh /data/adb/service.d/99-dxandroid-egress.sh.disabled; do
-        if [ -f "$script" ] && [ "$script" = "/data/adb/service.d/99-dxandroid-egress.sh" ]; then
+    # Android 生产数据面只允许 zhreverse;旧 zhandroid-egress service 会被禁用。
+    for script in /data/adb/service.d/99-zhandroid-egress.sh /data/adb/service.d/99-zhandroid-egress.sh.disabled; do
+        if [ -f "$script" ] && [ "$script" = "/data/adb/service.d/99-zhandroid-egress.sh" ]; then
             mv "$script" "$script.disabled" 2>/dev/null || chmod 000 "$script" 2>/dev/null || true
             log "disabled legacy service $script"
         fi
     done
-    for pattern in '99-dxandroid-egress' 'dxandroid-egress'; do
+    for pattern in '99-zhandroid-egress' 'zhandroid-egress'; do
         pids=$(pgrep -f "$pattern" 2>/dev/null || true)
         if [ -n "$pids" ]; then
             kill $pids 2>/dev/null || true
@@ -56,7 +56,7 @@ prepare_android_network() {
     esac
 }
 
-log "dxreverse service.d supervisor starting"
+log "zhreverse service.d supervisor starting"
 prepare_android_network
 stop_legacy
 
@@ -71,9 +71,9 @@ while true; do
         sleep "$RESTART_DELAY"
         continue
     fi
-    log "starting dxreverse client config=$CONFIG"
+    log "starting zhreverse client config=$CONFIG"
     "$BIN" client --config "$CONFIG" >> "$LOG" 2>&1
     rc=$?
-    log "dxreverse client exited rc=$rc; restarting in ${RESTART_DELAY}s"
+    log "zhreverse client exited rc=$rc; restarting in ${RESTART_DELAY}s"
     sleep "$RESTART_DELAY"
 done

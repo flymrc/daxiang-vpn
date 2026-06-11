@@ -2,7 +2,7 @@
 
 ## 摘要
 
-今天完成了大象 VPN 的第二个日本出口节点：root Android 手机出口。
+今天完成了纵横 VPN 的第二个日本出口节点：root Android 手机出口。
 
 当前系统已经具备：
 
@@ -63,9 +63,9 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 - 代理地址：`10.66.0.101:1080`
 - 代理类型：mixed，支持 HTTP 和 SOCKS5
 - 当前验证出口 IP：`60.124.42.38`
-- 运行方式：`dxandroid-egress`
-- 当前运行目录：`/data/local/tmp/dxandroid-egress-work`
-- 自启动脚本：`/data/adb/service.d/99-dxandroid-egress.sh`
+- 运行方式：`zhandroid-egress`
+- 当前运行目录：`/data/local/tmp/zhandroid-egress-work`
+- 自启动脚本：`/data/adb/service.d/99-zhandroid-egress.sh`
 
 验证命令：
 
@@ -78,7 +78,7 @@ curl --socks5-hostname 10.66.0.101:1080 https://api.ipify.org
 手机端日志：
 
 ```powershell
-adb shell su -c "tail -100 /data/local/tmp/dxandroid-egress-work/egress.log"
+adb shell su -c "tail -100 /data/local/tmp/zhandroid-egress-work/egress.log"
 ```
 
 ## 今日完成事项
@@ -94,8 +94,8 @@ adb shell su -c "tail -100 /data/local/tmp/dxandroid-egress-work/egress.log"
    - `adb shell su -c id` 返回 `uid=0(root)`。
    - Magisk root 可用。
 4. 构建 Android arm64 出口节点程序：
-   - 本地构建产物：`dist/dxandroid-egress`
-   - 设备部署路径：`/data/local/tmp/dxandroid-egress`
+   - 本地构建产物：`dist/zhandroid-egress`
+   - 设备部署路径：`/data/local/tmp/zhandroid-egress`
 5. 配置 Hub 上的 Android peer：
    - 节点：`jp-android-01`
    - 地址：`10.66.0.101/32`
@@ -109,7 +109,7 @@ adb shell su -c "tail -100 /data/local/tmp/dxandroid-egress-work/egress.log"
    - Hub 可以访问 Android 代理。
    - HTTP 和 SOCKS5 代理均验证通过。
 8. 安装 Android 端 Magisk 自启动脚本：
-   - `/data/adb/service.d/99-dxandroid-egress.sh`
+   - `/data/adb/service.d/99-zhandroid-egress.sh`
 
 ## 关键踩坑与结论
 
@@ -182,7 +182,7 @@ adb shell su -c /data/local/tmp/script.sh
 
 本地 `hub/config/tokens.yaml` 中目前看到的实际 token：
 
-- `DX-JP-TEST-001`
+- `ZH-JP-TEST-001`
 
 该 token 当前绑定：
 
@@ -217,8 +217,8 @@ Hub 上还存在多个 WireGuard peer：
 
 已完成的最小优化：
 
-- `dxandroid-egress` 支持 `wireguard.mtu` 配置项。
-- `dxandroid-egress` 支持 `wireguard.workers` 配置项。
+- `zhandroid-egress` 支持 `wireguard.mtu` 配置项。
+- `zhandroid-egress` 支持 `wireguard.workers` 配置项。
 - 手机当前实验参数：`mtu: 1200`，`workers: 4`。
 - 重启后 Magisk service 能重新拉起 Android 出口。
 - 早期 embedded 模式下，Hub 曾为 Android peer 固化专用路由 MTU：
@@ -249,20 +249,20 @@ Hub 上还存在多个 WireGuard peer：
 
 ## Android WireGuard App external 模式验证
 
-已验证上午提出的第一个优化方向：用真实 WireGuard App 隧道替代 sing-box 内置 WireGuard endpoint，只让 `dxandroid-egress` 做代理。
+已验证上午提出的第一个优化方向：用真实 WireGuard App 隧道替代 sing-box 内置 WireGuard endpoint，只让 `zhandroid-egress` 做代理。
 
 变更：
 
 - 安装 WireGuard 官方 Android App。
 - 导入 `jp-android-01` 隧道。
-- 手机端 `dxandroid-egress` 配置切到 `wireguard.mode: external`。
-- `dxandroid-egress` 新版本在 external 模式下不再渲染 sing-box `wireguard` endpoint，只渲染 `10.66.0.101:1080` mixed 代理。
+- 手机端 `zhandroid-egress` 配置切到 `wireguard.mode: external`。
+- `zhandroid-egress` 新版本在 external 模式下不再渲染 sing-box `wireguard` endpoint，只渲染 `10.66.0.101:1080` mixed 代理。
 - Magisk service 脚本调整为 external 模式下不再添加旧的 `ip rule add to 10.66.0.0/24 lookup main pref 9999`。
 
 验证结果：
 
 - WireGuard App 创建 `tun0`，地址为 `10.66.0.101/24`。
-- `dxandroid-egress` 成功绑定 `10.66.0.101:1080`。
+- `zhandroid-egress` 成功绑定 `10.66.0.101:1080`。
 - Hub 快检全绿，出口 IP 为 `133.106.140.188`。
 - Rakuten 卡场景下，Hub 经 Android 出口 20MB 下载：
   - 3 轮平均约 `17.06 Mbps`，最小 `14.47 Mbps`，最大 `21.37 Mbps`。
@@ -289,7 +289,7 @@ Hub 上还存在多个 WireGuard peer：
 
 - 方案 1 已验证有效。
 - 问题主要不是手机信号本身，而是 sing-box 内置 WireGuard endpoint 在 Android 移动网络上的发包路径。
-- 短期可继续使用 WireGuard App + `dxandroid-egress` proxy-only 模式，Hub 侧当前推荐 `mtu 1120 / MSS 1080`。
+- 短期可继续使用 WireGuard App + `zhandroid-egress` proxy-only 模式，Hub 侧当前推荐 `mtu 1120 / MSS 1080`。
 - 后续若还要冲高速，再评估 Hysteria2 / TUIC / QUIC 或日本侧更近 Hub。
 
 ## 待办
@@ -309,7 +309,7 @@ Hub 上还存在多个 WireGuard peer：
    - 日志轮转。
    - 崩溃重启计数。
    - 电量、温度、网络类型采集。
-5. 修复 `dxandroid-egress` 的路由规则清理：
+5. 修复 `zhandroid-egress` 的路由规则清理：
    - 当前曾残留 `to 10.66.0.101/32 lookup main pref 9999`。
    - 启动脚本已临时清理，后续应在程序内处理。
 6. 完善文档中的当前状态：

@@ -24,7 +24,7 @@ ts() { date '+%F %T'; }
 # 告警钩子:替换成实际通知(webhook / 邮件 / 微信等)。
 alert() {
     echo "$(ts) ALERT: $*"
-    # 例:curl -fsS -m 10 -X POST "$DX_ALERT_WEBHOOK" -d "android-egress down: $*" || true
+    # 例:curl -fsS -m 10 -X POST "$ZH_ALERT_WEBHOOK" -d "android-egress down: $*" || true
 }
 
 peer=$(wg show "$WG" allowed-ips | awk -v ip="${ANDROID_IP}/32" '$2==ip{print $1}')

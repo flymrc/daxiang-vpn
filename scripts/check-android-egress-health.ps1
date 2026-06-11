@@ -49,7 +49,7 @@ $egressIP = ""
 $egressSource = ""
 $egressErrors = @()
 foreach ($url in $EgressIPUrls) {
-    $body = Join-Output (Invoke-Hub "curl -sS -m '$TimeoutSeconds' -x '$Proxy' '$url' 2>/tmp/dxreverse-health-curl.err || true; cat /tmp/dxreverse-health-curl.err >&2; rm -f /tmp/dxreverse-health-curl.err")
+    $body = Join-Output (Invoke-Hub "curl -sS -m '$TimeoutSeconds' -x '$Proxy' '$url' 2>/tmp/zhreverse-health-curl.err || true; cat /tmp/zhreverse-health-curl.err >&2; rm -f /tmp/zhreverse-health-curl.err")
     if ($body -match "^\d{1,3}(\.\d{1,3}){3}$") {
         $egressIP = $body
         $egressSource = $url

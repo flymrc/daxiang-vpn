@@ -1,6 +1,6 @@
 # 从 Windows 一键切换安卓出口的公网 IP。
 #
-# 实际换 IP 的逻辑在手机上的 /data/adb/dxandroid/rotate-ip.sh(飞行模式重注册);
+# 实际换 IP 的逻辑在手机上的 /data/adb/zhandroid/rotate-ip.sh(飞行模式重注册);
 # 本脚本只是经 SSH 远程触发它,并在前后打印出口公网 IP 方便对比。
 #
 # 前提:本机已在 WireGuard 隧道内(能直连 10.66.0.101)。
@@ -14,7 +14,7 @@ param(
     [int]$WaitSeconds = 30,       # 触发后等待无线电重注册 + 隧道恢复的秒数
     [string]$Phone = "10.66.0.101",
     [int]$Port = 2022,
-    [string]$Key = "$HOME\.ssh\dxandroid_control",
+    [string]$Key = "$HOME\.ssh\zhandroid_control",
     [string]$Proxy = "http://10.66.0.1:18081"
 )
 
@@ -36,7 +36,7 @@ function Get-EgressIP {
 Write-Host ("换 IP 前出口: {0}" -f (Get-EgressIP))
 
 Write-Host ("触发 rotate-ip(断网 {0}s,脱离会话执行)..." -f $DownSeconds)
-ssh @sshArgs "sh /data/adb/dxandroid/rotate-ip.sh $DownSeconds" 2>&1 | Out-Host
+ssh @sshArgs "sh /data/adb/zhandroid/rotate-ip.sh $DownSeconds" 2>&1 | Out-Host
 
 Write-Host ("等待 {0}s 让无线电重注册 + 隧道恢复..." -f $WaitSeconds)
 Start-Sleep -Seconds $WaitSeconds

@@ -2,10 +2,10 @@
 # 一览当前 SIM / 蜂窝状态:换卡或排查慢速时跑一次,快速看清
 #   "设置对不对" + "落在什么小区/信号质量如何" + "当前出口公网 IP"。
 #
-# 部署:/data/adb/dxandroid/sim-info.sh(root 运行)。
+# 部署:/data/adb/zhandroid/sim-info.sh(root 运行)。
 # 远程触发(Windows/隧道内):
-#   ssh -i ~/.ssh/dxandroid_control -p 2022 root@10.66.0.101 'sh /data/adb/dxandroid/sim-info.sh'
-# 或 ADB:  adb shell su -c 'sh /data/adb/dxandroid/sim-info.sh'
+#   ssh -i ~/.ssh/zhandroid_control -p 2022 root@10.66.0.101 'sh /data/adb/zhandroid/sim-info.sh'
+# 或 ADB:  adb shell su -c 'sh /data/adb/zhandroid/sim-info.sh'
 
 echo "===== 运营商 / 制式 ====="
 echo "operator   : $(getprop gsm.operator.alpha)"

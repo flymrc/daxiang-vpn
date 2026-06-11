@@ -1,9 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "大象 VPN",
-  "mainBinaryName": "dxvpn-desktop",
+  "productName": "纵横 VPN",
+  "mainBinaryName": "zhvpn-desktop",
   "version": "0.3.1",
-  "identifier": "com.daxiang.vpn",
+  "identifier": "com.zongheng.vpn",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
   "app": {
     "windows": [
       {
-        "title": "大象 VPN",
+        "title": "纵横 VPN",
         "width": 420,
         "height": 600,
         "resizable": true
@@ -26,12 +26,12 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "externalBin": ["binaries/dxvpn"],
-    "publisher": "大象 VPN",
-    "copyright": "© 2026 大象 VPN",
+    "externalBin": ["binaries/zhvpn"],
+    "publisher": "纵横 VPN",
+    "copyright": "© 2026 纵横 VPN",
     "category": "Utility",
-    "shortDescription": "大象 VPN 桌面客户端",
-    "longDescription": "大象 VPN 桌面客户端：一键连接日本住宅出口，自动配置系统代理。",
+    "shortDescription": "纵横 VPN 桌面客户端",
+    "longDescription": "纵横 VPN 桌面客户端：一键连接日本住宅出口，自动配置系统代理。",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

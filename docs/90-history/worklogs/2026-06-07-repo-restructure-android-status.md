@@ -16,13 +16,13 @@ clients/              终端用户客户端
 hub/                  Hub 授权 API
 
 egress/               出口节点
-  proxy/              跨平台 Go 出口代理，Android 当前使用 dxandroid-egress
+  proxy/              跨平台 Go 出口代理，Android 当前使用 zhandroid-egress
   android-status/     Android 出口状态 App
 
 shared/               客户端和出口共用 Go 包
 ```
 
-Go module 移到仓库根目录，module 名为 `daxiang-vpn`。
+Go module 移到仓库根目录，module 名为 `zongheng-vpn`。
 
 ## Android 出口保活探针
 
@@ -36,31 +36,31 @@ Go module 移到仓库根目录，module 名为 `daxiang-vpn`。
 
 - `egress/proxy/internal/egressproxy/singbox.go` 在 embedded/sing-box WireGuard 模式下渲染 `persistent_keepalive_interval: 25`。
 - 也就是 Android 出口到 Hub peer 的 WireGuard keepalive 周期为 25 秒。
-- 当前推荐的 `wireguard.mode: external` 不由 `dxandroid-egress` 渲染 WireGuard endpoint，保活由 WireGuard App/系统隧道配置负责。
+- 当前推荐的 `wireguard.mode: external` 不由 `zhandroid-egress` 渲染 WireGuard endpoint，保活由 WireGuard App/系统隧道配置负责。
 
 `egress/android-status` 仍是手机本机状态界面和前台通知，不等同于向 Hub 报活的保活探针。
 
 ## Android 出口远程控制方案
 
-最终采用自研 Go SSH 控制面 `dxandroid-control` 路线：在 Android 出口手机上通过 Magisk `service.d` 拉起 watchdog，watchdog 负责保证控制面只监听 WireGuard 内网 `10.66.0.101:2022`，并通过 SSH key 登录获得 root shell。
+最终采用自研 Go SSH 控制面 `zhandroid-control` 路线：在 Android 出口手机上通过 Magisk `service.d` 拉起 watchdog，watchdog 负责保证控制面只监听 WireGuard 内网 `10.66.0.101:2022`，并通过 SSH key 登录获得 root shell。
 
 配套文件在 `egress/android-control/`：
 
-- `service.d/98-dxandroid-control.sh`：开机拉起 watchdog。
-- `watchdog.sh`：保证 `dxandroid-control` 和 `dxandroid-egress` 在跑，必要时本地重拉。
+- `service.d/98-zhandroid-control.sh`：开机拉起 watchdog。
+- `watchdog.sh`：保证 `zhandroid-control` 和 `zhandroid-egress` 在跑，必要时本地重拉。
 - `authorized_keys.example`：真实公钥模板，真实 `authorized_keys` 不入库。
 
 连接方式：
 
 ```bash
-ssh -i ~/.ssh/dxandroid_control -p 2022 root@10.66.0.101
+ssh -i ~/.ssh/zhandroid_control -p 2022 root@10.66.0.101
 ```
 
 实测结果：
 
-- Windows 通过 `dxvpn.exe start --fast` 获得 `sing-tun` 接口 `10.66.0.30/24`。
+- Windows 通过 `zhvpn.exe start --fast` 获得 `sing-tun` 接口 `10.66.0.30/24`。
 - `Test-NetConnection 10.66.0.101 -Port 2022` 成功。
-- 使用 `~/.ssh/dxandroid_control` 直连 `root@10.66.0.101:2022` 成功，返回 `uid=0(root)`。
+- 使用 `~/.ssh/zhandroid_control` 直连 `root@10.66.0.101:2022` 成功，返回 `uid=0(root)`。
 
 ## 文档同步
 

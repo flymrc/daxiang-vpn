@@ -1,4 +1,4 @@
-# 大象 VPN 文档入口
+# 纵横 VPN 文档入口
 
 这份目录按“先理解现状，再看架构，再做运维”的顺序整理。
 
@@ -17,10 +17,10 @@ Hub: 36.50.84.68 / 10.66.0.1
   |
   +-- mac-mini       10.66.0.100:1080 -> 日本住宅出口
   |
-  +-- jp-android-01  dxreverse -> Hub/WG 10.66.0.1:18081 -> 日本手机卡出口
+  +-- jp-android-01  zhreverse -> Hub/WG 10.66.0.1:18081 -> 日本手机卡出口
 ```
 
-Mac 出口仍是远端 mixed 代理。Android 出口数据面已迁到 `dxreverse` 反向 TCP/yamux,客户端经 WireGuard 访问 Hub 侧 `10.66.0.1:18081`;旧 `10.66.0.101:1080` 路径已从生产入口拆除,只在历史记录中保留。
+Mac 出口仍是远端 mixed 代理。Android 出口数据面已迁到 `zhreverse` 反向 TCP/yamux,客户端经 WireGuard 访问 Hub 侧 `10.66.0.1:18081`;旧 `10.66.0.101:1080` 路径已从生产入口拆除,只在历史记录中保留。
 
 ## 目录说明
 
@@ -63,8 +63,8 @@ Mac 出口仍是远端 mixed 代理。Android 出口数据面已迁到 `dxrevers
 - [Android 出口极致加速研究](30-implementation/android-egress-performance-acceleration.md)
 - [Hub 授权 API MVP](30-implementation/auth-api-mvp.md)
 - [CLI MVP 实现](30-implementation/cli-mvp-implementation.md)
-- [dxvpn.exe 实现](30-implementation/dxvpn-exe-implementation.md)
-- [dxvpn.exe 本地单例实现计划](30-implementation/client-singleton-plan.md)
+- [zhvpn.exe 实现](30-implementation/zhvpn-exe-implementation.md)
+- [zhvpn.exe 本地单例实现计划](30-implementation/client-singleton-plan.md)
 - [桌面 GUI 客户端实现方案](30-implementation/desktop-gui.md)
 - [服务端托管客户端配置](30-implementation/server-managed-client.md)
 - [管理内网状态栏工具](../clients/admin-menubar/README.md)

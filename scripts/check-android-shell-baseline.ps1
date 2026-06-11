@@ -1,7 +1,7 @@
 param(
-    [string]$ReverseService = "egress/reverse/service.d/99-dxreverse-egress.sh",
+    [string]$ReverseService = "egress/reverse/service.d/99-zhreverse-egress.sh",
     [string]$Watchdog = "egress/android-control/watchdog.sh",
-    [string]$AdbTcpService = "egress/android-control/service.d/97-dxadb-tcp-wg-only.sh"
+    [string]$AdbTcpService = "egress/android-control/service.d/97-zhadb-tcp-wg-only.sh"
 )
 
 $ErrorActionPreference = "Stop"
@@ -40,13 +40,13 @@ foreach ($path in @($ReverseService, $Watchdog, $AdbTcpService)) {
 
 Assert-Contains $ReverseService "svc wifi disable" "Wi-Fi disable baseline"
 Assert-Contains $ReverseService "net\.core\.rmem_max" "receive buffer tuning"
-Assert-Contains $ReverseService "99-dxandroid-egress\.sh" "legacy service disable"
+Assert-Contains $ReverseService "99-zhandroid-egress\.sh" "legacy service disable"
 Assert-LiteralContains $ReverseService 'pgrep -f "$pattern"' "legacy process stop"
 
 Assert-Contains $Watchdog "ensure_network_baseline" "runtime network baseline"
 Assert-Contains $Watchdog "svc wifi disable" "runtime Wi-Fi disable"
-Assert-Contains $Watchdog "99-dxandroid-egress\.sh" "runtime legacy service disable"
-Assert-Contains $Watchdog "99-dxreverse-egress" "reverse supervisor check"
+Assert-Contains $Watchdog "99-zhandroid-egress\.sh" "runtime legacy service disable"
+Assert-Contains $Watchdog "99-zhreverse-egress" "reverse supervisor check"
 
 Assert-Contains $AdbTcpService "PORT=.*5555" "TCP ADB port"
 Assert-Contains $AdbTcpService "WG_IF=.*tun0" "WireGuard-only interface"

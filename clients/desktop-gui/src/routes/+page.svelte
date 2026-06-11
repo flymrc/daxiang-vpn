@@ -103,7 +103,7 @@
 </script>
 
 <main class="app">
-  <header><h1>大象 VPN</h1></header>
+  <header><h1>纵横 VPN</h1></header>
 
   {#if view === "loading"}
     <p class="muted">加载中…</p>

@@ -1,4 +1,4 @@
-package dev.daxiang.dxandroidstatus;
+package dev.zongheng.zhandroidstatus;
 
 final class StatusSnapshot {
     boolean rootOk;

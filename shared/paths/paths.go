@@ -19,7 +19,7 @@ type Context struct {
 }
 
 func NewContext() (Context, error) {
-	root := os.Getenv("DXVPN_HOME")
+	root := os.Getenv("ZHVPN_HOME")
 	if root == "" {
 		local := os.Getenv("LOCALAPPDATA")
 		if local == "" {
@@ -29,7 +29,7 @@ func NewContext() (Context, error) {
 			}
 			local = filepath.Join(home, "AppData", "Local")
 		}
-		root = filepath.Join(local, "DaxiangVPN")
+		root = filepath.Join(local, "ZonghengVPN")
 	}
 
 	return FromRoot(root), nil
@@ -44,11 +44,11 @@ func FromRoot(root string) Context {
 		SingBoxConfig:    filepath.Join(root, "runtime", "session.json"),
 		RunDir:           filepath.Join(root, "run"),
 		BinDir:           filepath.Join(root, "bin"),
-		SingBoxPath:      filepath.Join(root, "bin", "dxvpn.exe"),
-		PIDPath:          filepath.Join(root, "run", "dxvpn.pid"),
+		SingBoxPath:      filepath.Join(root, "bin", "zhvpn.exe"),
+		PIDPath:          filepath.Join(root, "run", "zhvpn.pid"),
 		LogDir:           filepath.Join(root, "logs"),
-		SingBoxLogPath:   filepath.Join(root, "logs", "dxvpn.log"),
-		SingBoxErrorPath: filepath.Join(root, "logs", "dxvpn.err.log"),
+		SingBoxLogPath:   filepath.Join(root, "logs", "zhvpn.log"),
+		SingBoxErrorPath: filepath.Join(root, "logs", "zhvpn.err.log"),
 	}
 }
 

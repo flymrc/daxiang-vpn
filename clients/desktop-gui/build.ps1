@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Build the Daxiang VPN desktop client: dxvpn sidecar, frontend, Rust app, installer.
+# Build the Zongheng VPN desktop client: zhvpn sidecar, frontend, Rust app, installer.
 param(
     [ValidateSet("amd64", "arm64", "host")]
     [string]$Target = "amd64",
@@ -38,12 +38,12 @@ if ($installedTargets -notcontains $triple) {
     if ($LASTEXITCODE -ne 0) { throw "rustup target add failed for $triple" }
 }
 
-# 2. Build dxvpn sidecars.
+# 2. Build zhvpn sidecars.
 $binDir = Join-Path $root "src-tauri\binaries"
 New-Item -ItemType Directory -Force $binDir | Out-Null
 
 function Build-Sidecar([string]$targetTriple, [string]$goArch) {
-    $out = Join-Path $binDir "dxvpn-$targetTriple.exe"
+    $out = Join-Path $binDir "zhvpn-$targetTriple.exe"
     Write-Host "==> go build sidecar ($goArch) -> $out"
     $oldGoos = $env:GOOS
     $oldGoarch = $env:GOARCH

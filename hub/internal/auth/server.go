@@ -119,13 +119,13 @@ func (s *Server) claimToken(token string, sourceIP string, now time.Time) bool {
 }
 
 func tokenLeaseTTLFromEnv() time.Duration {
-	text := strings.TrimSpace(os.Getenv("DXHUB_TOKEN_LEASE_SECONDS"))
+	text := strings.TrimSpace(os.Getenv("ZHHUB_TOKEN_LEASE_SECONDS"))
 	if text == "" {
 		return 30 * time.Second
 	}
 	seconds, err := strconv.Atoi(text)
 	if err != nil || seconds < 0 {
-		log.Printf("DXHUB_TOKEN_LEASE_SECONDS 无效: %q, 使用默认 30s", text)
+		log.Printf("ZHHUB_TOKEN_LEASE_SECONDS 无效: %q, 使用默认 30s", text)
 		return 30 * time.Second
 	}
 	return time.Duration(seconds) * time.Second
@@ -180,15 +180,15 @@ func triggerAndroidRotateIP(managementAddr string, downSeconds int) error {
 	if host == "" {
 		host = "10.66.0.101"
 	}
-	keyPath := strings.TrimSpace(os.Getenv("DXHUB_ANDROID_CONTROL_KEY"))
+	keyPath := strings.TrimSpace(os.Getenv("ZHHUB_ANDROID_CONTROL_KEY"))
 	if keyPath == "" {
-		keyPath = "/root/.ssh/dxandroid_control"
+		keyPath = "/root/.ssh/zhandroid_control"
 	}
 	if _, err := os.Stat(keyPath); err != nil {
 		return fmt.Errorf("control key unavailable: %w", err)
 	}
 
-	remote := fmt.Sprintf("sh /data/adb/dxandroid/rotate-ip.sh %d", downSeconds)
+	remote := fmt.Sprintf("sh /data/adb/zhandroid/rotate-ip.sh %d", downSeconds)
 	cmd := exec.Command("ssh",
 		"-i", keyPath,
 		"-p", port,

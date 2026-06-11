@@ -67,7 +67,7 @@ P0 各项已由 [Hub 安全审查报告 2026-06-04](../40-security/security-audi
       遗留：libc6/apparmor 建议低峰重启收尾（非必须）。
 - [x] **重启收尾** —— 2026-06-04 完成。重启前实证确认两个保命点（SSH 可连、客户机自动恢复），
       重启后 SSH 5 秒恢复、全部服务自启、ufw/ip_forward 恢复、端到端出口 IP 与基线一致（118.158.252.9）。
-- [ ] **dxhub 降权运行**（审查 #7）—— 现以 root 运行，改用专用低权限用户。
+- [ ] **zhhub 降权运行**（审查 #7）—— 现以 root 运行，改用专用低权限用户。
 - [ ] **bootstrap 审计日志 + 限流**（审查 #8）—— 记录来源/token 命中/时间，加频率限制。
 
 ## 不做（已评估否决）
@@ -87,7 +87,7 @@ P0 各项已由 [Hub 安全审查报告 2026-06-04](../40-security/security-audi
 
 ## Android 出口远程控制安全约束
 
-- Android 远程控制采用自研 Go SSH 控制面 `dxandroid-control` over WireGuard，只允许监听 `10.66.0.101:2022`。
+- Android 远程控制采用自研 Go SSH 控制面 `zhandroid-control` over WireGuard，只允许监听 `10.66.0.101:2022`。
 - 禁止监听 `0.0.0.0` 或蜂窝/WiFi 公网接口。
 - 只允许 SSH key 登录，禁用密码登录；真实 `authorized_keys` 和私钥不得入库。
 - 远程控制通道只作为运维入口，不替代 Hub 侧健康检查和本机 watchdog 自愈。

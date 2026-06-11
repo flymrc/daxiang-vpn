@@ -42,7 +42,7 @@
 ```text
 公网目标
   -> Android 蜂窝下行
-  -> dxandroid-egress mixed proxy
+  -> zhandroid-egress mixed proxy
   -> WireGuard App tun0
   -> Android 蜂窝上行
   -> Hub wg0
@@ -68,7 +68,7 @@ Hub 不是当前主瓶颈。
 
 实时采样中:
 
-- `dxandroid-egress` 常驻,内存占用很小。
+- `zhandroid-egress` 常驻,内存占用很小。
 - 温度约 `39-43 C`。
 - AC 供电,电池 100%。
 

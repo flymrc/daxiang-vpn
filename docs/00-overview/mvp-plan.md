@@ -4,7 +4,7 @@
 
 第一个 MVP 只验证一件事：
 
-> 中国客户端通过 `dxvpn` 启动本地代理后，可以使用日本 Mac 的住宅 IP 或手机 IP 访问日本网站。
+> 中国客户端通过 `zhvpn` 启动本地代理后，可以使用日本 Mac 的住宅 IP 或手机 IP 访问日本网站。
 
 最终访问链路：
 
@@ -13,7 +13,7 @@
     |
     | HTTP/SOCKS5 本地代理
     v
-dxvpn CLI 127.0.0.1:7890 / 127.0.0.1:7891
+zhvpn CLI 127.0.0.1:7890 / 127.0.0.1:7891
     |
     | WireGuard
     v
@@ -218,18 +218,18 @@ Hub 直连公网 IP 是：
 
 | 项目 | 路径 |
 | --- | --- |
-| WireGuard 配置 | `/usr/local/etc/dxvpn/wireguard/mac-mini.conf` |
-| sing-box 配置 | `/usr/local/etc/dxvpn/sing-box/mac-egress.json` |
-| WireGuard 启动脚本 | `/usr/local/sbin/dxvpn-wireguard-up.sh` |
-| sing-box 启动脚本 | `/usr/local/sbin/dxvpn-sing-box-run.sh` |
-| WireGuard LaunchDaemon | `/Library/LaunchDaemons/com.daxiang.dxvpn.wireguard.plist` |
-| sing-box LaunchDaemon | `/Library/LaunchDaemons/com.daxiang.dxvpn.sing-box.plist` |
-| 日志目录 | `/usr/local/var/log/dxvpn` |
+| WireGuard 配置 | `/usr/local/etc/zhvpn/wireguard/mac-mini.conf` |
+| sing-box 配置 | `/usr/local/etc/zhvpn/sing-box/mac-egress.json` |
+| WireGuard 启动脚本 | `/usr/local/sbin/zhvpn-wireguard-up.sh` |
+| sing-box 启动脚本 | `/usr/local/sbin/zhvpn-sing-box-run.sh` |
+| WireGuard LaunchDaemon | `/Library/LaunchDaemons/com.zongheng.zhvpn.wireguard.plist` |
+| sing-box LaunchDaemon | `/Library/LaunchDaemons/com.zongheng.zhvpn.sing-box.plist` |
+| 日志目录 | `/usr/local/var/log/zhvpn` |
 
 说明：
 
-- `com.daxiang.dxvpn.wireguard` 用于开机后拉起 WireGuard。
-- `com.daxiang.dxvpn.sing-box` 用于开机后拉起 Mac 远端代理。
+- `com.zongheng.zhvpn.wireguard` 用于开机后拉起 WireGuard。
+- `com.zongheng.zhvpn.sing-box` 用于开机后拉起 Mac 远端代理。
 - 当前 `sing-box` 服务已经由 LaunchDaemon 运行。
 - `WireGuard` 当前已经在线，LaunchDaemon 脚本检测到 `10.66.0.100` 已存在后会正常退出。
 
@@ -240,7 +240,7 @@ Hub 直连公网 IP 是：
 启动命令：
 
 ```bash
-dxvpn proxy start --egress mac-mini
+zhvpn proxy start --egress mac-mini
 ```
 
 默认监听：
@@ -259,7 +259,7 @@ curl -x http://127.0.0.1:7890 https://www.yahoo.co.jp
 查看出口 IP：
 
 ```bash
-dxvpn ip
+zhvpn ip
 ```
 
 或者：
@@ -308,10 +308,10 @@ MVP 阶段先不重构 Hub，只补必要配置和验证。
 第一版 CLI 可以先做最小功能：
 
 ```bash
-dxvpn proxy start --egress mac-mini
-dxvpn proxy stop
-dxvpn proxy status
-dxvpn ip
+zhvpn proxy start --egress mac-mini
+zhvpn proxy stop
+zhvpn proxy status
+zhvpn ip
 ```
 
 内部可以先集成成熟代理内核，避免自己实现完整 HTTP/SOCKS5 协议。CLI 本地代理可以把请求转发到：
@@ -357,7 +357,7 @@ MVP 推荐：
 - [ ] CLI 可以启动 `127.0.0.1:7890`。
 - [ ] `curl -x http://127.0.0.1:7890 https://www.yahoo.co.jp` 成功。
 - [ ] `curl -x http://127.0.0.1:7890 https://api.ipify.org` 返回 Mac 的日本公网 IP。
-- [ ] `dxvpn proxy stop` 可以停止代理。
+- [ ] `zhvpn proxy stop` 可以停止代理。
 
 ## MVP 完成后的下一步
 
@@ -366,6 +366,6 @@ MVP 成功后再进入第二阶段：
 - 把 Mac NAT 配置固化成脚本。
 - 增加 Linux 出口节点脚本。
 - 增加多个出口节点。
-- 增加 `dxvpn egress list` 和 `dxvpn proxy switch`。
+- 增加 `zhvpn egress list` 和 `zhvpn proxy switch`。
 - 把 Hub 现有 Shell 脚本迁移到仓库内维护。
 - 建立配置清单 `inventory.yaml`。

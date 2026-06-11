@@ -1,4 +1,4 @@
-# dxhub
+# zhhub
 
 Hub 授权服务 MVP。
 
@@ -29,6 +29,6 @@ go run .
 ## 环境变量
 
 ```text
-DXHUB_TOKENS=/opt/daxiang-vpn/tokens.yaml
-DXHUB_LISTEN=0.0.0.0:18080
+ZHHUB_TOKENS=/opt/zongheng-vpn/tokens.yaml
+ZHHUB_LISTEN=0.0.0.0:18080
 ```

@@ -3,25 +3,25 @@
 出口手机的**远程控制 + 自愈**能力。让你即使没有 ADB,也能像连服务器一样
 从 Hub 经 WireGuard 隧道(`10.66.0.101`)登录并控制安卓出口机。
 
-控制面是一个**自研的极简 Go SSH 服务**(`dxandroid-control`),不依赖 dropbear/Termux,
+控制面是一个**自研的极简 Go SSH 服务**(`zhandroid-control`),不依赖 dropbear/Termux,
 用仓库现有 Go 工具链交叉编译到 `linux/arm64`。
 
 ## 组成
 
 | 文件 | 部署到手机 | 作用 |
 | --- | --- | --- |
-| `main.go` + `freebind_*.go` | 编译产物 `/data/adb/dxandroid/bin/dxandroid-control` | Go SSH 服务:绑隧道 IP、仅公钥、PTY shell |
-| `watchdog.sh` | `/data/adb/dxandroid/watchdog.sh` | 本地自检:尝试拉起 WireGuard App 隧道,保证 control/egress 在跑,(可选)每日重启 |
-| `service.d/98-dxandroid-control.sh` | `/data/adb/service.d/98-dxandroid-control.sh` | Magisk 开机自启,拉起看门狗 |
-| `authorized_keys.example` | `/data/adb/dxandroid/.ssh/authorized_keys`(填真实公钥) | 允许登录的 Hub 公钥 |
-| `rotate-ip.sh` | `/data/adb/dxandroid/rotate-ip.sh` | 切换出口公网 IP(飞行模式重注册,脱离会话执行) |
-| `sim-info.sh` | `/data/adb/dxandroid/sim-info.sh` | 一览 SIM/蜂窝状态(运营商/APN/网络模式/SNR/频段/出口 IP),换卡或排查慢速时用 |
+| `main.go` + `freebind_*.go` | 编译产物 `/data/adb/zhandroid/bin/zhandroid-control` | Go SSH 服务:绑隧道 IP、仅公钥、PTY shell |
+| `watchdog.sh` | `/data/adb/zhandroid/watchdog.sh` | 本地自检:尝试拉起 WireGuard App 隧道,保证 control/egress 在跑,(可选)每日重启 |
+| `service.d/98-zhandroid-control.sh` | `/data/adb/service.d/98-zhandroid-control.sh` | Magisk 开机自启,拉起看门狗 |
+| `authorized_keys.example` | `/data/adb/zhandroid/.ssh/authorized_keys`(填真实公钥) | 允许登录的 Hub 公钥 |
+| `rotate-ip.sh` | `/data/adb/zhandroid/rotate-ip.sh` | 切换出口公网 IP(飞行模式重注册,脱离会话执行) |
+| `sim-info.sh` | `/data/adb/zhandroid/sim-info.sh` | 一览 SIM/蜂窝状态(运营商/APN/网络模式/SNR/频段/出口 IP),换卡或排查慢速时用 |
 
 配套 Hub 侧被动存活探针:[scripts/watch-android-egress-liveness.sh](../../scripts/watch-android-egress-liveness.sh)。
 
 ## 为什么用 Go SSH 而不是 dropbear
 
-- **工具链现成且已验证**:`dxreverse` 和 `dxandroid-control` 都是 `GOOS=linux GOARCH=arm64 go build` 交叉编译后跑在这台手机上的,无需 NDK/WSL/dropbear 源码。
+- **工具链现成且已验证**:`zhreverse` 和 `zhandroid-control` 都是 `GOOS=linux GOARCH=arm64 go build` 交叉编译后跑在这台手机上的,无需 NDK/WSL/dropbear 源码。
 - **自己的代码,可审计**,不引入外部二进制(供应链更干净)。
 - **天生只绑隧道 IP**:生产 watchdog 以 `-listen 10.66.0.101:2022` 启动,公网网卡上不开端口——dropbear 的核心优点它也有。
 - **依赖已在仓库**:`golang.org/x/crypto/ssh` 早已是 go.mod 间接依赖,只新增 `github.com/creack/pty`(PTY 支持)。
@@ -43,7 +43,7 @@
 ## 构建
 
 ```bash
-GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o dist/dxandroid-control ./egress/android-control
+GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o dist/zhandroid-control ./egress/android-control
 ```
 
 ## 部署(ADB,经确认后执行)
@@ -51,23 +51,23 @@ GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o dist/dxandroid-co
 ```powershell
 $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 # 1. 目录
-& $adb shell su -c "mkdir -p /data/adb/dxandroid/bin /data/adb/dxandroid/keys"
+& $adb shell su -c "mkdir -p /data/adb/zhandroid/bin /data/adb/zhandroid/keys"
 # 2. 推二进制 + 脚本
-& $adb push dist/dxandroid-control /data/local/tmp/dxandroid-control
-& $adb shell su -c "cp /data/local/tmp/dxandroid-control /data/adb/dxandroid/bin/ && chmod 700 /data/adb/dxandroid/bin/dxandroid-control"
+& $adb push dist/zhandroid-control /data/local/tmp/zhandroid-control
+& $adb shell su -c "cp /data/local/tmp/zhandroid-control /data/adb/zhandroid/bin/ && chmod 700 /data/adb/zhandroid/bin/zhandroid-control"
 & $adb push egress/android-control/watchdog.sh /data/local/tmp/watchdog.sh
-& $adb shell su -c "cp /data/local/tmp/watchdog.sh /data/adb/dxandroid/watchdog.sh && chmod 700 /data/adb/dxandroid/watchdog.sh"
-& $adb push egress/android-control/service.d/98-dxandroid-control.sh /data/local/tmp/98.sh
-& $adb shell su -c "cp /data/local/tmp/98.sh /data/adb/service.d/98-dxandroid-control.sh && chmod 700 /data/adb/service.d/98-dxandroid-control.sh"
+& $adb shell su -c "cp /data/local/tmp/watchdog.sh /data/adb/zhandroid/watchdog.sh && chmod 700 /data/adb/zhandroid/watchdog.sh"
+& $adb push egress/android-control/service.d/98-zhandroid-control.sh /data/local/tmp/98.sh
+& $adb shell su -c "cp /data/local/tmp/98.sh /data/adb/service.d/98-zhandroid-control.sh && chmod 700 /data/adb/service.d/98-zhandroid-control.sh"
 # 3. 授权公钥(在 Hub 生成密钥,公钥写入手机),见 authorized_keys.example
 # 4. 起看门狗(免重启验证)
-& $adb shell su -c "sh /data/adb/dxandroid/watchdog.sh &"
+& $adb shell su -c "sh /data/adb/zhandroid/watchdog.sh &"
 ```
 
 从已进入 VPN/WireGuard 内网的管理机连接:
 
 ```bash
-ssh -i ~/.ssh/dxandroid_control -p 2022 root@10.66.0.101
+ssh -i ~/.ssh/zhandroid_control -p 2022 root@10.66.0.101
 ```
 
 ## TODO

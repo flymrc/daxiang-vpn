@@ -215,14 +215,14 @@ egress/reverse
 
 因此，当前实际开发顺序应是：
 
-1. 继续完善 `dxreverse` 反向数据面
+1. 继续完善 `zhreverse` 反向数据面
 2. 在 rooted 安卓机上保持 Magisk service.d + watchdog 常驻
 3. 保留 WireGuard App 作为控制面
 4. 需要时再加 Android 管理外壳
 
 ## 一句话结论
 
-如果目标是“把 rooted 安卓手机变成可用出口节点”，当前生产选择是 `dxreverse` Go 二进制直跑。
+如果目标是“把 rooted 安卓手机变成可用出口节点”，当前生产选择是 `zhreverse` Go 二进制直跑。
 
 如果目标是“后面做成更像产品的 Android 节点管理 App”，再演进到 `Go + Kotlin 外壳`。
 

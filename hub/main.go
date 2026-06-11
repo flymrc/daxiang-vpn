@@ -5,12 +5,12 @@ import (
 	"net/http"
 	"os"
 
-	"daxiang-vpn/hub/internal/auth"
+	"zongheng-vpn/hub/internal/auth"
 )
 
 func main() {
-	configPath := env("DXHUB_TOKENS", "./config/tokens.yaml")
-	listenAddr := env("DXHUB_LISTEN", "0.0.0.0:18080")
+	configPath := env("ZHHUB_TOKENS", "./config/tokens.yaml")
+	listenAddr := env("ZHHUB_LISTEN", "0.0.0.0:18080")
 
 	store, err := auth.LoadTokenStore(configPath)
 	if err != nil {
@@ -23,7 +23,7 @@ func main() {
 	mux.HandleFunc("/api/client/bootstrap", server.Bootstrap)
 	mux.HandleFunc("/api/client/rotate-ip", server.RotateIP)
 
-	log.Printf("dxhub 已启动：%s", listenAddr)
+	log.Printf("zhhub 已启动：%s", listenAddr)
 	if err := http.ListenAndServe(listenAddr, mux); err != nil {
 		log.Fatalf("服务退出：%v", err)
 	}

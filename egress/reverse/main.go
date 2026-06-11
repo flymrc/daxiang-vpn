@@ -33,8 +33,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const protocolHello = "DXREV1"
-const quicALPN = "dxreverse/1"
+const protocolHello = "ZHREV1"
+const quicALPN = "zhreverse/1"
 
 var reverseCommandTimeout = 20 * time.Second
 
@@ -46,7 +46,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: dxreverse server|client [flags]")
+		return errors.New("usage: zhreverse server|client [flags]")
 	}
 	switch args[0] {
 	case "server":
@@ -1053,7 +1053,7 @@ func handleFetchStream(stream net.Conn, encodedURL string, opts clientOptions) {
 		_, _ = fmt.Fprintf(stream, "ERR %v\n", err)
 		return
 	}
-	req.Header.Set("User-Agent", "dxreverse-fetch/0")
+	req.Header.Set("User-Agent", "zhreverse-fetch/0")
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{RootCAs: fetchRootCAs()},
 		DialContext: func(_ context.Context, _, addr string) (net.Conn, error) {
@@ -1363,7 +1363,7 @@ func selfSignedCert() (tls.Certificate, error) {
 	}
 	template := x509.Certificate{
 		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: "dxreverse"},
+		Subject:      pkix.Name{CommonName: "zhreverse"},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(24 * time.Hour),
 		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,

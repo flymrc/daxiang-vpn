@@ -15,7 +15,7 @@ User reported that the Android egress IP was reachable but browsing felt abnorma
 
 ## Experiment
 
-Changed Android `/data/adb/dxreverse/client.yaml`:
+Changed Android `/data/adb/zhreverse/client.yaml`:
 
 ```yaml
 client:
@@ -23,7 +23,7 @@ client:
   connections: 2
 ```
 
-Restarted `dxreverse client`. Hub confirmed two established reverse TCP/yamux sessions.
+Restarted `zhreverse client`. Hub confirmed two established reverse TCP/yamux sessions.
 
 Also tested `connections: 4`; it produced four reverse sessions but did not improve throughput enough to justify the higher half-dead-session risk on mobile NAT.
 
@@ -60,7 +60,7 @@ After the connection-count experiment, added Hub-side CONNECT concurrency protec
 - `server.max_proxy_connections`
 - `server.max_proxy_connections_per_client`
 
-Production Hub `/etc/daxiang/dxreverse/server.yaml` now uses:
+Production Hub `/etc/zongheng/zhreverse/server.yaml` now uses:
 
 ```yaml
 server:
@@ -68,14 +68,14 @@ server:
   max_proxy_connections_per_client: 48
 ```
 
-When the guard is hit, `dxreverse` returns HTTP 429 instead of allowing unbounded client-side CONNECTs to pile up inside the Android mobile tunnel.
+When the guard is hit, `zhreverse` returns HTTP 429 instead of allowing unbounded client-side CONNECTs to pile up inside the Android mobile tunnel.
 
 Deployment:
 
 - Built `GOOS=linux GOARCH=amd64` `egress/reverse`.
 - Backed up Hub binary and config.
-- Replaced `/opt/daxiang/dxreverse/dxreverse`.
-- Restarted `dxreverse-hub.service`.
+- Replaced `/opt/zongheng/zhreverse/zhreverse`.
+- Restarted `zhreverse-hub.service`.
 - Hub log confirmed: `max_proxy_connections=96 max_proxy_connections_per_client=48`.
 
 Post-deploy validation:
@@ -94,7 +94,7 @@ Follow-up after GUI testing:
 
 ## Next
 
-The remaining abnormal stuck feeling likely needs code-level protection in Hub-side `dxreverse`:
+The remaining abnormal stuck feeling likely needs code-level protection in Hub-side `zhreverse`:
 
 - Prefer short interactive requests over bulk/long downloads.
 - Consider separate interactive and bulk reverse session pools.

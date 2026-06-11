@@ -8,10 +8,10 @@ docs/ops/TOKENS_*.md
 
 # 远程控制私钥 / 真实授权公钥,绝不入库
 egress/android-control/authorized_keys
-**/dxandroid_control
-**/dxandroid_control.pub
-**/dxandroid_control_nopass
-**/dxandroid_control_nopass.pub
+**/zhandroid_control
+**/zhandroid_control.pub
+**/zhandroid_control_nopass
+**/zhandroid_control_nopass.pub
 
 # Android local build output
 egress/android-status/**/.gradle/

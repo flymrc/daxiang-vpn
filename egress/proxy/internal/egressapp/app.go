@@ -8,10 +8,10 @@ import (
 	"os/exec"
 	"time"
 
-	"daxiang-vpn/egress/proxy/internal/egressconfig"
-	"daxiang-vpn/egress/proxy/internal/egressproxy"
-	"daxiang-vpn/shared/paths"
-	"daxiang-vpn/shared/proxy"
+	"zongheng-vpn/egress/proxy/internal/egressconfig"
+	"zongheng-vpn/egress/proxy/internal/egressproxy"
+	"zongheng-vpn/shared/paths"
+	"zongheng-vpn/shared/proxy"
 )
 
 func Run(args []string) error {
@@ -59,16 +59,16 @@ func Run(args []string) error {
 }
 
 func printUsage() {
-	fmt.Println(`dxegress-proxy
+	fmt.Println(`zhegress-proxy
 
 用法：
-  dxegress-proxy validate --config <配置文件>
-  dxegress-proxy render --config <配置文件> [--workdir <目录>]
-  dxegress-proxy run --config <配置文件> [--workdir <目录>]
+  zhegress-proxy validate --config <配置文件>
+  zhegress-proxy render --config <配置文件> [--workdir <目录>]
+  zhegress-proxy run --config <配置文件> [--workdir <目录>]
 
 说明：
   预留给 Mac/PC 出口节点的 sing-box 代理封装。
-  Android 生产出口请使用 egress/reverse 的 dxreverse 反向数据面。`)
+  Android 生产出口请使用 egress/reverse 的 zhreverse 反向数据面。`)
 }
 
 func parseCommonArgs(args []string) (configPath string, workdir string, err error) {
@@ -100,7 +100,7 @@ func parseCommonArgs(args []string) (configPath string, workdir string, err erro
 }
 
 func filepathOrDefault(configPath string) string {
-	if root := os.Getenv("DXEGRESS_PROXY_HOME"); root != "" {
+	if root := os.Getenv("ZHEGRESS_PROXY_HOME"); root != "" {
 		return root
 	}
 	return configPath + ".workdir"

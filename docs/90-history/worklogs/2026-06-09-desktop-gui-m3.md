@@ -11,7 +11,7 @@
 - **托盘 + 生命周期**（`tauri` 加 `tray-icon` feature，`lib.rs`）：
   - 托盘左键开主界面，右键菜单 打开/退出。
   - 关窗 = `prevent_close` + `hide`（收进托盘，保持连接）；退出只走托盘「退出」，退出前 `sysproxy::restore`。
-- **换 IP**：`rotate_ip` 命令（`dxvpn rotate-ip --json`）+ 主界面「换 IP」按钮（连接态可见），结果显示 `before → after`。
+- **换 IP**：`rotate_ip` 命令（`zhvpn rotate-ip --json`）+ 主界面「换 IP」按钮（连接态可见），结果显示 `before → after`。
 - **全局模式**：前端复选框 → `connect(fast=true)`。
 - 前端 `+page.svelte`/`api.ts`：加 rotate 按钮、info/warning 提示。
 
@@ -19,7 +19,7 @@
 
 - `cargo build` 通过（1m00s，新增 `sysproxy 0.3.0`、`tray-icon`、`winreg`/`winapi`）。
 - `npm run build` 通过。
-- 运行 debug 程序：窗口「大象 VPN」正常；进程存活说明 `.setup()`（含 `TrayIconBuilder::build`）未 panic，托盘创建成功。
+- 运行 debug 程序：窗口「纵横 VPN」正常；进程存活说明 `.setup()`（含 `TrayIconBuilder::build`）未 panic，托盘创建成功。
 
 ## 待人工点验（runtime，需真实登录 + 出口）
 
@@ -34,5 +34,5 @@ GUI 无法在此环境点击验证，留给人工：
 
 ## 备注
 
-- 机器上早前遗留的 `dist\windows-amd64\dxvpn.exe __engine` 旧代理仍在（非本次产生）。
-- dev 运行需把 sidecar 放到 `src-tauri/target/debug/dxvpn.exe`（`tauri dev` 会自动放；裸 `cargo build` 不会，已手动拷一份用于本次冒烟）。
+- 机器上早前遗留的 `dist\windows-amd64\zhvpn.exe __engine` 旧代理仍在（非本次产生）。
+- dev 运行需把 sidecar 放到 `src-tauri/target/debug/zhvpn.exe`（`tauri dev` 会自动放；裸 `cargo build` 不会，已手动拷一份用于本次冒烟）。

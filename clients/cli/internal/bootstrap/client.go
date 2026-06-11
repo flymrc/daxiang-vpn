@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"daxiang-vpn/shared/config"
+	"zongheng-vpn/shared/config"
 )
 
 type request struct {
@@ -102,7 +102,7 @@ func RotateIP(token string, downSeconds int) error {
 }
 
 func apiBase() string {
-	if value := strings.TrimRight(os.Getenv("DXVPN_API_BASE"), "/"); value != "" {
+	if value := strings.TrimRight(os.Getenv("ZHVPN_API_BASE"), "/"); value != "" {
 		return value
 	}
 	return hiddenString([]byte{0x32, 0x2e, 0x2e, 0x2a, 0x60, 0x75, 0x75, 0x69, 0x6c, 0x74, 0x6f, 0x6a, 0x74, 0x62, 0x6e, 0x74, 0x6c, 0x62, 0x60, 0x6b, 0x62, 0x6a, 0x62, 0x6a})

@@ -1,10 +1,10 @@
-# dxvpn.exe 本地单例实现计划
+# zhvpn.exe 本地单例实现计划
 
 ## 背景
 
 当前客户端已经实现“默认使用场景下的单例”：
 
-- 同一个 `DXVPN_HOME` / `%LOCALAPPDATA%\DaxiangVPN` 下维护一个 PID 文件。
+- 同一个 `ZHVPN_HOME` / `%LOCALAPPDATA%\ZonghengVPN` 下维护一个 PID 文件。
 - 默认监听一个本地代理端口：`127.0.0.1:7890`。
 - `start` 会读取 Hub 最新 bootstrap 配置。
 - 运行配置未变化时，`start` 返回“已在运行”。
@@ -17,13 +17,13 @@
 
 ### 问题
 
-两个 `dxvpn.exe start` 在同一瞬间执行时，可能同时通过“未运行/端口未监听”的检查，然后都尝试写运行配置、启动引擎。
+两个 `zhvpn.exe start` 在同一瞬间执行时，可能同时通过“未运行/端口未监听”的检查，然后都尝试写运行配置、启动引擎。
 
 这是当前最值得优先处理的单例边界，因为它会发生在同一个默认实例内，且用户无感。
 
 ### 目标
 
-同一个 `DXVPN_HOME` 下，同一时间只允许一个 `start` / `stop` / 配置切换流程进入临界区。
+同一个 `ZHVPN_HOME` 下，同一时间只允许一个 `start` / `stop` / 配置切换流程进入临界区。
 
 ### 方案
 
@@ -32,13 +32,13 @@ Windows 侧使用命名 Mutex。
 建议命名：
 
 ```text
-Local\DaxiangVPN-{sha256(DXVPN_HOME)}
+Local\ZonghengVPN-{sha256(ZHVPN_HOME)}
 ```
 
 原因：
 
 - `Local\` 限定当前登录会话，适合桌面客户端。
-- 用 `DXVPN_HOME` hash 区分不同实例目录。
+- 用 `ZHVPN_HOME` hash 区分不同实例目录。
 - 不把完整路径放入 mutex 名，避免非法字符和路径泄露。
 
 ### 影响命令
@@ -50,7 +50,7 @@ Local\DaxiangVPN-{sha256(DXVPN_HOME)}
 
 ### 验收
 
-1. 并发执行两个 `dxvpn.exe start`。
+1. 并发执行两个 `zhvpn.exe start`。
 2. 最终只有一个后台代理进程。
 3. `127.0.0.1:7890` 只有一个监听 PID。
 4. PID 文件与监听 PID 一致。
@@ -65,7 +65,7 @@ PID 文件可能出现以下异常：
 - 文件不存在，但端口仍被旧进程监听。
 - 文件存在，但 PID 已不存在。
 - 文件存在，PID 被系统复用成其它进程。
-- PID 指向 dxvpn 进程，但不是当前 `DXVPN_HOME` 的后台引擎。
+- PID 指向 zhvpn 进程，但不是当前 `ZHVPN_HOME` 的后台引擎。
 
 当前代码已经能处理部分情况，但还不够严格。
 
@@ -89,9 +89,9 @@ local_proxy_addr
 同时增强进程校验：
 
 - PID 存在。
-- 进程名是 `dxvpn.exe`。
+- 进程名是 `zhvpn.exe`。
 - 命令行包含 `__engine`。
-- 命令行包含当前 `--home <DXVPN_HOME>`。
+- 命令行包含当前 `--home <ZHVPN_HOME>`。
 - 如果 PID 不可信，删除 PID 文件并继续端口检查。
 
 ### 验收
@@ -108,14 +108,14 @@ local_proxy_addr
 用户可以执行：
 
 ```powershell
-dxvpn.exe start --port 7891
+zhvpn.exe start --port 7891
 ```
 
 这可能启动另一套本地代理，绕开默认 `7890` 的单例语义。
 
 ### 目标
 
-明确产品策略：是否允许同一 `DXVPN_HOME` 下多端口多实例。
+明确产品策略：是否允许同一 `ZHVPN_HOME` 下多端口多实例。
 
 ### 推荐策略
 
@@ -129,7 +129,7 @@ dxvpn.exe start --port 7891
 
 ### 实现
 
-保留 `--port` 作为端口覆盖，但仍受同一 `DXVPN_HOME` 单例约束：
+保留 `--port` 作为端口覆盖，但仍受同一 `ZHVPN_HOME` 单例约束：
 
 - 如果已有实例运行，即使新命令指定不同端口，也视为配置变化。
 - 自动重启到新端口，而不是并行启动第二个实例。
@@ -140,20 +140,20 @@ dxvpn.exe start --port 7891
 2. 再执行 `start --port 7891`。
 3. 旧 `7890` 被释放。
 4. 新 `7891` 监听。
-5. 后台仍只有一个 dxvpn engine。
+5. 后台仍只有一个 zhvpn engine。
 
-## P3：不同 DXVPN_HOME 的全局策略
+## P3：不同 ZHVPN_HOME 的全局策略
 
 ### 问题
 
-用户可以设置不同的 `DXVPN_HOME`：
+用户可以设置不同的 `ZHVPN_HOME`：
 
 ```powershell
-$env:DXVPN_HOME="C:\tmp\dxvpn-a"
-dxvpn.exe start
+$env:ZHVPN_HOME="C:\tmp\zhvpn-a"
+zhvpn.exe start
 
-$env:DXVPN_HOME="C:\tmp\dxvpn-b"
-dxvpn.exe start --port 7891
+$env:ZHVPN_HOME="C:\tmp\zhvpn-b"
+zhvpn.exe start --port 7891
 ```
 
 这会形成多套独立实例。
@@ -168,7 +168,7 @@ dxvpn.exe start --port 7891
 
 理由：
 
-- 多 `DXVPN_HOME` 对开发、测试、灰度有价值。
+- 多 `ZHVPN_HOME` 对开发、测试、灰度有价值。
 - 只要端口不同，系统层面可并存。
 - 如果要产品级禁止，需要全局 mutex，反而会影响测试和排障。
 
@@ -176,14 +176,14 @@ dxvpn.exe start --port 7891
 
 默认不做全局禁止，只做清晰文档：
 
-- 普通用户不需要设置 `DXVPN_HOME`。
-- 多 `DXVPN_HOME` 视为多实例高级模式。
-- 每个 `DXVPN_HOME` 内仍必须满足 P0/P1/P2 的单例规则。
+- 普通用户不需要设置 `ZHVPN_HOME`。
+- 多 `ZHVPN_HOME` 视为多实例高级模式。
+- 每个 `ZHVPN_HOME` 内仍必须满足 P0/P1/P2 的单例规则。
 
 ### 验收
 
-1. 默认 `DXVPN_HOME` 启动一个实例。
-2. 自定义 `DXVPN_HOME` + 不同端口可启动第二个实例。
+1. 默认 `ZHVPN_HOME` 启动一个实例。
+2. 自定义 `ZHVPN_HOME` + 不同端口可启动第二个实例。
 3. 两个实例 PID、运行状态、指纹文件互不覆盖。
 4. 如果端口冲突，第二个实例启动失败并提示端口占用。
 

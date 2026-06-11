@@ -50,12 +50,12 @@
 
 **步骤**：
 
-1. Hub 起第二个 dxreverse 实例（不动生产 TCP）：
-   - `transport: quic`，listen `:39094`（UFW `allow 39094/udp`），proxy `10.66.0.1:18082`（UFW 对 wg0 放行），同 token，`tls_cert_file/key` 用现有 `/etc/daxiang/dxreverse/server.crt|key`。
-   - 算证书指纹：`openssl x509 -in /etc/daxiang/dxreverse/server.crt -outform DER | sha256sum`。
+1. Hub 起第二个 zhreverse 实例（不动生产 TCP）：
+   - `transport: quic`，listen `:39094`（UFW `allow 39094/udp`），proxy `10.66.0.1:18082`（UFW 对 wg0 放行），同 token，`tls_cert_file/key` 用现有 `/etc/zongheng/zhreverse/server.crt|key`。
+   - 算证书指纹：`openssl x509 -in /etc/zongheng/zhreverse/server.crt -outform DER | sha256sum`。
    - Hub 侧 UDP buffer：quic-go 建议 `sysctl -w net.core.rmem_max=8388608 net.core.wmem_max=8388608`（手机侧 service 脚本已调过）。
 2. 手机临时手动跑第二个 client（不动生产配置）：
-   `dxreverse client --server 36.50.84.68:39094 --transport quic --server-cert-sha256 <fp> --token-file /data/adb/dxreverse/token --address-family ipv6`
+   `zhreverse client --server 36.50.84.68:39094 --transport quic --server-cert-sha256 <fp> --token-file /data/adb/zhreverse/token --address-family ipv6`
 3. A/B 矩阵（Hub 侧）：经 `18081`(tcp) vs `18082`(quic) 各跑 2MB x5 / 10MB x2 / 20MB x1，记录成功率与速度；再各跑一轮长连接稳定性（撑 30min 看会话存活）。
 4. **决策标准**：QUIC 吞吐 ≥ TCP 且失败率不升 → 生产切 `transport: quic`（两端改配置即可，`server_cert_sha256` 字段早已预留）；TCP 配置保留为回滚路径。
 
@@ -71,14 +71,14 @@
 
 ## 5. WireGuard 控制面迁移到 Pixel
 
-**动机**：Pixel 上 `10.66.0.101` 控制面未迁移，dxandroid-control/watchdog 自愈缺位，人不在手机旁出问题只能干等。数据面已稳，这是当前最大的运维风险敞口。
+**动机**：Pixel 上 `10.66.0.101` 控制面未迁移，zhandroid-control/watchdog 自愈缺位，人不在手机旁出问题只能干等。数据面已稳，这是当前最大的运维风险敞口。
 
 **步骤**（参照 [2026-06-08-android-wireguard-self-heal.md](../90-history/worklogs/2026-06-08-android-wireguard-self-heal.md) 与 [android-egress-agent.md](./android-egress-agent.md)）：
 
 1. WireGuard App 安装并导入 `jp-android-01.conf`（10.66.0.101，Hub peer 已存在）。
 2. **Doze 白名单**（历史坑）：`su -c "dumpsys deviceidle whitelist +com.wireguard.android"`。
-3. 部署 dxandroid-control（绑 10.66.0.101:2022）+ watchdog 脚本到 `/data/adb/`。
-4. 验收：Hub `ssh -i ~/.ssh/dxandroid_control_local -p 2022 root@10.66.0.101` 通；拔 USB 熄屏 >15min 后握手仍新鲜；watchdog DOWN/UP 自愈演练一次。
+3. 部署 zhandroid-control（绑 10.66.0.101:2022）+ watchdog 脚本到 `/data/adb/`。
+4. 验收：Hub `ssh -i ~/.ssh/zhandroid_control_local -p 2022 root@10.66.0.101` 通；拔 USB 熄屏 >15min 后握手仍新鲜；watchdog DOWN/UP 自愈演练一次。
 5. 更新 `server-access.md` 的"Pixel 迁移后待重新配置"两行。
 
 ## 6. Hub VPS 启用 IPv6（待调研）
@@ -90,7 +90,7 @@
 
 ## 已知坑备忘（操作时照抄）
 
-- **pkill 自匹配**：`pkill -f` 的模式若含 `dxreverse` 路径字符串，会把自己的 `su/sh` 命令行也杀掉（命令参数里有路径）。优先 `ps` 拿 PID 后 `kill <pid>`。
+- **pkill 自匹配**：`pkill -f` 的模式若含 `zhreverse` 路径字符串，会把自己的 `su/sh` 命令行也杀掉（命令参数里有路径）。优先 `ps` 拿 PID 后 `kill <pid>`。
 - **Text file busy**：运行中的二进制不能 `cp` 覆盖；先 `mv` 旧档改名，再 `cp` 新档进位，最后 kill 旧进程让 supervisor 拉起。
 - **adb push 不带执行位**：push 后必须 `chmod 755`。
 - **Git Bash 路径转换**：adb 的设备路径要 `MSYS_NO_PATHCONV=1`，否则 `/data/...` 被改写成 Windows 路径。

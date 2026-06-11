@@ -4,17 +4,17 @@
 mobile egress node. Android actively dials the Hub and the Hub exposes a local
 HTTP CONNECT proxy for the egress router/client layer.
 
-The legacy Android `dxandroid-egress` / sing-box proxy has been removed from
-the production path. Android production data must use `dxreverse`.
+The legacy Android `zhandroid-egress` / sing-box proxy has been removed from
+the production path. Android production data must use `zhreverse`.
 
 ## Shape
 
 ```text
 Hub egress router/client
   -> 10.66.0.1:18081 HTTP CONNECT proxy
-  -> dxreverse server
+  -> zhreverse server
   -> TCP + yamux reverse session
-  -> dxreverse client on Android
+  -> zhreverse client on Android
   -> public target from Android network
 ```
 
@@ -28,9 +28,9 @@ The proxy can also expose an experimental application-layer fetch endpoint when
 ```text
 Hub curl/client
   -> GET http://10.66.0.1:18081/fetch?url=<absolute-http-or-https-url>
-  -> dxreverse server
+  -> zhreverse server
   -> FETCH <base64url(url)>
-  -> dxreverse client on Android
+  -> zhreverse client on Android
   -> Android-side HTTP GET
   -> status, headers, and body streamed back to Hub
 ```
@@ -44,8 +44,8 @@ same public-DNS dialer as CONNECT and explicitly loads Android system CA certifi
 ## Build
 
 ```sh
-GOOS=linux GOARCH=amd64 go build -o dist/reverse/dxreverse-linux-amd64 ./egress/reverse
-GOOS=linux GOARCH=arm64 go build -o dist/reverse/dxreverse-linux-arm64 ./egress/reverse
+GOOS=linux GOARCH=amd64 go build -o dist/reverse/zhreverse-linux-amd64 ./egress/reverse
+GOOS=linux GOARCH=arm64 go build -o dist/reverse/zhreverse-linux-arm64 ./egress/reverse
 ```
 
 ## Configs
@@ -66,35 +66,35 @@ for temporary lab runs.
 Hub systemd template:
 
 ```sh
-install -d /opt/daxiang/dxreverse /etc/daxiang/dxreverse
-install -m 755 dist/reverse/dxreverse-linux-amd64 /opt/daxiang/dxreverse/dxreverse
+install -d /opt/zongheng/zhreverse /etc/zongheng/zhreverse
+install -m 755 dist/reverse/zhreverse-linux-amd64 /opt/zongheng/zhreverse/zhreverse
 openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
-  -subj /CN=dxreverse \
-  -keyout /etc/daxiang/dxreverse/server.key \
-  -out /etc/daxiang/dxreverse/server.crt
-chmod 600 /etc/daxiang/dxreverse/server.key
-openssl x509 -in /etc/daxiang/dxreverse/server.crt -outform DER \
+  -subj /CN=zhreverse \
+  -keyout /etc/zongheng/zhreverse/server.key \
+  -out /etc/zongheng/zhreverse/server.crt
+chmod 600 /etc/zongheng/zhreverse/server.key
+openssl x509 -in /etc/zongheng/zhreverse/server.crt -outform DER \
   | sha256sum | awk '{print $1}'
-install -m 600 docs/20-operations/configs/egress/hub-reverse-server.yaml.example /etc/daxiang/dxreverse/server.yaml
-install -m 644 egress/reverse/systemd/dxreverse-hub.service /etc/systemd/system/dxreverse-hub.service
+install -m 600 docs/20-operations/configs/egress/hub-reverse-server.yaml.example /etc/zongheng/zhreverse/server.yaml
+install -m 644 egress/reverse/systemd/zhreverse-hub.service /etc/systemd/system/zhreverse-hub.service
 systemctl daemon-reload
-systemctl enable --now dxreverse-hub.service
+systemctl enable --now zhreverse-hub.service
 ```
 
 Android Magisk service.d template:
 
 ```sh
-mkdir -p /data/adb/dxreverse/bin
-cp /data/local/tmp/dxreverse /data/adb/dxreverse/bin/dxreverse
-cp /data/local/tmp/android-reverse-client.yaml /data/adb/dxreverse/client.yaml
-cp /data/local/tmp/99-dxreverse-egress.sh /data/adb/service.d/99-dxreverse-egress.sh
-chmod 700 /data/adb/dxreverse/bin/dxreverse /data/adb/service.d/99-dxreverse-egress.sh
-chmod 600 /data/adb/dxreverse/client.yaml /data/adb/dxreverse/token
+mkdir -p /data/adb/zhreverse/bin
+cp /data/local/tmp/zhreverse /data/adb/zhreverse/bin/zhreverse
+cp /data/local/tmp/android-reverse-client.yaml /data/adb/zhreverse/client.yaml
+cp /data/local/tmp/99-zhreverse-egress.sh /data/adb/service.d/99-zhreverse-egress.sh
+chmod 700 /data/adb/zhreverse/bin/zhreverse /data/adb/service.d/99-zhreverse-egress.sh
+chmod 600 /data/adb/zhreverse/client.yaml /data/adb/zhreverse/token
 ```
 
-The Android service script disables the legacy `dxandroid-egress` supervisor,
+The Android service script disables the legacy `zhandroid-egress` supervisor,
 keeps Wi-Fi off for mobile-SIM egress, applies conservative UDP/socket buffer
-tuning, then keeps `dxreverse client --config /data/adb/dxreverse/client.yaml`
+tuning, then keeps `zhreverse client --config /data/adb/zhreverse/client.yaml`
 running.
 
 ## Manual test run
@@ -102,20 +102,20 @@ running.
 Server:
 
 ```sh
-/tmp/dxreverse server \
+/tmp/zhreverse server \
   --transport tcp \
   --resolve server \
   --listen 0.0.0.0:39093 \
   --proxy 10.66.0.1:18081 \
-  --tls-cert-file /etc/daxiang/dxreverse/server.crt \
-  --tls-key-file /etc/daxiang/dxreverse/server.key \
+  --tls-cert-file /etc/zongheng/zhreverse/server.crt \
+  --tls-key-file /etc/zongheng/zhreverse/server.key \
   --token <shared-token>
 ```
 
 Android client:
 
 ```sh
-/data/local/tmp/dxreverse client \
+/data/local/tmp/zhreverse client \
   --transport tcp \
   --connections 2 \
   --server <hub-public-ip>:39093 \

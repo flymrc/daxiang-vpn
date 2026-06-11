@@ -6,17 +6,17 @@
 
 ## 选型结论
 
-- 框架：**Tauri v2 + CLI 子进程**。理由：公司背书（CrabNebula）不易弃坑、体积轻（系统 WebView，~10MB）适合客户分发；本仓库 `dxvpn.exe` 已把提权 / 引擎 / PID 自包含，子进程集成干净。
-- helper = **现成的 `dxvpn.exe`**（内嵌 sing-box），**不引入 wg-quick / wireguard.exe**（裸 WG 到不了出口、没有换 IP）。
+- 框架：**Tauri v2 + CLI 子进程**。理由：公司背书（CrabNebula）不易弃坑、体积轻（系统 WebView，~10MB）适合客户分发；本仓库 `zhvpn.exe` 已把提权 / 引擎 / PID 自包含，子进程集成干净。
+- helper = **现成的 `zhvpn.exe`**（内嵌 sing-box），**不引入 wg-quick / wireguard.exe**（裸 WG 到不了出口、没有换 IP）。
 - 范围：**第一阶段仅 Windows**。`shared/proxy/platform_nonwindows.go` 的 `Start/Stop/WriteSingBoxConfig` 在非 Windows 仍是「未实现」，macOS 包前置依赖是先补 mac 引擎，单列 M5。
 - 连接 UX：默认用户态代理 + GUI 自动设/还原 Windows 系统代理（零 UAC）；全局模式 = `--fast`（系统 TUN，弹一次 UAC）。
-- 打包：方案 A（NSIS/MSI + 桌面快捷方式，dxvpn.exe 当 sidecar，不装服务）。
+- 打包：方案 A（NSIS/MSI + 桌面快捷方式，zhvpn.exe 当 sidecar，不装服务）。
 
 方案落档：`docs/30-implementation/desktop-gui.md`，并挂入 `docs/README.md` 索引。
 
 ## M1：CLI 机器接口（已完成）
 
-给 `dxvpn.exe` 的 `status / login / rotate-ip` 加 `--json`，默认人读输出不变。
+给 `zhvpn.exe` 的 `status / login / rotate-ip` 加 `--json`，默认人读输出不变。
 
 - `clients/cli/main.go`：新增 `app.ErrSilent` 处理——JSON 命令失败时已把 `{"ok":false,…}` 打到 stdout，main 仅退出非 0，不再向 stderr 重复打印。
 - `clients/cli/internal/app/app.go`：
@@ -31,7 +31,7 @@
 - `go build ./clients/cli/...` 通过。
 - `go test ./clients/cli/...` 通过；新增 `wantJSON` / `hasFlag` / `--json` 解析用例。
 - `gofmt -l` 干净，`go vet ./clients/cli/...` 通过。
-- 冒烟（`DXVPN_HOME` 指向空临时目录）：
+- 冒烟（`ZHVPN_HOME` 指向空临时目录）：
   - `status --json` 无配置 → `{"running":false,"proxy_reachable":false,"error":"未找到配置…"}`，退出 1，stderr 无「错误：」前缀。
   - `login BADTOKEN --json` → `{"ok":false,"error":"授权码无效或已过期"}`，退出 1。
   - `status`（人读）输出不变，仍走 stderr「错误：」。

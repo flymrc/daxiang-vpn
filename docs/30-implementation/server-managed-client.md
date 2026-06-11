@@ -28,15 +28,15 @@
 理想体验：
 
 ```powershell
-dxvpn.exe login <授权码>
-dxvpn.exe start
-dxvpn.exe status
+zhvpn.exe login <授权码>
+zhvpn.exe start
+zhvpn.exe status
 ```
 
 输出：
 
 ```text
-大象 VPN 已连接
+纵横 VPN 已连接
 出口地区：日本
 出口类型：住宅 IP
 本地代理：127.0.0.1:7890
@@ -45,7 +45,7 @@ dxvpn.exe status
 ## 新架构
 
 ```text
-dxvpn.exe
+zhvpn.exe
     |
     | 授权码 / token
     v
@@ -67,7 +67,7 @@ Hub 控制 API
 ### 推荐方式一：登录授权码
 
 ```powershell
-dxvpn.exe login DX-XXXX-XXXX
+zhvpn.exe login ZH-XXXX-XXXX
 ```
 
 客户端只保存：
@@ -186,7 +186,7 @@ egress:
 
 ```yaml
 license:
-  token: DX-DEV-TOKEN
+  token: ZH-DEV-TOKEN
 ```
 
 ### 服务端内部配置
@@ -212,7 +212,7 @@ egress:
 
 在服务端 API 还没完成之前，可以先做一个过渡方案：
 
-1. `dxvpn.exe` 支持 `login <token>`。
+1. `zhvpn.exe` 支持 `login <token>`。
 2. 本地只保存 token。
 3. 暂时把 bootstrap 运行配置内置在开发版本里，或从一个本地 admin 配置生成。
 4. 后续补 Hub API 后，改成真正从服务端拉取。
@@ -221,8 +221,8 @@ egress:
 
 ## 下一步开发顺序
 
-1. 改 `dxvpn.exe`：客户配置只保留 token。
-2. 增加 `dxvpn.exe login <token>`。
+1. 改 `zhvpn.exe`：客户配置只保留 token。
+2. 增加 `zhvpn.exe login <token>`。
 3. 增加 bootstrap 配置模型。
 4. 临时从本地隐藏 runtime 文件读取运行配置。
 5. 后续在 Hub 上实现 `/api/v1/client/bootstrap`。

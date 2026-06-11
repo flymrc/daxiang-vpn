@@ -1,4 +1,4 @@
-# Daxiang VPN admin innernet client.
+# Zongheng VPN admin innernet client.
 # Only routes the WireGuard management subnet into the tunnel.
 # It does not install a default route and should not carry public egress traffic.
 

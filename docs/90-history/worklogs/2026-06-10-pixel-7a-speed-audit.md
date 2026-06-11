@@ -2,11 +2,11 @@
 
 ## 背景
 
-换 Pixel 7a 后信号显示变好（满格），但经 `dxreverse` 反向出口的代理速度仍然只有 ~1-4 Mbps，且大文件经常 `SSL_ERROR_SYSCALL` 失败。本次审计目标：确认是无线侧问题还是 VPN/Hub 设计问题。
+换 Pixel 7a 后信号显示变好（满格），但经 `zhreverse` 反向出口的代理速度仍然只有 ~1-4 Mbps，且大文件经常 `SSL_ERROR_SYSCALL` 失败。本次审计目标：确认是无线侧问题还是 VPN/Hub 设计问题。
 
 ## 方法
 
-新增 `tools/cellbench`（Go，交叉编译 linux/arm64，与 dxreverse 同方式在 Magisk root 下运行，部署在手机 `/data/local/tmp/cellbench`），支持：
+新增 `tools/cellbench`（Go，交叉编译 linux/arm64，与 zhreverse 同方式在 Magisk root 下运行，部署在手机 `/data/local/tmp/cellbench`），支持：
 
 - `cellbench rtt <host:port> <n>`：TCP 建连 RTT。
 - `cellbench down <url> [stallSec]`：带卡死检测的下载测速。
@@ -44,14 +44,14 @@ IPv6 TCP RTT 27-63ms。
 
 - 下载 20MB：62.7 Mbps；上传 4MB x3：全 200，~46 Mbps。**Hub 本身完全健康。**
 
-### dxreverse 客户端日志（39093 隧道口）
+### zhreverse 客户端日志（39093 隧道口）
 
 - 隧道空闲时稳定在线（keepalive 正常）。
 - 启动期多次 `dial tcp 36.50.84.68:39093: i/o timeout`；`connections: 2` 时第二条几乎连不上——与 IPv4 路径掐流为同一现象。
 
 ## 根因结论
 
-1. **主因：乐天 IPv4/CGNAT 路径会系统性掐持续上行流**（RST 注入或 CGNAT 策略），原生 IPv6 路径完全干净（上行 16-23 Mbps）。`dxreverse` 隧道（TCP/39093）目前 100% 跑在 IPv4 上，而本架构里**用户下载的每个字节都要经手机上行回传 Hub**——正好踩死在被掐的方向上。
+1. **主因：乐天 IPv4/CGNAT 路径会系统性掐持续上行流**（RST 注入或 CGNAT 策略），原生 IPv6 路径完全干净（上行 16-23 Mbps）。`zhreverse` 隧道（TCP/39093）目前 100% 跑在 IPv4 上，而本架构里**用户下载的每个字节都要经手机上行回传 Hub**——正好踩死在被掐的方向上。
 2. **"信号变好了"是真的，但与代理速度无关**：RSRP 改善 → 下行 54-66 Mbps；代理速度受限于上行路径，上行在 IPv4 上被掐、SNR 也没变好。手机上直接跑测速 App 走的是 IPv6 → 显得很快；隧道走 IPv4 → 慢且断，两者并不矛盾。
 3. **今天 worklog 里 3.73 Mbps 的孤例成功**≈ IPv4 路径两次掐流之间能挤出的吞吐；`SSL_ERROR_SYSCALL` = 隧道 TCP 被 RST 后 yamux 全部流瞬间陪葬。
 4. **Hub 与反向隧道拓扑设计本身没有大错**（PC 对照证明 Hub 健康），但有以下放大器：
@@ -88,7 +88,7 @@ IPv6 TCP RTT 27-63ms。
    - 故障**不分上下行**（20MB 下载也死），也**非确定性**（同窗口 hub:80 v4 上传 2/3 成功 12-13 Mbps）。
 3. **同一时段 v6:443 经同一台 F5 全部成功**（4MB/8MB 上传 16-23 Mbps，3 轮交错零失败）。"优先 v6"的经验结论保留，但机制不是"绕开 CGNAT"，而是 F5 的 v6 侧当前健康、v4 侧高故障率。
 4. **非标准端口不被 F5 终结，走裸 CGNAT 路径**：
-   - 39093（dxreverse 隧道）入站 TTL=47（真实 Hub Linux 栈）→ **隧道本身不经 F5 代理**。
+   - 39093（zhreverse 隧道）入站 TTL=47（真实 Hub Linux 栈）→ **隧道本身不经 F5 代理**。
    - tcpbin.com:4242（美国 Linode）v4 2MB 双向回显干净跑完（真实指纹 win 28960/wscale 7、RTT 230ms）。
 
 ### 对生产故障的重新解释
@@ -108,9 +108,9 @@ IPv6 TCP RTT 27-63ms。
 
 ### 已部署
 
-1. **Hub 配置**：`/etc/daxiang/dxreverse/server.yaml` `resolve: server -> client`（备份 `server.yaml.bak-20260610`），`systemctl restart dxreverse-hub.service`。
-2. **手机配置**：`/data/adb/dxreverse/client.yaml` `address_family: auto -> ipv6`（备份 `client.yaml.bak-20260610`）。
-3. **`egress/reverse` 代码改动**（手机端二进制已部署，备份 `bin/dxreverse.bak-20260610`）：
+1. **Hub 配置**：`/etc/zongheng/zhreverse/server.yaml` `resolve: server -> client`（备份 `server.yaml.bak-20260610`），`systemctl restart zhreverse-hub.service`。
+2. **手机配置**：`/data/adb/zhreverse/client.yaml` `address_family: auto -> ipv6`（备份 `client.yaml.bak-20260610`）。
+3. **`egress/reverse` 代码改动**（手机端二进制已部署，备份 `bin/zhreverse.bak-20260610`）：
    - `publicResolver()`：DNS 服务器顺序改为 v6 优先（`2606:4700:4700::1111` → `1.1.1.1` → `2001:4860:4860::8888` → `8.8.8.8`）。Rakuten v4 UDP/53 实测间歇丢包。
    - `dialTarget()`：DNS（6s）与拨号（每地址 6s、最多 2 个地址）预算分离。原实现 DNS+全部拨号共享 10s ctx，DNS 慢时直接挤死拨号。
    - yamux 双端 `MaxStreamWindowSize 256KB -> 4MB`、`ConnectionWriteTimeout 10s -> 30s`（**Hub 端二进制尚未部署**，见下）。
@@ -129,7 +129,7 @@ IPv6 TCP RTT 27-63ms。
 
 ### Hub 端二进制部署（同日完成）
 
-用户确认后部署 `dist/reverse/dxreverse-linux-amd64` 到 `/opt/daxiang/dxreverse/dxreverse`（备份 `dxreverse.bak-20260610`），重启服务，隧道自动重连。
+用户确认后部署 `dist/reverse/zhreverse-linux-amd64` 到 `/opt/zongheng/zhreverse/zhreverse`（备份 `zhreverse.bak-20260610`），重启服务，隧道自动重连。
 
 **双端部署后最终矩阵**（Hub 经 10.66.0.1:18081 → Cloudflare）：
 

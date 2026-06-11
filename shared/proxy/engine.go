@@ -25,7 +25,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/wireguard"
 	"github.com/sagernet/sing/common/json"
 
-	"daxiang-vpn/shared/paths"
+	"zongheng-vpn/shared/paths"
 )
 
 // RunEngine runs sing-box in-process and blocks until the process is

@@ -25,7 +25,7 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Shows local dxreverse status and keeps the status notification visible." />
+                android:value="Shows local zhreverse status and keeps the status notification visible." />
         </service>
 
         <receiver

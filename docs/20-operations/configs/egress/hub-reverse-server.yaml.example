@@ -4,11 +4,11 @@ server:
   # Hub-side HTTP CONNECT proxy exposed on the WireGuard address for clients.
   proxy: 10.66.0.1:18081
   # Store the real token in this file, mode 600. Do not commit it.
-  token_file: /etc/daxiang/dxreverse/token
+  token_file: /etc/zongheng/zhreverse/token
   transport: tcp
   # Used when transport is quic; harmless to keep for TCP rollback safety.
-  tls_cert_file: /etc/daxiang/dxreverse/server.crt
-  tls_key_file: /etc/daxiang/dxreverse/server.key
+  tls_cert_file: /etc/zongheng/zhreverse/server.crt
+  tls_key_file: /etc/zongheng/zhreverse/server.key
   # server = Hub resolves target hostnames before sending IP:port to Android.
   # client = Android resolves target hostnames and can use its mobile IPv6 path.
   resolve: client

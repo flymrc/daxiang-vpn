@@ -6,7 +6,7 @@ USB ADB 拔掉后,需要保留一个远程救援入口。此前确认 `10.66.0.1
 
 ## 方案
 
-新增 [97-dxadb-tcp-wg-only.sh](../../../egress/android-control/service.d/97-dxadb-tcp-wg-only.sh):
+新增 [97-zhadb-tcp-wg-only.sh](../../../egress/android-control/service.d/97-zhadb-tcp-wg-only.sh):
 
 - 开启 `adbd` TCP 监听 `5555`。
 - 通过 iptables 只允许 `tun0` 上的 `10.66.0.0/24` 访问。
@@ -28,8 +28,8 @@ Hub 侧可直接检查:
 
 ```bash
 nc -zv 10.66.0.101 5555
-ssh -i /root/.ssh/dxandroid_control_hub -p 2022 root@10.66.0.101 \
-  'getprop service.adb.tcp.port; ss -lntup | grep 5555; iptables -S DXADB_TCP'
+ssh -i /root/.ssh/zhandroid_control_hub -p 2022 root@10.66.0.101 \
+  'getprop service.adb.tcp.port; ss -lntup | grep 5555; iptables -S ZHADB_TCP'
 ```
 
 ## 验证
@@ -43,4 +43,4 @@ powershell -ExecutionPolicy Bypass -File scripts/check-android-shell-baseline.ps
 - `service.adb.tcp.port=5555`。
 - `persist.adb.tcp.port` 为空。
 - `10.66.0.101:5555` 只经 WireGuard 可达。
-- `iptables -S DXADB_TCP` 包含允许 `tun0/10.66.0.0/24` 和默认 drop。
+- `iptables -S ZHADB_TCP` 包含允许 `tun0/10.66.0.0/24` 和默认 drop。

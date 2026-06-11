@@ -41,10 +41,10 @@ final class InnernetStatusApp: NSObject, NSApplicationDelegate {
     private let endpointItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let connectItem = NSMenuItem(title: "Connect admin-innernet", action: #selector(connect), keyEquivalent: "c")
     private var timer: Timer?
-    private let helperDir = NSHomeDirectory() + "/.dxvpn/bin"
+    private let helperDir = NSHomeDirectory() + "/.zhvpn/bin"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        item.button?.title = "DX ..."
+        item.button?.title = "ZH ..."
         item.menu = menu
         buildMenu()
         refresh()
@@ -86,13 +86,13 @@ final class InnernetStatusApp: NSObject, NSApplicationDelegate {
         let title: String
         let status: String
         if pingHub && pingAndroid {
-            title = "DX OK"
+            title = "ZH OK"
             status = "Innernet online"
         } else if pingHub {
-            title = "DX Hub"
+            title = "ZH Hub"
             status = "Hub reachable, Android not reachable"
         } else {
-            title = "DX Off"
+            title = "ZH Off"
             status = "Innernet offline"
         }
 
@@ -105,23 +105,23 @@ final class InnernetStatusApp: NSObject, NSApplicationDelegate {
     }
 
     @objc private func connect() {
-        Command.adminShell(helperScript("dxvpn-admin-innernet-up.sh"))
+        Command.adminShell(helperScript("zhvpn-admin-innernet-up.sh"))
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.refresh() }
     }
 
     @objc private func disconnect() {
-        Command.adminShell(helperScript("dxvpn-admin-innernet-down.sh"))
+        Command.adminShell(helperScript("zhvpn-admin-innernet-down.sh"))
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.refresh() }
     }
 
     @objc private func copySSH() {
-        let command = "ssh -i ~/.ssh/dxandroid_control_local -p 2022 root@10.66.0.101"
+        let command = "ssh -i ~/.ssh/zhandroid_control_local -p 2022 root@10.66.0.101"
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(command, forType: .string)
     }
 
     @objc private func openConfigFolder() {
-        NSWorkspace.shared.open(URL(fileURLWithPath: NSHomeDirectory() + "/.dxvpn/wireguard"))
+        NSWorkspace.shared.open(URL(fileURLWithPath: NSHomeDirectory() + "/.zhvpn/wireguard"))
     }
 
     private func helperScript(_ name: String) -> String {

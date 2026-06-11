@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"daxiang-vpn/egress/proxy/internal/egressapp"
+	"zongheng-vpn/egress/proxy/internal/egressapp"
 )
 
 func main() {

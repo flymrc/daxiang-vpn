@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-// Mirrors dxvpn `status --json`.
+// Mirrors zhvpn `status --json`.
 export type Status = {
   running: boolean;
   proxy?: string;
@@ -10,7 +10,7 @@ export type Status = {
   error?: string;
 };
 
-// Mirrors dxvpn `login --json`.
+// Mirrors zhvpn `login --json`.
 export type LoginResult = {
   ok: boolean;
   egress?: string;
@@ -26,7 +26,7 @@ export type ActionResult = {
   warning?: string;
 };
 
-// Mirrors dxvpn `rotate-ip --json`.
+// Mirrors zhvpn `rotate-ip --json`.
 export type RotateResult = {
   ok: boolean;
   before?: string;

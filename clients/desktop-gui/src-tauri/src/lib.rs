@@ -11,19 +11,19 @@ use tokio::sync::Mutex;
 
 static STATUS_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
-// Run the bundled dxvpn sidecar and return (success, stdout, stderr).
+// Run the bundled zhvpn sidecar and return (success, stdout, stderr).
 // All the hard parts (UAC elevation for --fast, detached engine, PID files)
-// live inside dxvpn.exe itself; this layer only shells out and reads results.
+// live inside zhvpn.exe itself; this layer only shells out and reads results.
 async fn sidecar(app: &AppHandle, args: &[&str]) -> Result<(bool, String, String), String> {
     let cmd = app
         .shell()
-        .sidecar("dxvpn")
-        .map_err(|e| format!("无法定位 dxvpn：{e}"))?;
+        .sidecar("zhvpn")
+        .map_err(|e| format!("无法定位 zhvpn：{e}"))?;
     let output = cmd
         .args(args.to_vec())
         .output()
         .await
-        .map_err(|e| format!("执行 dxvpn 失败：{e}"))?;
+        .map_err(|e| format!("执行 zhvpn 失败：{e}"))?;
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
     Ok((output.status.success(), stdout, stderr))
@@ -33,7 +33,7 @@ async fn sidecar(app: &AppHandle, args: &[&str]) -> Result<(bool, String, String
 fn parse_json(stdout: &str, stderr: &str) -> Result<Value, String> {
     let line = stdout.lines().last().unwrap_or("").trim();
     serde_json::from_str::<Value>(line)
-        .map_err(|e| format!("解析 dxvpn 输出失败：{e}（stdout={stdout} stderr={stderr}）"))
+        .map_err(|e| format!("解析 zhvpn 输出失败：{e}（stdout={stdout} stderr={stderr}）"))
 }
 
 // Pick the most useful message from a non-JSON command (start/stop).
@@ -209,7 +209,7 @@ pub fn run() {
             )?;
             let _tray = TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("大象 VPN")
+                .tooltip("纵横 VPN")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -282,9 +282,9 @@ pub fn run() {
                         let _ = rotate_i.set_enabled(connected);
                         if let Some(tray) = handle.tray_by_id("main") {
                             let tip = if connected {
-                                "大象 VPN · 已连接"
+                                "纵横 VPN · 已连接"
                             } else {
-                                "大象 VPN · 未连接"
+                                "纵横 VPN · 未连接"
                             };
                             let _ = tray.set_tooltip(Some(tip));
                         }

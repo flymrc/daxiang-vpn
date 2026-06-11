@@ -42,9 +42,9 @@ WireGuard Android 官方 `TunnelManager.IntentReceiver` 会读取 extra `tunnel`
 - `sh -n egress/android-control/watchdog.sh` 通过。
 - `git diff --check` 通过。
 - `go test ./...` 通过。
-- ADB 部署新 watchdog 到 `/data/adb/dxandroid/watchdog.sh`,权限为 `root:root 700`。
+- ADB 部署新 watchdog 到 `/data/adb/zhandroid/watchdog.sh`,权限为 `root:root 700`。
 - 手动触发 WireGuard App DOWN/UP 后,WireGuard App 日志显示仍在发 handshake 但未完成,说明 intent 生效但当时蜂窝 UDP/NAT 状态仍异常。
-- 通过 `/data/adb/dxandroid/rotate-ip.sh 12` 做蜂窝重注册后恢复：
+- 通过 `/data/adb/zhandroid/rotate-ip.sh 12` 做蜂窝重注册后恢复：
   - 手机公网 IP 变为 `133.106.32.168`。
   - 手机本机可 ping `10.66.0.1`。
   - Hub 侧 Android peer 握手恢复新鲜。
@@ -64,12 +64,12 @@ WireGuard Android 官方 `TunnelManager.IntentReceiver` 会读取 extra `tunnel`
 ## 同日追加：本机控制面 key 与 admin-innernet peer
 
 - 在本机生成 Android 控制面 SSH key:
-  - private: `~/.ssh/dxandroid_control_local`
-  - public: `~/.ssh/dxandroid_control_local.pub`
-- 已把公钥追加到手机 `/data/adb/dxandroid/.ssh/authorized_keys`。
+  - private: `~/.ssh/zhandroid_control_local`
+  - public: `~/.ssh/zhandroid_control_local.pub`
+- 已把公钥追加到手机 `/data/adb/zhandroid/.ssh/authorized_keys`。
 - 本机直连与经 Hub 跳板均可登录:
-  - `ssh -i ~/.ssh/dxandroid_control_local -p 2022 root@10.66.0.101 id`
-  - `ssh -J root@36.50.84.68 -i ~/.ssh/dxandroid_control_local -p 2022 root@10.66.0.101 id`
+  - `ssh -i ~/.ssh/zhandroid_control_local -p 2022 root@10.66.0.101 id`
+  - `ssh -J root@36.50.84.68 -i ~/.ssh/zhandroid_control_local -p 2022 root@10.66.0.101 id`
 - 新增管理专用 WireGuard peer `admin-innernet`:
   - IP: `10.66.0.40/32`
   - 真实配置: `local/wireguard/admin-innernet.conf`
@@ -79,17 +79,17 @@ WireGuard Android 官方 `TunnelManager.IntentReceiver` 会读取 extra `tunnel`
 ## 同日追加：常驻状态栏
 
 - 新增 macOS 状态栏工具源码:
-  - `clients/admin-menubar/DaxiangInnernetStatus.swift`
+  - `clients/admin-menubar/ZonghengInnernetStatus.swift`
 - 新增管理内网 helper 脚本与 LaunchAgent 模板:
-  - `tools/macos/admin-innernet/dxvpn-admin-innernet-up.sh`
-  - `tools/macos/admin-innernet/dxvpn-admin-innernet-down.sh`
-  - `tools/macos/admin-innernet/com.daxiang.dxvpn.innernet-status.plist`
-  - `tools/macos/admin-innernet/com.daxiang.dxvpn.admin-innernet.plist`
+  - `tools/macos/admin-innernet/zhvpn-admin-innernet-up.sh`
+  - `tools/macos/admin-innernet/zhvpn-admin-innernet-down.sh`
+  - `tools/macos/admin-innernet/com.zongheng.zhvpn.innernet-status.plist`
+  - `tools/macos/admin-innernet/com.zongheng.zhvpn.admin-innernet.plist`
 - 已安装到本机:
-  - `~/.dxvpn/bin/dxvpn-admin-innernet-*.sh`
-  - `~/.dxvpn/wireguard/admin-innernet.conf`
-  - `local/apps/DaxiangInnernetStatus`
-  - `~/Library/LaunchAgents/com.daxiang.dxvpn.innernet-status.plist`
+  - `~/.zhvpn/bin/zhvpn-admin-innernet-*.sh`
+  - `~/.zhvpn/wireguard/admin-innernet.conf`
+  - `local/apps/ZonghengInnernetStatus`
+  - `~/Library/LaunchAgents/com.zongheng.zhvpn.innernet-status.plist`
 - 已加载 LaunchAgent,状态栏进程正在运行。
 - 本 Mac mini 已有 `10.66.0.100/24` 出口隧道常驻,因此不在本机强启第二条 `admin-innernet` 隧道,避免同一 `10.66.0.0/24` 路由重叠。
 - 当前本机经现有常驻隧道可 ping Hub `10.66.0.1` 和 Android `10.66.0.101`。
@@ -251,8 +251,8 @@ Hub/Mac 经 Android 出口下载 20MB:
 - `ip route get 1.1.1.1` 显示 root shell 公网流量走 `rmnet_data2`,没有错走 `tun0`。
 - `cmd netpolicy get restrict-background` 为 disabled;后台流量限制未开启。
 - Thermal Status 为 `0`,CPU/skin/battery 温度正常,未见热限频。
-- Magisk modules 目录未发现额外模块;当前自启动脚本主要是 `98-dxandroid-control.sh` 和 `99-dxandroid-egress.sh`。
-- `99-dxandroid-egress.sh` 主要做 doze disable、stay awake 和拉起 egress,未设置限速。
+- Magisk modules 目录未发现额外模块;当前自启动脚本主要是 `98-zhandroid-control.sh` 和 `99-zhandroid-egress.sh`。
+- `99-zhandroid-egress.sh` 主要做 doze disable、stay awake 和拉起 egress,未设置限速。
 
 发现的风险点:
 
@@ -398,7 +398,7 @@ MTU 临时扫测:
 - 8 并发没有突破总吞吐,说明不是单 TCP 流窗口问题。
 - `egress.log` 里的 `cellular-direct` 是历史 tag 命名,不是当前一定强制蜂窝;复测公网 IP 已证明 Wi-Fi 状态下 SOCKS 会走 Wi-Fi。
 - 当前真实瓶颈分两层:
-  - Wi-Fi 状态:WireGuard App `tun0` + `dxandroid-egress` 代理回传总吞吐约 `17-21 Mbps`。
+  - Wi-Fi 状态:WireGuard App `tun0` + `zhandroid-egress` 代理回传总吞吐约 `17-21 Mbps`。
   - au 蜂窝状态:在上述上限之外,还叠加蜂窝上行/小区调度/目标站点差异,实际可从 `~1 Mbps` 到 Fast.com 口径的 `6-20 Mbps` 波动。
 
 ## 同日追加：反向出口通道 Phase 0 试验
@@ -411,7 +411,7 @@ MTU 临时扫测:
   - 公网测试监听:`0.0.0.0:39093`。
   - 本地代理:`127.0.0.1:18081`。
 - Android 端:
-  - `/data/local/tmp/dxreverse client` 主动连接 Hub。
+  - `/data/local/tmp/zhreverse client` 主动连接 Hub。
   - 不创建 VPN/tun,不依赖官方 WireGuard App 的数据面。
 - DNS 处理:
   - 初版让 Android Go binary 直接 `net.Dial("host:port")`,CONNECT 返回 502。
@@ -422,7 +422,7 @@ MTU 临时扫测:
 
 - 临时打开 Hub UFW `39093/tcp`。
 - 测试结束后已删除该 UFW 规则。
-- 测试结束后已停止 Hub/Android 的 `dxreverse` 进程。
+- 测试结束后已停止 Hub/Android 的 `zhreverse` 进程。
 
 Android Wi-Fi 下的反向通道结果:
 
@@ -436,7 +436,7 @@ Android Wi-Fi 下的反向通道结果:
 
 对比:
 
-- 官方 WireGuard App `tun0` + `dxandroid-egress` 数据面在同一 Android Wi-Fi 下约 `17-21 Mbps`。
+- 官方 WireGuard App `tun0` + `zhandroid-egress` 数据面在同一 Android Wi-Fi 下约 `17-21 Mbps`。
 - Phase 0 反向通道达到 `44-50 Mbps`,已经明显突破 WG App 数据面上限。
 
 结论:
@@ -463,7 +463,7 @@ Android 本机直连 Cloudflare 2MB:
 - run3:`515,680 B/s` (`4.13 Mbps`)。
 - ping `1.1.1.1`:avg `141.5 ms`,max `213.3 ms`,0% loss。
 
-旧 WireGuard App + `dxandroid-egress` SOCKS 蜂窝小包:
+旧 WireGuard App + `zhandroid-egress` SOCKS 蜂窝小包:
 
 - run1:SOCKS5 连接失败。
 - run2:45 秒超时,收到 `827,241 bytes`,`18,380 B/s` (`0.15 Mbps`)。
@@ -493,7 +493,7 @@ Phase 0 TCP/yamux 反向通道:
 清理:
 
 - Hub 临时 `39093/tcp` UFW 规则已删除。
-- Hub/Android `dxreverse` 测试进程已停止。
+- Hub/Android `zhreverse` 测试进程已停止。
 
 ## 同日追加：反向通道 Phase 1 QUIC 蜂窝复测
 
@@ -555,7 +555,7 @@ Phase 1 判断:
 清理:
 
 - Hub 临时 `39093/udp` UFW 规则已删除。
-- Hub/Android `dxreverse` 测试进程已停止。
+- Hub/Android `zhreverse` 测试进程已停止。
 
 ## 同日追加：反向通道 Phase 3 Android 侧 FETCH
 
@@ -613,7 +613,7 @@ Phase 3 判断:
 清理:
 
 - Hub 临时 `39093/udp` 和 `39094/tcp` UFW 规则已删除。
-- Hub/Android `dxreverse` 测试进程已停止。
+- Hub/Android `zhreverse` 测试进程已停止。
 
 ## 同日追加：Android/au 拔 USB 后阳台远程复测
 
@@ -649,22 +649,22 @@ Hub 经 Android 出口 8 并发:
 
 用户明确要求“完全用新版重构,替代老版”。本轮开始把 `egress/reverse` 从实验组件提升为 Android 生产数据面:
 
-- `dxreverse server/client` 新增 YAML `--config` 支持。
+- `zhreverse server/client` 新增 YAML `--config` 支持。
 - 支持 `token_file`,避免在 systemd/Magisk 脚本中直接写 token。
 - 默认生产传输改为 QUIC,client 默认 `connections=4`。
 - 新增 Hub systemd 模板:
-  - `egress/reverse/systemd/dxreverse-hub.service`
+  - `egress/reverse/systemd/zhreverse-hub.service`
 - 新增 Android Magisk service.d 模板:
-  - `egress/reverse/service.d/99-dxreverse-egress.sh`
-  - 默认停止旧 `99-dxandroid-egress` / `dxandroid-egress`,再常驻 `dxreverse client`。
+  - `egress/reverse/service.d/99-zhreverse-egress.sh`
+  - 默认停止旧 `99-zhandroid-egress` / `zhandroid-egress`,再常驻 `zhreverse client`。
 - 新增配置示例:
   - `docs/20-operations/configs/egress/hub-reverse-server.yaml.example`
   - `docs/20-operations/configs/egress/android-reverse-client.yaml.example`
-- `egress/android-control/watchdog.sh` 的出口保活目标从 `99-dxandroid-egress.sh` 切换到 `99-dxreverse-egress.sh`。
-- Android 状态 App 探针从 `dxandroid-egress` PID、本地 `10.66.0.101:1080` 监听和旧日志,切换为:
-  - `dxreverse` PID。
-  - `ss -untp | grep dxreverse` 反连会话。
-  - `/data/local/tmp/dxreverse-egress.log` 新版出口日志。
+- `egress/android-control/watchdog.sh` 的出口保活目标从 `99-zhandroid-egress.sh` 切换到 `99-zhreverse-egress.sh`。
+- Android 状态 App 探针从 `zhandroid-egress` PID、本地 `10.66.0.101:1080` 监听和旧日志,切换为:
+  - `zhreverse` PID。
+  - `ss -untp | grep zhreverse` 反连会话。
+  - `/data/local/tmp/zhreverse-egress.log` 新版出口日志。
 - 新增 Hub 侧新版健康检查:
   - `scripts/check-android-reverse-egress.sh`
 
@@ -674,26 +674,26 @@ Hub 经 Android 出口 8 并发:
 - 新主入口是 Hub 本地 `127.0.0.1:18081` HTTP CONNECT proxy。
 - Android 手机不接受入站代理连接,只主动连接 Hub UDP `39093`。
 - WireGuard App 仍作为控制面保留,用于 `10.66.0.101:2022` SSH 和 watchdog 自愈。
-- 旧 `dxandroid-egress` 只作为回滚路径保留。
+- 旧 `zhandroid-egress` 只作为回滚路径保留。
 
 物理上线结果:
 
 - Hub 已部署:
-  - binary:`/opt/daxiang/dxreverse/dxreverse`
-  - config:`/etc/daxiang/dxreverse/server.yaml`
-  - token:`/etc/daxiang/dxreverse/token`
-  - service:`/etc/systemd/system/dxreverse-hub.service`
+  - binary:`/opt/zongheng/zhreverse/zhreverse`
+  - config:`/etc/zongheng/zhreverse/server.yaml`
+  - token:`/etc/zongheng/zhreverse/token`
+  - service:`/etc/systemd/system/zhreverse-hub.service`
   - UFW:`39093/udp` 已开放。
 - Android 已部署:
-  - binary:`/data/adb/dxreverse/bin/dxreverse`
-  - config:`/data/adb/dxreverse/client.yaml`
-  - token:`/data/adb/dxreverse/token`
-  - service:`/data/adb/service.d/99-dxreverse-egress.sh`
-  - old service:`/data/adb/service.d/99-dxandroid-egress.sh.disabled`
+  - binary:`/data/adb/zhreverse/bin/zhreverse`
+  - config:`/data/adb/zhreverse/client.yaml`
+  - token:`/data/adb/zhreverse/token`
+  - service:`/data/adb/service.d/99-zhreverse-egress.sh`
+  - old service:`/data/adb/service.d/99-zhandroid-egress.sh.disabled`
 - 当前运行进程:
-  - Android:`sh /data/adb/service.d/99-dxreverse-egress.sh`
-  - Android:`dxreverse client --config /data/adb/dxreverse/client.yaml`
-  - Hub:`dxreverse server --config /etc/daxiang/dxreverse/server.yaml`
+  - Android:`sh /data/adb/service.d/99-zhreverse-egress.sh`
+  - Android:`zhreverse client --config /data/adb/zhreverse/client.yaml`
+  - Hub:`zhreverse server --config /etc/zongheng/zhreverse/server.yaml`
 - Hub 日志显示 4 条 QUIC reverse session 均已连接,来源 `59.132.8.186`。
 - Hub 侧健康检查:
   - `scripts/check-android-reverse-egress.sh`
@@ -708,9 +708,9 @@ Hub 经 Android 出口 8 并发:
   - 通过控制 SSH 临时打开 `service.adb.tcp.port=5555`。
   - 本机 `adb connect 10.66.0.101:5555` 成功。
   - 旧状态 App 因签名不同先卸载,再安装新版 debug APK。
-  - 已启动 `dev.daxiang.dxandroidstatus/.MainActivity`。
+  - 已启动 `dev.zongheng.zhandroidstatus/.MainActivity`。
   - 安装结束后立即关闭 ADB TCP:`service.adb.tcp.port=-1`,确认 `5555` 无监听。
-  - 当前状态 App 进程 `dev.daxiang.dxandroidstatus` 正在运行。
+  - 当前状态 App 进程 `dev.zongheng.zhandroidstatus` 正在运行。
 
 ## 同日追加：反向通道 Phase 2 QUIC 连接池
 
@@ -753,4 +753,4 @@ Phase 2 判断:
 清理:
 
 - Hub 临时 `39093/udp` UFW 规则已删除。
-- Hub/Android `dxreverse` 测试进程已停止。
+- Hub/Android `zhreverse` 测试进程已停止。

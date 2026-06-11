@@ -41,20 +41,20 @@ ssh maruichao@100.80.36.89
 - 本地 IP：`192.168.68.97`
 - 当前公网出口 IP：`118.158.252.9`
 - WireGuard 工具：已通过 Homebrew 安装
-- WireGuard 配置：`/Users/maruichao/.dxvpn/wireguard/mac-mini.conf`
-- WireGuard 固化配置：`/usr/local/etc/dxvpn/wireguard/mac-mini.conf`
+- WireGuard 配置：`/Users/maruichao/.zhvpn/wireguard/mac-mini.conf`
+- WireGuard 固化配置：`/usr/local/etc/zhvpn/wireguard/mac-mini.conf`
 - WireGuard 接口：`utun7`
 - WireGuard IP：`10.66.0.100/24`
 - 远端代理内核：`sing-box`
-- 远端代理配置：`/Users/maruichao/.dxvpn/sing-box-mac-egress.json`
-- 远端代理固化配置：`/usr/local/etc/dxvpn/sing-box/mac-egress.json`
+- 远端代理配置：`/Users/maruichao/.zhvpn/sing-box-mac-egress.json`
+- 远端代理固化配置：`/usr/local/etc/zhvpn/sing-box/mac-egress.json`
 - 远端代理监听：`10.66.0.100:1080`
 - 远端代理类型：mixed，也就是同时支持 HTTP 和 SOCKS5
-- WireGuard 开机启动：`/Library/LaunchDaemons/com.daxiang.dxvpn.wireguard.plist`
-- 远端代理开机启动：`/Library/LaunchDaemons/com.daxiang.dxvpn.sing-box.plist`
-- WireGuard 启动脚本：`/usr/local/sbin/dxvpn-wireguard-up.sh`
-- 远端代理启动脚本：`/usr/local/sbin/dxvpn-sing-box-run.sh`
-- 日志目录：`/usr/local/var/log/dxvpn`
+- WireGuard 开机启动：`/Library/LaunchDaemons/com.zongheng.zhvpn.wireguard.plist`
+- 远端代理开机启动：`/Library/LaunchDaemons/com.zongheng.zhvpn.sing-box.plist`
+- WireGuard 启动脚本：`/usr/local/sbin/zhvpn-wireguard-up.sh`
+- 远端代理启动脚本：`/usr/local/sbin/zhvpn-sing-box-run.sh`
+- 日志目录：`/usr/local/var/log/zhvpn`
 
 当前验证结果：
 
@@ -71,8 +71,8 @@ ssh maruichao@100.80.36.89
 sudo /opt/homebrew/bin/wg show
 
 # Mac 上检查 LaunchDaemon
-sudo launchctl print system/com.daxiang.dxvpn.wireguard
-sudo launchctl print system/com.daxiang.dxvpn.sing-box
+sudo launchctl print system/com.zongheng.zhvpn.wireguard
+sudo launchctl print system/com.zongheng.zhvpn.sing-box
 
 # Hub 上检查 Mac 远端代理出口
 curl -x http://10.66.0.100:1080 https://api.ipify.org
@@ -85,49 +85,49 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 - 当前数据面设备：Google Pixel 7a（`lynx`）
 - 控制面 WireGuard IP：`10.66.0.101`（Pixel 迁移后待重新配置）
 - 控制面 SSH：`10.66.0.101:2022`（Pixel 迁移后待重新配置）
-- 数据面：`dxreverse` 反向 TCP/yamux
+- 数据面：`zhreverse` 反向 TCP/yamux
 - Hub 侧代理入口：`10.66.0.1:18081`
 - Hub reverse TCP 监听：`0.0.0.0:39093/tcp`
 - Android reverse endpoint：Android 主动连 Hub,无手机入站端口
 - Hub 防火墙：UFW 允许 `wg0 -> 10.66.0.1:18081/tcp`
-- 旧代理：`10.66.0.101:1080` / `dxandroid-egress` 已从 Android 生产入口拆除
+- 旧代理：`10.66.0.101:1080` / `zhandroid-egress` 已从 Android 生产入口拆除
 
 当前部署：
 
 | 项 | 路径 |
 | --- | --- |
-| Hub binary | `/opt/daxiang/dxreverse/dxreverse` |
-| Hub config | `/etc/daxiang/dxreverse/server.yaml` |
-| Hub token | `/etc/daxiang/dxreverse/token` |
-| Hub QUIC cert/key（仅 QUIC 回滚用） | `/etc/daxiang/dxreverse/server.crt` / `/etc/daxiang/dxreverse/server.key` |
-| Hub service | `/etc/systemd/system/dxreverse-hub.service` |
-| Android binary | `/data/adb/dxreverse/bin/dxreverse` |
-| Android config | `/data/adb/dxreverse/client.yaml` |
-| Android token | `/data/adb/dxreverse/token` |
-| Android service | `/data/adb/service.d/99-dxreverse-egress.sh` |
+| Hub binary | `/opt/zongheng/zhreverse/zhreverse` |
+| Hub config | `/etc/zongheng/zhreverse/server.yaml` |
+| Hub token | `/etc/zongheng/zhreverse/token` |
+| Hub QUIC cert/key（仅 QUIC 回滚用） | `/etc/zongheng/zhreverse/server.crt` / `/etc/zongheng/zhreverse/server.key` |
+| Hub service | `/etc/systemd/system/zhreverse-hub.service` |
+| Android binary | `/data/adb/zhreverse/bin/zhreverse` |
+| Android config | `/data/adb/zhreverse/client.yaml` |
+| Android token | `/data/adb/zhreverse/token` |
+| Android service | `/data/adb/service.d/99-zhreverse-egress.sh` |
 
 当前验证结果：
 
-- `dxreverse-hub.service` 已启用并运行。
+- `zhreverse-hub.service` 已启用并运行。
 - Hub 监听 `39093/tcp` 和 `10.66.0.1:18081`。
 - Android 当前 `transport: tcp`、`connections: 1`、`address_family: ipv6`;`client.server_cert_sha256` 保留用于 QUIC 回滚。
 - Hub 当前 `resolve: client`(2026-06-10 起):目标域名在手机侧解析并优先 IPv6 直拨,绕开乐天 F5 BIG-IP 透明代理故障率高的 v4 侧,详见 `docs/90-history/worklogs/2026-06-10-pixel-7a-speed-audit.md`。
 - Hub 当前 `max_proxy_connections=96`、`max_proxy_connections_per_client=48`,用于保护 Android 手机出口免受客户端突发并发拖死,同时避免误伤浏览器常驻连接。
 - UFW 已允许 WireGuard 客户端访问 `10.66.0.1:18081/tcp`。
 - Hub 日志显示 Pixel Android 1 条 TCP reverse session 已连接。
-- Android 当前仅运行 `99-dxreverse-egress.sh` supervisor 和 `dxreverse client`。
+- Android 当前仅运行 `99-zhreverse-egress.sh` supervisor 和 `zhreverse client`。
 - Hub 经 reverse proxy 出口 IP：以 `curl --proxy http://10.66.0.1:18081 https://ifconfig.me/ip` 等实时结果为准。2026-06-10 Pixel 测得公网 IP 为 `133.106.34.62`。
 - Android 客户端 token 当前应绑定 `egress.proxy_addr=10.66.0.1:18081`;旧 `10.66.0.101:1080` 不再分配给 Android 客户端。
 
 常用检查命令：
 
 ```bash
-systemctl status dxreverse-hub.service
-journalctl -u dxreverse-hub.service -n 50 --no-pager
+systemctl status zhreverse-hub.service
+journalctl -u zhreverse-hub.service -n 50 --no-pager
 scripts/check-android-reverse-egress.sh
 curl --proxy http://10.66.0.1:18081 https://api.ipify.org
-ssh -i ~/.ssh/dxandroid_control_local -p 2022 root@10.66.0.101 \
-  'ps -A -o PID,PPID,ARGS | grep -E "dxreverse|dxandroid-egress|99-dx" | grep -v grep || true'
+ssh -i ~/.ssh/zhandroid_control_local -p 2022 root@10.66.0.101 \
+  'ps -A -o PID,PPID,ARGS | grep -E "zhreverse|zhandroid-egress|99-zh" | grep -v grep || true'
 ```
 
 ## 当前服务器状态
@@ -142,7 +142,7 @@ ssh -i ~/.ssh/dxandroid_control_local -p 2022 root@10.66.0.101 \
 - WireGuard 监听端口：`51820/udp`
 - IPv4 转发：已开启
 - WireGuard 服务：`wg-quick@wg0`，已启用并正在运行
-- 防火墙：`ufw` 已启用,默认拒绝入站;显式放行 SSH、WireGuard、dxhub bootstrap、dxreverse TCP 和 `wg0` 上的 `10.66.0.1:18081/tcp`
+- 防火墙：`ufw` 已启用,默认拒绝入站;显式放行 SSH、WireGuard、zhhub bootstrap、zhreverse TCP 和 `wg0` 上的 `10.66.0.1:18081/tcp`
 - Docker：正在运行 `linuxserver/librespeed`，占用 `80/tcp`
 
 ## 当前 WireGuard Peer

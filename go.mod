@@ -1,4 +1,4 @@
-module daxiang-vpn
+module zongheng-vpn
 
 go 1.24.7
 

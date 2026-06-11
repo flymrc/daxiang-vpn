@@ -1,11 +1,11 @@
-# dxvpn.exe 实施文档
+# zhvpn.exe 实施文档
 
 ## 目标
 
 先做一个 Windows 单文件命令行程序：
 
 ```text
-dxvpn.exe
+zhvpn.exe
 ```
 
 用户不需要理解：
@@ -20,17 +20,17 @@ dxvpn.exe
 用户只需要执行：
 
 ```powershell
-dxvpn.exe login <授权码>
-dxvpn.exe start
-dxvpn.exe status
-dxvpn.exe test
-dxvpn.exe stop
+zhvpn.exe login <授权码>
+zhvpn.exe start
+zhvpn.exe status
+zhvpn.exe test
+zhvpn.exe stop
 ```
 
 用户看到的是：
 
 ```text
-大象 VPN 已连接
+纵横 VPN 已连接
 出口地区：日本
 出口节点：mac-mini
 出口 IP：118.158.252.9
@@ -41,7 +41,7 @@ dxvpn.exe stop
 
 ### 本次做
 
-- Windows `dxvpn.exe`。
+- Windows `zhvpn.exe`。
 - 导入客户端配置。
 - 启动本地代理。
 - 停止本地代理。
@@ -66,7 +66,7 @@ dxvpn.exe stop
 ### 导入配置
 
 ```powershell
-dxvpn.exe import .\cn-client-01.yaml
+zhvpn.exe import .\cn-client-01.yaml
 ```
 
 输出：
@@ -80,13 +80,13 @@ dxvpn.exe import .\cn-client-01.yaml
 ### 启动
 
 ```powershell
-dxvpn.exe start
+zhvpn.exe start
 ```
 
 输出：
 
 ```text
-大象 VPN 已启动
+纵横 VPN 已启动
 本地代理：http://127.0.0.1:7890
 出口节点：日本 mac-mini
 ```
@@ -94,7 +94,7 @@ dxvpn.exe start
 ### 状态
 
 ```powershell
-dxvpn.exe status
+zhvpn.exe status
 ```
 
 输出：
@@ -109,7 +109,7 @@ dxvpn.exe status
 ### 测试
 
 ```powershell
-dxvpn.exe test
+zhvpn.exe test
 ```
 
 输出：
@@ -122,20 +122,20 @@ dxvpn.exe test
 ### 停止
 
 ```powershell
-dxvpn.exe stop
+zhvpn.exe stop
 ```
 
 输出：
 
 ```text
-大象 VPN 已停止
+纵横 VPN 已停止
 ```
 
 ## 技术选型
 
 ### 推荐语言：Go
 
-推荐用 Go 实现 `dxvpn.exe`。
+推荐用 Go 实现 `zhvpn.exe`。
 
 原因：
 
@@ -176,7 +176,7 @@ MVP 使用 Go。
 
 ### 本地代理内核：sing-box
 
-`dxvpn.exe` 第一版不自己实现代理协议，而是启动一个本地 `sing-box.exe`。
+`zhvpn.exe` 第一版不自己实现代理协议，而是启动一个本地 `sing-box.exe`。
 
 原因：
 
@@ -187,13 +187,13 @@ MVP 使用 Go。
 
 ### WireGuard
 
-MVP 第一版不在 `dxvpn.exe` 中强行管理 WireGuard。
+MVP 第一版不在 `zhvpn.exe` 中强行管理 WireGuard。
 
 原因：
 
 - Windows 上 WireGuard 驱动和隧道服务需要更复杂的权限处理。
 - 当前第一版只要能访问 `10.66.0.100:1080`，就能使用 Mac 出口代理。
-- 可以先让管理员准备好 WireGuard 隧道，`dxvpn.exe` 负责检查连通性和启动本地代理。
+- 可以先让管理员准备好 WireGuard 隧道，`zhvpn.exe` 负责检查连通性和启动本地代理。
 
 后续增强：
 
@@ -205,7 +205,7 @@ MVP 第一版不在 `dxvpn.exe` 中强行管理 WireGuard。
 ## MVP 架构
 
 ```text
-dxvpn.exe
+zhvpn.exe
     |
     | 读取配置
     | 生成 sing-box 本地配置
@@ -223,15 +223,15 @@ Mac 远端代理 10.66.0.100:1080
 
 ## 打包方式
 
-### 当前打包方式：单文件 dxvpn.exe
+### 当前打包方式：单文件 zhvpn.exe
 
-当前版本已经把代理内核内嵌到 `dxvpn.exe`。
+当前版本已经把代理内核内嵌到 `zhvpn.exe`。
 
 发布目录：
 
 ```text
 dist/windows-amd64/
-  dxvpn.exe
+  zhvpn.exe
   README.txt
 ```
 
@@ -243,10 +243,10 @@ dist/windows-amd64/
 - 远端代理地址
 - WireGuard 细节
 
-`dxvpn.exe` 启动时会在本地私有目录释放底层代理内核：
+`zhvpn.exe` 启动时会在本地私有目录释放底层代理内核：
 
 ```text
-%LOCALAPPDATA%\DaxiangVPN\bin\sing-box.exe
+%LOCALAPPDATA%\ZonghengVPN\bin\sing-box.exe
 ```
 
 这个文件是程序运行时内部文件，不出现在发布包里。
@@ -256,13 +256,13 @@ dist/windows-amd64/
 推荐使用：
 
 ```text
-%LOCALAPPDATA%\DaxiangVPN\
+%LOCALAPPDATA%\ZonghengVPN\
 ```
 
 目录结构：
 
 ```text
-%LOCALAPPDATA%\DaxiangVPN\
+%LOCALAPPDATA%\ZonghengVPN\
   config.yaml
   sing-box\
     local-proxy.json
@@ -280,7 +280,7 @@ dist/windows-amd64/
 
 ```yaml
 license:
-  token: DX-DEV-TOKEN
+  token: ZH-DEV-TOKEN
 ```
 
 说明：
@@ -288,11 +288,11 @@ license:
 - Hub 地址、出口节点、远端代理地址都由服务端下发。
 - 客户看不到，也不需要填写。
 - `local_proxy` 默认使用 `127.0.0.1:7890`。
-- `sing-box.exe` 默认和 `dxvpn.exe` 放在同一个目录，不需要写进用户配置。
+- `sing-box.exe` 默认和 `zhvpn.exe` 放在同一个目录，不需要写进用户配置。
 
 ## sing-box 本地配置
 
-`dxvpn.exe start` 生成：
+`zhvpn.exe start` 生成：
 
 ```json
 {
@@ -326,19 +326,19 @@ license:
 ### import
 
 ```powershell
-dxvpn.exe import .\cn-client-01.yaml
+zhvpn.exe import .\cn-client-01.yaml
 ```
 
 行为：
 
 - 读取 YAML。
 - 校验字段。
-- 写入 `%LOCALAPPDATA%\DaxiangVPN\config.yaml`。
+- 写入 `%LOCALAPPDATA%\ZonghengVPN\config.yaml`。
 
 ### start
 
 ```powershell
-dxvpn.exe start
+zhvpn.exe start
 ```
 
 行为：
@@ -353,7 +353,7 @@ dxvpn.exe start
 ### stop
 
 ```powershell
-dxvpn.exe stop
+zhvpn.exe stop
 ```
 
 行为：
@@ -365,7 +365,7 @@ dxvpn.exe stop
 ### status
 
 ```powershell
-dxvpn.exe status
+zhvpn.exe status
 ```
 
 检查：
@@ -379,7 +379,7 @@ dxvpn.exe status
 ### test
 
 ```powershell
-dxvpn.exe test
+zhvpn.exe test
 ```
 
 行为：
@@ -445,10 +445,10 @@ MVP 不需要管理员权限。
 
 ```text
 cli/
-  dxvpn/
+  zhvpn/
     go.mod
     cmd/
-      dxvpn/
+      zhvpn/
         main.go
     internal/
       app/
@@ -469,7 +469,7 @@ cli/
 ## 第一步实现清单
 
 1. 创建 Go 项目。
-2. 实现 Windows 路径解析：`%LOCALAPPDATA%\DaxiangVPN`。
+2. 实现 Windows 路径解析：`%LOCALAPPDATA%\ZonghengVPN`。
 3. 实现 YAML 配置读取和导入。
 4. 实现 sing-box 配置生成。
 5. 实现启动 `sing-box.exe`。
@@ -477,16 +477,16 @@ cli/
 7. 实现停止进程。
 8. 实现状态检查。
 9. 实现出口 IP 测试。
-10. 编译 `dxvpn.exe`。
+10. 编译 `zhvpn.exe`。
 
 ## 编译命令
 
-sing-box 以代码库形式编译进 `dxvpn.exe`（进程内运行），不再内嵌外部 exe。
+sing-box 以代码库形式编译进 `zhvpn.exe`（进程内运行），不再内嵌外部 exe。
 必须带 `with_gvisor` 标签（WireGuard 的 gVisor 用户态网络栈），并用
 `-trimpath -ldflags "-s -w"` 剥离调试信息瘦身：
 
 ```powershell
-go build -tags with_gvisor -trimpath -ldflags "-s -w" -o dist\windows-amd64\dxvpn.exe .\cmd\dxvpn
+go build -tags with_gvisor -trimpath -ldflags "-s -w" -o dist\windows-amd64\zhvpn.exe .\cmd\zhvpn
 ```
 
 发布构建（同时产出 amd64 / arm64）直接运行：
@@ -498,7 +498,7 @@ go build -tags with_gvisor -trimpath -ldflags "-s -w" -o dist\windows-amd64\dxvp
 如果在非 Windows 系统交叉编译：
 
 ```bash
-GOOS=windows GOARCH=amd64 go build -tags with_gvisor -trimpath -ldflags "-s -w" -o dist/windows-amd64/dxvpn.exe ./clients/cli
+GOOS=windows GOARCH=amd64 go build -tags with_gvisor -trimpath -ldflags "-s -w" -o dist/windows-amd64/zhvpn.exe ./clients/cli
 ```
 
 > 体积：内嵌外部 sing-box.exe 时约 50MB；改为库化 + 只注册用到的协议
@@ -510,7 +510,7 @@ MVP 发布包：
 
 ```text
 dist/
-  dxvpn.exe
+  zhvpn.exe
   sing-box.exe
   cn-client-01.yaml
   README.txt
@@ -519,30 +519,30 @@ dist/
 用户使用：
 
 ```powershell
-.\dxvpn.exe import .\cn-client-01.yaml
-.\dxvpn.exe start
-.\dxvpn.exe test
+.\zhvpn.exe import .\cn-client-01.yaml
+.\zhvpn.exe start
+.\zhvpn.exe test
 ```
 
 ## 验收标准
 
-- [ ] `dxvpn.exe import cn-client-01.yaml` 成功。
-- [ ] `%LOCALAPPDATA%\DaxiangVPN\config.yaml` 存在。
-- [ ] `dxvpn.exe start` 成功启动本地代理。
+- [ ] `zhvpn.exe import cn-client-01.yaml` 成功。
+- [ ] `%LOCALAPPDATA%\ZonghengVPN\config.yaml` 存在。
+- [ ] `zhvpn.exe start` 成功启动本地代理。
 - [ ] `127.0.0.1:7890` 正常监听。
-- [ ] `dxvpn.exe status` 显示运行中。
-- [ ] `dxvpn.exe test` 返回 `118.158.252.9`。
+- [ ] `zhvpn.exe status` 显示运行中。
+- [ ] `zhvpn.exe test` 返回 `118.158.252.9`。
 - [ ] 浏览器设置 HTTP 代理 `127.0.0.1:7890` 后可以访问日本网站。
-- [ ] `dxvpn.exe stop` 能停止代理。
+- [ ] `zhvpn.exe stop` 能停止代理。
 
 ## 当前实现状态
 
-已完成第一版 `dxvpn.exe` MVP 代码和发布目录。
+已完成第一版 `zhvpn.exe` MVP 代码和发布目录。
 
 源码目录：
 
 ```text
-cli/dxvpn/
+cli/zhvpn/
 ```
 
 发布目录：
@@ -551,37 +551,37 @@ cli/dxvpn/
 dist/
   README.txt
   windows-amd64/
-    dxvpn.exe
+    zhvpn.exe
     README.txt
   windows-arm64/
-    dxvpn.exe
+    zhvpn.exe
     README.txt
 ```
 
 已实现命令：
 
 ```powershell
-dxvpn.exe import <配置文件>
-dxvpn.exe login <授权码>
-dxvpn.exe start
-dxvpn.exe stop
-dxvpn.exe status
-dxvpn.exe test
-dxvpn.exe help
+zhvpn.exe import <配置文件>
+zhvpn.exe login <授权码>
+zhvpn.exe start
+zhvpn.exe stop
+zhvpn.exe status
+zhvpn.exe test
+zhvpn.exe help
 ```
 
 当前验证结果：
 
 - `go test ./...` 通过。
-- `dxvpn.exe help` 正常输出。
-- `dxvpn.exe import cn-client-01.yaml` 可导入配置。
-- `dxvpn.exe login <授权码>` 可登录并只保存 token。
-- `dxvpn.exe status` 可显示本地代理和远端出口状态。
+- `zhvpn.exe help` 正常输出。
+- `zhvpn.exe import cn-client-01.yaml` 可导入配置。
+- `zhvpn.exe login <授权码>` 可登录并只保存 token。
+- `zhvpn.exe status` 可显示本地代理和远端出口状态。
 - 已生成 Windows x64 发布包：`dist/windows-amd64`。
 - 已生成 Windows ARM64 发布包：`dist/windows-arm64`。
-- sing-box 已作为代码库编译进 `dxvpn.exe`，进程内运行；发布包里不再出现 `sing-box.exe`。`dxvpn.exe start` 会以隐藏的 `__engine` 子命令重新拉起自身作为后台进程承载 sing-box。
+- sing-box 已作为代码库编译进 `zhvpn.exe`，进程内运行；发布包里不再出现 `sing-box.exe`。`zhvpn.exe start` 会以隐藏的 `__engine` 子命令重新拉起自身作为后台进程承载 sing-box。
 - 发布包里不再包含客户 YAML；客户通过授权码登录。
-- 在当前开发机器上，`dxvpn.exe start` 会提示远端出口 `10.66.0.100:1080` 不可达，这是预期结果，因为这台机器尚未作为新的 WireGuard 客户端接入 Hub。
+- 在当前开发机器上，`zhvpn.exe start` 会提示远端出口 `10.66.0.100:1080` 不可达，这是预期结果，因为这台机器尚未作为新的 WireGuard 客户端接入 Hub。
 
 下一步需要先给当前测试客户端创建新的 WireGuard Peer，例如：
 
@@ -593,8 +593,8 @@ WireGuard IP：10.66.0.20
 等客户端能访问 `10.66.0.100:1080` 后，再执行：
 
 ```powershell
-.\dxvpn.exe start
-.\dxvpn.exe test
+.\zhvpn.exe start
+.\zhvpn.exe test
 ```
 
 ## 后续路线
@@ -604,7 +604,7 @@ WireGuard IP：10.66.0.20
 - ~~内嵌 `sing-box.exe`~~ 已完成，并进一步改为库化进程内运行。
 - 自动下载或更新内核。
 - 支持多个出口。
-- 支持 `dxvpn.exe switch mac-mini`。
+- 支持 `zhvpn.exe switch mac-mini`。
 
 ### V0.3
 

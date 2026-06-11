@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"daxiang-vpn/clients/cli/internal/app"
+	"zongheng-vpn/clients/cli/internal/app"
 )
 
 func main() {

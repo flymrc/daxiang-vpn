@@ -7,14 +7,14 @@
 # 即使你断线,本机仍会把飞行模式关回来。
 #
 # 用法(从隧道内,如本机/Hub):
-#   ssh -i ~/.ssh/dxandroid_control -p 2022 root@10.66.0.101 'sh /data/adb/dxandroid/rotate-ip.sh'
-#   ssh ... 'sh /data/adb/dxandroid/rotate-ip.sh 12'   # 自定义断网秒数(默认 8,越长换 IP 概率越高)
+#   ssh -i ~/.ssh/zhandroid_control -p 2022 root@10.66.0.101 'sh /data/adb/zhandroid/rotate-ip.sh'
+#   ssh ... 'sh /data/adb/zhandroid/rotate-ip.sh 12'   # 自定义断网秒数(默认 8,越长换 IP 概率越高)
 # 之后等 ~20-40s 重连,用 scripts/check-android-egress-health.ps1 或经 :1080 代理 curl 确认新 IP。
 #
 # 注意:运营商可能仍返回相同/粘性 IP,不保证每次都变;切换瞬间出口中断十几秒。
 
 DOWN="${1:-8}"
-LOG=/data/local/tmp/dxandroid-control.log
+LOG=/data/local/tmp/zhandroid-control.log
 
 setsid sh -c "
   echo \"\$(date '+%F %T') rotate-ip: airplane ON (down=${DOWN}s)\" >> $LOG

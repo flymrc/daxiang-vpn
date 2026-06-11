@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"daxiang-vpn/egress/proxy/internal/egressconfig"
-	"daxiang-vpn/shared/paths"
+	"zongheng-vpn/egress/proxy/internal/egressconfig"
+	"zongheng-vpn/shared/paths"
 )
 
 type singBoxConfig struct {
@@ -104,7 +104,7 @@ func WriteConfig(ctx paths.Context, cfg egressconfig.Config) error {
 		hubPort, _ := strconv.Atoi(hubPortText)
 		sb.Endpoints = []singBoxEndpoint{{
 			Type:       "wireguard",
-			Tag:        "dxvpn-wg",
+			Tag:        "zhvpn-wg",
 			System:     cfg.WireGuard.SystemTun(),
 			MTU:        cfg.WireGuard.MTUOrDefault(),
 			Workers:    cfg.WireGuard.Workers,

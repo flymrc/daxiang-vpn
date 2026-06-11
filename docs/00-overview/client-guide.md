@@ -1,28 +1,28 @@
-# 大象 VPN 客户端使用指南
+# 纵横 VPN 客户端使用指南
 
 > 本指南可直接分享给客户。客户只需要一个**令牌（token）**，无需任何其他配置。
 
 ## 一、你会拿到什么
 
-- `dxvpn.exe`（Windows 客户端，单文件，无需安装）
-- 一个**令牌**，形如 `DX-JP-TEST-001`
+- `zhvpn.exe`（Windows 客户端，单文件，无需安装）
+- 一个**令牌**，形如 `ZH-JP-TEST-001`
 
 > 令牌就是你的身份。不要把同一个令牌给两台设备同时使用，否则会互相掉线。
 > 每台设备用一个独立令牌。
 
 ## 二、三步开始使用
 
-打开 PowerShell，进入 `dxvpn.exe` 所在目录，依次执行：
+打开 PowerShell，进入 `zhvpn.exe` 所在目录，依次执行：
 
 ```powershell
 # 1. 登录（把 <你的令牌> 换成发给你的令牌）
-.\dxvpn.exe login <你的令牌>
+.\zhvpn.exe login <你的令牌>
 
 # 2. 启动代理
-.\dxvpn.exe start
+.\zhvpn.exe start
 
 # 3. 查看出口 IP（应显示日本 IP）
-.\dxvpn.exe status
+.\zhvpn.exe status
 ```
 
 启动后，本机会出现一个本地代理：
@@ -50,18 +50,18 @@ curl.exe -x http://127.0.0.1:7890 https://www.yahoo.co.jp
 ## 四、停止
 
 ```powershell
-.\dxvpn.exe stop
+.\zhvpn.exe stop
 ```
 
 ## 五、常见问题
 
 **Q：需要装 WireGuard 或其他软件吗？**
-不需要。`dxvpn.exe` 自带所需的一切，单文件即可运行。
+不需要。`zhvpn.exe` 自带所需的一切，单文件即可运行。
 
 **Q：连不上 / IP 还是本地的？**
 1. 确认令牌输入正确（区分大小写）。
 2. 确认浏览器/系统代理设成了 `127.0.0.1:7890`。
-3. 重新执行 `.\dxvpn.exe stop` 再 `.\dxvpn.exe start`。
+3. 重新执行 `.\zhvpn.exe stop` 再 `.\zhvpn.exe start`。
 
 **Q：可以多台设备一起用吗？**
 可以，但**每台设备要用不同的令牌**。需要更多令牌请联系管理员。
@@ -71,4 +71,4 @@ curl.exe -x http://127.0.0.1:7890 https://www.yahoo.co.jp
 
 ---
 
-如有问题，请联系管理员并附上 `.\dxvpn.exe status` 的输出。
+如有问题，请联系管理员并附上 `.\zhvpn.exe status` 的输出。

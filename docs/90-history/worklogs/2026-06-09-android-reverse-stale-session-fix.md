@@ -4,7 +4,7 @@
 
 ADB 全量调查发现 Android 本机直连公网能跑通,但 Hub 侧经 `10.66.0.1:18081` 代理大量卡在 CONNECT 阶段。Hub proxy TCP 已接受连接,但等待 Android 反向 QUIC stream 回应时超时。
 
-同时确认手机上的 `/data/adb/service.d/99-dxreverse-egress.sh` 和 `/data/adb/dxandroid/watchdog.sh` 仍是旧版本,此前提交的 Wi-Fi lock、buffer tuning、默认路由检查等底层基线尚未部署到设备。
+同时确认手机上的 `/data/adb/service.d/99-zhreverse-egress.sh` 和 `/data/adb/zhandroid/watchdog.sh` 仍是旧版本,此前提交的 Wi-Fi lock、buffer tuning、默认路由检查等底层基线尚未部署到设备。
 
 ## 修复
 
@@ -15,12 +15,12 @@ ADB 全量调查发现 Android 本机直连公网能跑通,但 Hub 侧经 `10.66
 - `egress/reverse/main_test.go`
   - 新增 stale session 回归测试:第一条 session 接命令但不响应,Hub 应清掉它并使用下一条健康 session。
 - Android 设备
-  - 通过 ADB 部署新版 `99-dxreverse-egress.sh` 和 `watchdog.sh`。
-  - 清理重复启动的 `99-dxreverse-egress.sh` / `dxreverse client`,恢复为单 supervisor + 单 client。
+  - 通过 ADB 部署新版 `99-zhreverse-egress.sh` 和 `watchdog.sh`。
+  - 清理重复启动的 `99-zhreverse-egress.sh` / `zhreverse client`,恢复为单 supervisor + 单 client。
   - 日志确认 `sysctl` tuning 和默认蜂窝路由检查已实际执行。
 - Hub
-  - 重新构建并替换 `/opt/daxiang/dxreverse/dxreverse`。
-  - 重启 `dxreverse-hub.service`。
+  - 重新构建并替换 `/opt/zongheng/zhreverse/zhreverse`。
+  - 重启 `zhreverse-hub.service`。
 
 ## 验证
 

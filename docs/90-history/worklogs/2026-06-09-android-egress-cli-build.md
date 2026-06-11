@@ -6,7 +6,7 @@
 
 ## 健康检查
 
-本机默认 `ssh root@36.50.84.68` 无可用非交互凭据，改用本机已有 Hub 密钥 `~/.ssh/daxiang_server` 做只读检查。
+本机默认 `ssh root@36.50.84.68` 无可用非交互凭据，改用本机已有 Hub 密钥 `~/.ssh/zongheng_server` 做只读检查。
 
 检查结果：
 
@@ -25,9 +25,9 @@
 当前 CLI 已内置 `rotate-ip` 命令：
 
 ```powershell
-dxvpn.exe rotate-ip
-dxvpn.exe rotate-ip --down-seconds 12 --wait-seconds 45
-dxvpn.exe rotate-ip --phone 10.66.0.101 --port 2022 --key "$HOME\.ssh\dxandroid_control"
+zhvpn.exe rotate-ip
+zhvpn.exe rotate-ip --down-seconds 12 --wait-seconds 45
+zhvpn.exe rotate-ip --phone 10.66.0.101 --port 2022 --key "$HOME\.ssh\zhandroid_control"
 ```
 
 执行构建：
@@ -38,8 +38,8 @@ dxvpn.exe rotate-ip --phone 10.66.0.101 --port 2022 --key "$HOME\.ssh\dxandroid_
 
 产物：
 
-- `dist/windows-amd64/dxvpn.exe`，约 `17.1 MB`。
-- `dist/windows-arm64/dxvpn.exe`，约 `15.5 MB`。
+- `dist/windows-amd64/zhvpn.exe`，约 `17.1 MB`。
+- `dist/windows-arm64/zhvpn.exe`，约 `15.5 MB`。
 
 ## 验证
 

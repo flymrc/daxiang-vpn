@@ -1,24 +1,24 @@
-# 大象 VPN
+# 纵横 VPN
 
-大象 VPN 是一个 Hub + 日本住宅出口 + Windows 客户端的代理网络项目。
+纵横 VPN 是一个 Hub + 日本住宅出口 + Windows 客户端的代理网络项目。
 
 ## 目录
 
 > 注:`clients/` 是终端用户客户端,`egress/` 是出口节点(基础设施侧)。安卓相关都在 `egress/` 下,**不是**终端客户端。
 
-按角色分顶层(client / hub / egress),Go 代码统一在根 module `daxiang-vpn` 下。
+按角色分顶层(client / hub / egress),Go 代码统一在根 module `zongheng-vpn` 下。
 
 ```text
 clients/              客户端(终端用户侧)
-  cli/                CLI 客户端（原 frontend/dxvpn）
+  cli/                CLI 客户端（原 frontend/zhvpn）
   desktop-gui/        🅿️ 预留：mac/windows PC 单一跨平台 GUI 客户端
 
-hub/                  Hub 服务端（授权 API，原 backend/dxhub）
+hub/                  Hub 服务端（授权 API，原 backend/zhhub）
 
 egress/               出口节点(基础设施侧，非终端客户端)
-  reverse/            Android 反向 TCP/yamux 出口数据面（dxreverse，当前生产路径）
+  reverse/            Android 反向 TCP/yamux 出口数据面（zhreverse，当前生产路径）
   proxy/              旧跨平台 Go 出口代理（基于 sing-box；Android 上仅保留回滚）
-  android-status/     安卓出口监控 App（原 android/dxandroid-status）
+  android-status/     安卓出口监控 App（原 android/zhandroid-status）
   android-control/    安卓出口远程控制+自愈（Go SSH 服务绑隧道 IP + 看门狗）
 
 shared/               客户端与出口共用的 Go 包
@@ -46,16 +46,16 @@ clients/cli/build.ps1
 # Hub 服务端
 go build -o dist/hub ./hub
 # 安卓出口代理（arm64）
-$env:GOOS="linux"; $env:GOARCH="arm64"; go build -o dist/reverse/dxreverse-linux-arm64 ./egress/reverse
+$env:GOOS="linux"; $env:GOARCH="arm64"; go build -o dist/reverse/zhreverse-linux-arm64 ./egress/reverse
 ```
 
 ## 当前 MVP
 
 ```text
-dxvpn.exe login <授权码>
+zhvpn.exe login <授权码>
 -> Hub 校验 token
 -> Hub 返回运行配置
--> dxvpn.exe start
+-> zhvpn.exe start
 -> 本地代理 127.0.0.1:7890
 -> 日本住宅出口
 ```
@@ -63,12 +63,12 @@ dxvpn.exe login <授权码>
 ## 客户端命令
 
 ```powershell
-dxvpn.exe login <授权码>
-dxvpn.exe start            # 本地代理端口默认 7890
-dxvpn.exe start --port 7891  # 端口被占用时换端口（也可用环境变量 DXVPN_LOCAL_PORT）
-dxvpn.exe status
-dxvpn.exe stop
-dxvpn.exe rotate-ip      # Android 手机出口换公网 IP
+zhvpn.exe login <授权码>
+zhvpn.exe start            # 本地代理端口默认 7890
+zhvpn.exe start --port 7891  # 端口被占用时换端口（也可用环境变量 ZHVPN_LOCAL_PORT）
+zhvpn.exe status
+zhvpn.exe stop
+zhvpn.exe rotate-ip      # Android 手机出口换公网 IP
 ```
 
 ## 关键文档

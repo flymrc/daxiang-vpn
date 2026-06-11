@@ -4,7 +4,7 @@
 
 实现第一个中国客户端 CLI MVP：
 
-> 用户启动 `dxvpn proxy start` 后，本机出现 `127.0.0.1:7890` 代理地址。通过这个本地代理访问日本网站时，公网出口是日本 Mac 的公网 IP。
+> 用户启动 `zhvpn proxy start` 后，本机出现 `127.0.0.1:7890` 代理地址。通过这个本地代理访问日本网站时，公网出口是日本 Mac 的公网 IP。
 
 当前已具备的远端链路：
 
@@ -32,7 +32,7 @@ CLI MVP 要补齐的是中国客户端本地这一段：
     v
 127.0.0.1:7890
     |
-    | dxvpn CLI 本地代理
+    | zhvpn CLI 本地代理
     v
 WireGuard 隧道
     |
@@ -58,19 +58,19 @@ Mac 远端代理 10.66.0.100:1080
 ### 1. 导入配置
 
 ```bash
-dxvpn import cn-client-01.yaml
+zhvpn import cn-client-01.yaml
 ```
 
 ### 2. 启动本地代理
 
 ```bash
-dxvpn proxy start
+zhvpn proxy start
 ```
 
 启动后输出：
 
 ```text
-dxvpn 本地代理已启动
+zhvpn 本地代理已启动
 HTTP 代理：127.0.0.1:7890
 远端出口：mac-mini
 远端代理：10.66.0.100:1080
@@ -79,7 +79,7 @@ HTTP 代理：127.0.0.1:7890
 ### 3. 测试出口 IP
 
 ```bash
-dxvpn proxy test
+zhvpn proxy test
 ```
 
 期望输出：
@@ -93,7 +93,7 @@ dxvpn proxy test
 ### 4. 停止代理
 
 ```bash
-dxvpn proxy stop
+zhvpn proxy stop
 ```
 
 ## 推荐命令
@@ -101,21 +101,21 @@ dxvpn proxy stop
 第一版只实现这些命令：
 
 ```bash
-dxvpn import <配置文件>
-dxvpn status
-dxvpn proxy start
-dxvpn proxy stop
-dxvpn proxy status
-dxvpn proxy test
+zhvpn import <配置文件>
+zhvpn status
+zhvpn proxy start
+zhvpn proxy stop
+zhvpn proxy status
+zhvpn proxy test
 ```
 
 可以先不实现：
 
 ```bash
-dxvpn egress list
-dxvpn proxy switch
-dxvpn tun start
-dxvpn tun stop
+zhvpn egress list
+zhvpn proxy switch
+zhvpn tun start
+zhvpn tun stop
 ```
 
 ## 配置文件格式
@@ -186,7 +186,7 @@ PersistentKeepalive = 25
 
 ## 本地代理设计
 
-第一版 `dxvpn proxy start` 启动一个本地 HTTP 代理：
+第一版 `zhvpn proxy start` 启动一个本地 HTTP 代理：
 
 ```text
 监听：127.0.0.1:7890
@@ -312,7 +312,7 @@ CLI 只负责：
 ### macOS / Linux
 
 ```text
-~/.dxvpn/
+~/.zhvpn/
   config.yaml
   wireguard/
     cn-client-01.conf
@@ -329,7 +329,7 @@ CLI 只负责：
 后续单独处理。
 
 ```text
-%USERPROFILE%\.dxvpn\
+%USERPROFILE%\.zhvpn\
 ```
 
 ## 进程管理
@@ -338,7 +338,7 @@ CLI 只负责：
 
 流程：
 
-1. 读取 `~/.dxvpn/config.yaml`。
+1. 读取 `~/.zhvpn/config.yaml`。
 2. 检查 WireGuard 是否在线。
 3. 如果 WireGuard 未在线，尝试启动 WireGuard。
 4. 生成本地 `sing-box` 配置。
@@ -414,12 +414,12 @@ MVP 可以先不把 WireGuard 进程管理做得太复杂。
 ## 推荐仓库结构
 
 ```text
-daxiang-vpn/
+zongheng-vpn/
   cli/
-    dxvpn/
+    zhvpn/
       go.mod
       cmd/
-        dxvpn/
+        zhvpn/
           main.go
       internal/
         config/
@@ -435,14 +435,14 @@ daxiang-vpn/
 ### 配置
 
 - [ ] 可以导入 `cn-client-01.yaml`。
-- [ ] 配置保存到 `~/.dxvpn/config.yaml`。
+- [ ] 配置保存到 `~/.zhvpn/config.yaml`。
 - [ ] 本地 `sing-box` 配置可以生成。
 
 ### 启动
 
-- [ ] `dxvpn proxy start` 可以启动本地代理。
+- [ ] `zhvpn proxy start` 可以启动本地代理。
 - [ ] `127.0.0.1:7890` 开始监听。
-- [ ] `dxvpn proxy status` 显示运行中。
+- [ ] `zhvpn proxy status` 显示运行中。
 
 ### 访问
 
@@ -451,7 +451,7 @@ daxiang-vpn/
 
 ### 停止
 
-- [ ] `dxvpn proxy stop` 可以停止本地代理。
+- [ ] `zhvpn proxy stop` 可以停止本地代理。
 - [ ] 停止后 `127.0.0.1:7890` 不再监听。
 
 ## 实施顺序
@@ -459,11 +459,11 @@ daxiang-vpn/
 1. 在 Hub 上新增 `cn-client-01` Peer，分配 `10.66.0.20`。
 2. 生成客户端 WireGuard 配置。
 3. 在仓库创建 Go CLI 项目。
-4. 实现 `dxvpn import`。
-5. 实现 `dxvpn proxy start`，先启动本地 `sing-box`。
-6. 实现 `dxvpn proxy status`。
-7. 实现 `dxvpn proxy test`。
-8. 实现 `dxvpn proxy stop`。
+4. 实现 `zhvpn import`。
+5. 实现 `zhvpn proxy start`，先启动本地 `sing-box`。
+6. 实现 `zhvpn proxy status`。
+7. 实现 `zhvpn proxy test`。
+8. 实现 `zhvpn proxy stop`。
 9. 用本机或指定中国客户端完整测试。
 
 ## 当前远端依赖状态

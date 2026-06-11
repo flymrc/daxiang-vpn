@@ -16,19 +16,19 @@
 第一次使用：
 
 ```bash
-dxvpn login --hub 36.50.84.68 --token <令牌>
+zhvpn login --hub 36.50.84.68 --token <令牌>
 ```
 
 或者导入管理员生成的配置：
 
 ```bash
-dxvpn import ./cn-client-01.yaml
+zhvpn import ./cn-client-01.yaml
 ```
 
 ### 2. 查看可用出口
 
 ```bash
-dxvpn egress list
+zhvpn egress list
 ```
 
 示例输出：
@@ -44,7 +44,7 @@ jp-phone-01  日本    手机IP    106.xxx.xxx.xxx   在线
 最简单模式：
 
 ```bash
-dxvpn proxy start --egress jp-mac-01
+zhvpn proxy start --egress jp-mac-01
 ```
 
 默认监听：
@@ -63,7 +63,7 @@ SOCKS5代理：127.0.0.1:7891
 ### 4. 测试出口 IP
 
 ```bash
-dxvpn ip
+zhvpn ip
 ```
 
 示例输出：
@@ -77,7 +77,7 @@ dxvpn ip
 也可以直接测试日本网站：
 
 ```bash
-dxvpn test https://www.yahoo.co.jp
+zhvpn test https://www.yahoo.co.jp
 ```
 
 ### 5. Android 出口换 IP
@@ -85,32 +85,32 @@ dxvpn test https://www.yahoo.co.jp
 当当前出口是 Android 手机出口时，可以让手机网络重注册并尝试更换公网出口 IP：
 
 ```bash
-dxvpn rotate-ip
-dxvpn rotate-ip --down-seconds 12 --wait-seconds 90
+zhvpn rotate-ip
+zhvpn rotate-ip --down-seconds 12 --wait-seconds 90
 ```
 
-默认 `dxvpn rotate-ip` 由 Hub API 代为触发 Android 控制面,客户机不需要 Android SSH 私钥。`--wait-seconds` 是最大等待时间,CLI 会轮询到出口恢复或超时。需要临时直连控制面排障时：
+默认 `zhvpn rotate-ip` 由 Hub API 代为触发 Android 控制面,客户机不需要 Android SSH 私钥。`--wait-seconds` 是最大等待时间,CLI 会轮询到出口恢复或超时。需要临时直连控制面排障时：
 
 ```bash
-dxvpn rotate-ip --direct --phone 10.66.0.101 --port 2022 --key ~/.ssh/dxandroid_control
-dxvpn rotate-ip --direct --jump root@36.50.84.68 --key ~/.ssh/dxandroid_control
+zhvpn rotate-ip --direct --phone 10.66.0.101 --port 2022 --key ~/.ssh/zhandroid_control
+zhvpn rotate-ip --direct --jump root@36.50.84.68 --key ~/.ssh/zhandroid_control
 ```
 
 注意:
 
-- 普通 `dxvpn start` 是用户态代理模式,不会给 Windows 系统添加 `10.66.0.0/24` 路由;控制面 SSH 可能需要 `--jump root@36.50.84.68` 经 Hub 跳板。
+- 普通 `zhvpn start` 是用户态代理模式,不会给 Windows 系统添加 `10.66.0.0/24` 路由;控制面 SSH 可能需要 `--jump root@36.50.84.68` 经 Hub 跳板。
 - `--direct` 是管理员排障入口,才需要已授权的 Android 控制面私钥。
 
 ### 6. 切换出口
 
 ```bash
-dxvpn proxy switch jp-phone-01
+zhvpn proxy switch jp-phone-01
 ```
 
 ### 7. 停止代理
 
 ```bash
-dxvpn proxy stop
+zhvpn proxy stop
 ```
 
 ## 两种客户端模式
@@ -155,7 +155,7 @@ Hub
 后续再做。
 
 ```bash
-dxvpn tun start --egress jp-mac-01
+zhvpn tun start --egress jp-mac-01
 ```
 
 优点：
@@ -178,26 +178,26 @@ dxvpn tun start --egress jp-mac-01
 ## 推荐命令结构
 
 ```bash
-dxvpn login --hub <hub地址> --token <令牌>
-dxvpn import <配置文件>
+zhvpn login --hub <hub地址> --token <令牌>
+zhvpn import <配置文件>
 
-dxvpn status
-dxvpn rotate-ip
-dxvpn ip
-dxvpn test <URL>
+zhvpn status
+zhvpn rotate-ip
+zhvpn ip
+zhvpn test <URL>
 
-dxvpn egress list
-dxvpn egress select <出口名称>
+zhvpn egress list
+zhvpn egress select <出口名称>
 
-dxvpn proxy start --egress <出口名称>
-dxvpn proxy start --auto
-dxvpn proxy switch <出口名称>
-dxvpn proxy stop
-dxvpn proxy status
+zhvpn proxy start --egress <出口名称>
+zhvpn proxy start --auto
+zhvpn proxy switch <出口名称>
+zhvpn proxy stop
+zhvpn proxy status
 
-dxvpn tun start --egress <出口名称>
-dxvpn tun stop
-dxvpn tun status
+zhvpn tun start --egress <出口名称>
+zhvpn tun stop
+zhvpn tun status
 ```
 
 ## 极简使用路径
@@ -205,10 +205,10 @@ dxvpn tun status
 对于普通用户，最好只需要三步：
 
 ```bash
-dxvpn import cn-client-01.yaml
-dxvpn proxy start --auto
-dxvpn rotate-ip
-dxvpn ip
+zhvpn import cn-client-01.yaml
+zhvpn proxy start --auto
+zhvpn rotate-ip
+zhvpn ip
 ```
 
 然后把浏览器代理设置为：
@@ -276,8 +276,8 @@ egress:
 
 ## 第一版验收标准
 
-- 中国客户端执行 `dxvpn proxy start --egress jp-mac-01` 后，本地出现 `127.0.0.1:7890`。
+- 中国客户端执行 `zhvpn proxy start --egress jp-mac-01` 后，本地出现 `127.0.0.1:7890`。
 - 使用 `curl -x http://127.0.0.1:7890 https://www.yahoo.co.jp` 可以访问日本网站。
-- `dxvpn ip` 显示的是日本出口节点的公网 IP，不是 Hub 的公网 IP。
-- `dxvpn proxy switch jp-phone-01` 可以切换到另一个日本出口。
-- `dxvpn proxy stop` 可以干净停止本地代理和相关连接。
+- `zhvpn ip` 显示的是日本出口节点的公网 IP，不是 Hub 的公网 IP。
+- `zhvpn proxy switch jp-phone-01` 可以切换到另一个日本出口。
+- `zhvpn proxy stop` 可以干净停止本地代理和相关连接。

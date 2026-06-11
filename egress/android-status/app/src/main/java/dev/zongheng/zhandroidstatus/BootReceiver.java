@@ -1,4 +1,4 @@
-package dev.daxiang.dxandroidstatus;
+package dev.zongheng.zhandroidstatus;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;

@@ -1,6 +1,6 @@
-﻿# 构建大象 VPN Windows 客户端发布包。
+﻿# 构建纵横 VPN Windows 客户端发布包。
 #
-# sing-box 以代码库形式编译进 dxvpn.exe（进程内运行），不再内嵌外部 exe。
+# sing-box 以代码库形式编译进 zhvpn.exe（进程内运行），不再内嵌外部 exe。
 # 体积优化：
 #   -tags with_gvisor   编译 WireGuard 所需的 gVisor 用户态网络栈（必需）
 #   -trimpath           去除编译路径信息
@@ -23,7 +23,7 @@ $targets = @(
 foreach ($t in $targets) {
     $outDir = Join-Path $repoRoot "dist\$($t.Dir)"
     New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-    $out = Join-Path $outDir "dxvpn.exe"
+    $out = Join-Path $outDir "zhvpn.exe"
 
     Write-Host "构建 $($t.Arch) -> $out"
     $env:GOOS = "windows"

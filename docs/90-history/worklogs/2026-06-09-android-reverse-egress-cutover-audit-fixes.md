@@ -2,7 +2,7 @@
 
 ## 背景
 
-对 Android 出口从旧 `dxandroid-egress` / `10.66.0.101:1080` 切到新 `dxreverse` / `10.66.0.1:18081` 的代码和配置做审计后,发现几类切换风险:
+对 Android 出口从旧 `zhandroid-egress` / `10.66.0.101:1080` 切到新 `zhreverse` / `10.66.0.1:18081` 的代码和配置做审计后,发现几类切换风险:
 
 - 本地 Hub token 配置仍可能把 Android 客户端指向旧代理地址。
 - QUIC reverse client 跳过服务端证书校验,共享 token 可能被主动 MITM 获取。
@@ -28,7 +28,7 @@
 - 文档:
   - `egress/reverse/README.md` 补证书生成、指纹计算、pinning 和 `/fetch` 启用说明。
   - `docs/20-operations/runbooks/server-access.md` 补 Hub QUIC cert/key 与 Android pin 要求。
-  - `egress/proxy/README.md` 把 Android `dxandroid-egress` 标为回滚路径。
+  - `egress/proxy/README.md` 把 Android `zhandroid-egress` 标为回滚路径。
 
 ## 验证
 
@@ -40,4 +40,4 @@ go test ./...
 
 ## 后续部署注意
 
-线上 Hub 需要安装持久化 `/etc/daxiang/dxreverse/server.crt` 和 `/etc/daxiang/dxreverse/server.key`,计算证书 DER SHA-256 后写入 Android `/data/adb/dxreverse/client.yaml` 的 `client.server_cert_sha256`,再重启 `dxreverse-hub.service` 和 Android `99-dxreverse-egress.sh`。
+线上 Hub 需要安装持久化 `/etc/zongheng/zhreverse/server.crt` 和 `/etc/zongheng/zhreverse/server.key`,计算证书 DER SHA-256 后写入 Android `/data/adb/zhreverse/client.yaml` 的 `client.server_cert_sha256`,再重启 `zhreverse-hub.service` 和 Android `99-zhreverse-egress.sh`。

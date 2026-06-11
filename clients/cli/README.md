@@ -1,21 +1,21 @@
-# dxvpn.exe
+# zhvpn.exe
 
 Windows 客户端 CLI MVP。
 
 ## 构建
 
 ```powershell
-go build -tags with_gvisor -o ..\..\dist\dxvpn.exe .
+go build -tags with_gvisor -o ..\..\dist\zhvpn.exe .
 ```
 
 ## 使用
 
 ```powershell
-.\dxvpn.exe login DX-DEV-TOKEN
-.\dxvpn.exe start
-.\dxvpn.exe status
-.\dxvpn.exe rotate-ip
-.\dxvpn.exe stop
+.\zhvpn.exe login ZH-DEV-TOKEN
+.\zhvpn.exe start
+.\zhvpn.exe status
+.\zhvpn.exe rotate-ip
+.\zhvpn.exe stop
 ```
 
 ## Android 出口换 IP
@@ -23,8 +23,8 @@ go build -tags with_gvisor -o ..\..\dist\dxvpn.exe .
 CLI 可以让当前手机卡出口重注册并尝试更换公网出口 IP：
 
 ```powershell
-.\dxvpn.exe rotate-ip
-.\dxvpn.exe rotate-ip --down-seconds 12 --wait-seconds 90
+.\zhvpn.exe rotate-ip
+.\zhvpn.exe rotate-ip --down-seconds 12 --wait-seconds 90
 ```
 
 `--wait-seconds` 是最大等待时间,CLI 会轮询到出口恢复或超时。

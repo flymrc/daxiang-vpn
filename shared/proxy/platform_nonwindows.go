@@ -5,8 +5,8 @@ package proxy
 import (
 	"errors"
 
-	"daxiang-vpn/shared/config"
-	"daxiang-vpn/shared/paths"
+	"zongheng-vpn/shared/config"
+	"zongheng-vpn/shared/paths"
 )
 
 // Hidden subcommands are only used by the Windows launcher path.

@@ -1,4 +1,4 @@
-// dxandroid-control: 出口手机上的极简 SSH 服务,用于脱离 ADB 的远程控制。
+// zhandroid-control: 出口手机上的极简 SSH 服务,用于脱离 ADB 的远程控制。
 //
 // 设计要点:
 //   - 默认只绑定 WireGuard 隧道 IP 10.66.0.101:2022,公网网卡上不可见;
@@ -38,10 +38,10 @@ func envOr(key, def string) string {
 }
 
 func main() {
-	listenAddr := flag.String("listen", envOr("DXCTL_LISTEN", "10.66.0.101:2022"), "监听地址(默认仅隧道 IP)")
-	hostKeyPath := flag.String("hostkey", envOr("DXCTL_HOSTKEY", "/data/adb/dxandroid/keys/ssh_host_ed25519_key"), "主机私钥路径(不存在则生成)")
-	authPath := flag.String("authorized", envOr("DXCTL_AUTHORIZED", "/data/adb/dxandroid/.ssh/authorized_keys"), "授权公钥文件")
-	shellPath := flag.String("shell", envOr("DXCTL_SHELL", "/system/bin/sh"), "登录 shell")
+	listenAddr := flag.String("listen", envOr("ZHCTL_LISTEN", "10.66.0.101:2022"), "监听地址(默认仅隧道 IP)")
+	hostKeyPath := flag.String("hostkey", envOr("ZHCTL_HOSTKEY", "/data/adb/zhandroid/keys/ssh_host_ed25519_key"), "主机私钥路径(不存在则生成)")
+	authPath := flag.String("authorized", envOr("ZHCTL_AUTHORIZED", "/data/adb/zhandroid/.ssh/authorized_keys"), "授权公钥文件")
+	shellPath := flag.String("shell", envOr("ZHCTL_SHELL", "/system/bin/sh"), "登录 shell")
 	freebind := flag.Bool("freebind", true, "用 IP_FREEBIND 允许绑定尚未就绪的隧道 IP")
 	flag.Parse()
 
@@ -73,7 +73,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("listen %s: %v", *listenAddr, err)
 	}
-	log.Printf("dxandroid-control listening on %s (pubkey-only)", *listenAddr)
+	log.Printf("zhandroid-control listening on %s (pubkey-only)", *listenAddr)
 
 	for {
 		conn, err := ln.Accept()
@@ -119,7 +119,7 @@ func loadOrCreateHostKey(path string) (ssh.Signer, error) {
 	if err != nil {
 		return nil, err
 	}
-	block, err := ssh.MarshalPrivateKey(priv, "dxandroid-control")
+	block, err := ssh.MarshalPrivateKey(priv, "zhandroid-control")
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +236,7 @@ func startCommand(ch ssh.Channel, pr *ptyReq, shellPath, command string) (*os.Fi
 		cmd = exec.Command(shellPath, "-c", command)
 	}
 	cmd.Env = append(os.Environ(),
-		"HOME=/data/adb/dxandroid",
+		"HOME=/data/adb/zhandroid",
 		"PATH=/system/bin:/system/xbin:/sbin:/vendor/bin",
 	)
 

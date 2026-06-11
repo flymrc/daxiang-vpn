@@ -1,4 +1,4 @@
-package dev.daxiang.dxandroidstatus;
+package dev.zongheng.zhandroidstatus;
 
 import android.Manifest;
 import android.app.Notification;
@@ -15,8 +15,8 @@ import android.os.IBinder;
 import android.os.Looper;
 
 public class StatusService extends Service {
-    static final String ACTION_REFRESHED = "dev.daxiang.dxandroidstatus.REFRESHED";
-    private static final String CHANNEL_ID = "dxandroid_status";
+    static final String ACTION_REFRESHED = "dev.zongheng.zhandroidstatus.REFRESHED";
+    private static final String CHANNEL_ID = "zhandroid_status";
     private static final int NOTIFICATION_ID = 660101;
     private static StatusSnapshot latest;
 
@@ -101,7 +101,7 @@ public class StatusService extends Service {
                 : new Notification.Builder(this);
         return builder
                 .setSmallIcon(R.drawable.ic_stat_dx)
-                .setContentTitle("Daxiang VPN 出口")
+                .setContentTitle("Zongheng VPN 出口")
                 .setContentText(s.summary())
                 .setStyle(style)
                 .setContentIntent(pendingIntent)
@@ -119,7 +119,7 @@ public class StatusService extends Service {
                 "出口状态",
                 NotificationManager.IMPORTANCE_LOW
         );
-        channel.setDescription("显示 dxreverse 是否正在运行");
+        channel.setDescription("显示 zhreverse 是否正在运行");
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         nm.createNotificationChannel(channel);
     }

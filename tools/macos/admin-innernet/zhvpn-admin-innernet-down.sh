@@ -2,8 +2,8 @@
 set -eu
 
 PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
-CONF="${DXVPN_ADMIN_INNERNET_CONF:-/usr/local/etc/dxvpn/wireguard/admin-innernet.conf}"
-LOG="${DXVPN_ADMIN_INNERNET_LOG:-/usr/local/var/log/dxvpn/admin-innernet.log}"
+CONF="${ZHVPN_ADMIN_INNERNET_CONF:-/usr/local/etc/zhvpn/wireguard/admin-innernet.conf}"
+LOG="${ZHVPN_ADMIN_INNERNET_LOG:-/usr/local/var/log/zhvpn/admin-innernet.log}"
 
 mkdir -p "$(dirname "$LOG")"
 

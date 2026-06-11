@@ -14,8 +14,8 @@ import (
 	"strings"
 	"syscall"
 
-	"daxiang-vpn/shared/config"
-	"daxiang-vpn/shared/paths"
+	"zongheng-vpn/shared/config"
+	"zongheng-vpn/shared/paths"
 )
 
 // EngineCommand is the hidden subcommand that runs sing-box in-process. Start
@@ -103,7 +103,7 @@ func WriteSingBoxConfig(ctx paths.Context, cfg config.Config, systemTUN bool) er
 		Log: singBoxLog{Level: "error"},
 		Endpoints: []singBoxEndpoint{{
 			Type: "wireguard",
-			Tag:  "dxvpn-wg",
+			Tag:  "zhvpn-wg",
 			// system=false 走用户态 gVisor 网络栈（免管理员，默认）；
 			// system=true 走系统 wintun TUN（--fast，需管理员，性能更高、延迟更低）。
 			System: systemTUN,
@@ -134,7 +134,7 @@ func WriteSingBoxConfig(ctx paths.Context, cfg config.Config, systemTUN bool) er
 			Tag:        "mac-egress",
 			Server:     host,
 			ServerPort: port,
-			Detour:     "dxvpn-wg",
+			Detour:     "zhvpn-wg",
 		}},
 		Route: singBoxRoute{Final: "mac-egress"},
 	}
