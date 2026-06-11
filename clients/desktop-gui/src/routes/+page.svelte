@@ -244,10 +244,12 @@
         <dd>{status?.proxy ?? "—"}</dd>
       </dl>
 
-      {#if connected}
-        <button class="rotate" onclick={rotate} disabled={busy}>换 IP</button>
-      {/if}
-      <button class="rotate" onclick={copyDiagnostics} disabled={busy}>复制诊断</button>
+      <div class="actions">
+        {#if connected}
+          <button class="rotate" onclick={rotate} disabled={busy}>换 IP</button>
+        {/if}
+        <button class="rotate" onclick={copyDiagnostics} disabled={busy}>复制诊断</button>
+      </div>
     </section>
     <button class="link" onclick={logout} disabled={busy}>登出</button>
     <p class="version">v{appVersion}</p>
@@ -262,42 +264,52 @@
 </main>
 
 <style>
+  :global(html),
+  :global(body) {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+  }
   :root {
     font-family: "Segoe UI", Inter, system-ui, sans-serif;
     color: #1a1a1a;
     background: #f5f6f8;
   }
   .app {
-    max-width: 380px;
+    box-sizing: border-box;
+    max-width: 374px;
+    height: 100vh;
     margin: 0 auto;
-    padding: 24px 20px;
+    padding: 14px 18px 10px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 10px;
+    overflow: hidden;
   }
   header h1 {
-    font-size: 20px;
+    font-size: 19px;
     text-align: center;
-    margin: 4px 0 0;
+    margin: 0;
   }
   .card {
     background: #fff;
     border-radius: 8px;
-    padding: 24px 20px;
+    padding: 16px 18px;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 14px;
+    gap: 10px;
   }
   .muted {
     color: #6b7280;
-    font-size: 14px;
+    font-size: 13px;
     margin: 0;
   }
   .dot {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
   }
   .dot.on {
@@ -308,7 +320,7 @@
     background: #9ca3af;
   }
   .state {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 600;
     margin: 0;
   }
@@ -324,9 +336,9 @@
     cursor: pointer;
     border: none;
     border-radius: 10px;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
-    padding: 10px 16px;
+    padding: 8px 14px;
     transition: opacity 0.15s;
   }
   button:disabled {
@@ -342,30 +354,30 @@
     color: #fff;
   }
   .toggle {
-    width: 140px;
-    height: 56px;
-    border-radius: 28px;
-    font-size: 17px;
+    width: 132px;
+    height: 48px;
+    border-radius: 24px;
+    font-size: 16px;
   }
   .mode-option {
-    font-size: 13px;
+    font-size: 12px;
     color: #4b5563;
     display: flex;
     align-items: center;
-    gap: 7px;
-    line-height: 1.4;
+    gap: 6px;
+    line-height: 1.25;
   }
   .mode-option input {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
   }
   .info {
     width: 100%;
     display: grid;
     grid-template-columns: auto 1fr;
-    gap: 6px 12px;
-    margin: 4px 0 0;
-    font-size: 13px;
+    gap: 4px 10px;
+    margin: 2px 0 0;
+    font-size: 12px;
   }
   .info dt {
     color: #6b7280;
@@ -374,13 +386,21 @@
     margin: 0;
     text-align: right;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    min-height: 32px;
   }
   .rotate {
     background: #f3f4f6;
     color: #1a1a1a;
     border: 1px solid #d1d5db;
-    font-size: 13px;
-    padding: 8px 16px;
+    font-size: 12px;
+    padding: 6px 14px;
   }
   .link {
     background: none;
@@ -389,7 +409,7 @@
     font-size: 12px;
     text-decoration: underline;
     align-self: center;
-    padding: 4px;
+    padding: 2px 4px;
   }
   .info-msg {
     color: #166534;
@@ -428,6 +448,6 @@
     color: #9ca3af;
     font-size: 11px;
     text-align: center;
-    margin: -8px 0 0;
+    margin: -6px 0 0;
   }
 </style>

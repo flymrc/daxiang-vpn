@@ -53,3 +53,17 @@
   - `curl https://api.ipify.org` -> `36.50.84.68`
 
 结论:线上 Hub 已切到 no-Hub-fallback 语义。IPv4-only 路径若手机侧失败,表现为失败/超时,不再由 Hub VPS 出口。
+
+## GUI 紧凑布局补丁
+
+用户反馈 0.4.5 主窗口右侧出现滚动条,布局偏松。补丁:
+
+- 主页面固定为 `100vh` 并隐藏 body 滚动条。
+- 缩小页面 padding、card padding、组件 gap、主按钮高度和信息区字号。
+- “换 IP”和“复制诊断”改为同一行展示。
+- 保持 0.4.5 版本号不变,重打 Windows NSIS 安装包。
+
+验证:
+
+- `npm run check`:0 errors,1 warning(`tsconfig.json` 缺少 `node` 类型定义,既有 warning)。
+- `.\clients\desktop-gui\build.ps1 -Target amd64`:通过,重新产出 `纵横 VPN_0.4.5_x64-setup.exe`。
