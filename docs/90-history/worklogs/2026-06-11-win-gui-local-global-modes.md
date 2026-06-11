@@ -87,3 +87,34 @@
 - 随包 sidecar `zhvpn.exe status --json`：返回 `{"running":false,"proxy":"127.0.0.1:7890","proxy_reachable":false,"egress":"日本手机卡出口"}`，说明 sidecar 可执行且当前本机未连接。
 - 产物：
   - `clients/desktop-gui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/纵横 VPN_0.4.2_x64-setup.exe`
+
+## 0.4.3 出口 IP 与运营商展示修正
+
+用户反馈浏览器已经通过系统代理显示手机出口 IP，但 GUI 的「出口 IP」仍停在「获取中...」。排查结果：
+
+- `zhvpn status --json` 显示本地代理可达，但没有 `egress_ip` 字段。
+- CLI 固定使用 `https://api.ipify.org` 探测公网 IP；当前 Rakuten 出口访问该 IPv4-only 接口会超时。
+- `https://api64.ipify.org` 和 `https://ifconfig.me/ip` 经本地代理可以快速返回 IPv6 出口。
+
+处理：
+
+- `netcheck.PublicIPViaHTTPProxy` 改为多接口兜底：
+  - `https://api64.ipify.org`
+  - `https://ifconfig.me/ip`
+  - `https://api.ipify.org`
+- 单接口超时从 15s 降到 5s，避免状态刷新长时间卡住。
+- 出口展示名不在客户端写死。`dxhub` 在 bootstrap 时优先经 Android 控制面 SSH（`DXHUB_ANDROID_CONTROL_KEY` / `egress.management_addr`）读取手机 `getprop gsm.operator.alpha`，用实时运营商覆盖 `egress.display_name`。
+- Hub 生产 token 配置备份到 `/opt/daxiang-vpn/dxhub/tokens.yaml.bak.20260611-zh-egress-display-rakuten`，并将 11 条旧兜底 `display_name: 日本手机卡出口` 改为 `display_name: Rakuten Mobile`；动态运营商不可用时仍回退到 token 兜底展示名。
+- `dxhub` 环境变量兼容 `ZHHUB_*` 与生产旧名 `DXHUB_*`。
+- 生产只部署 `dxhub` 动态展示逻辑；`zhreverse` 数据面保持原生产版本，不为展示文案改反向代理协议。
+- 版本号提升到 `0.4.3`。
+
+验证：
+
+- `go test ./clients/cli/... ./shared/config/...`：通过。
+- `.\clients\desktop-gui\build.ps1 -Target amd64`：通过。
+- 新 sidecar `zhvpn.exe status --json`：返回 `{"running":true,"proxy":"127.0.0.1:7890","proxy_reachable":true,"egress":"Rakuten Mobile","egress_ip":"240b:c010:421:d18c:0:42:e654:1701"}`。
+- `dxhub` 部署后，本机 `zhvpn status --json` 在本地代理未运行时仍可通过 bootstrap 返回手机实时运营商：`"egress":"Rakuten"`。
+- Hub token 配置检查：`display_name: Rakuten Mobile` 为 11 条，`display_name: 日本手机卡出口` 为 0 条。
+- 产物：
+  - `clients/desktop-gui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/纵横 VPN_0.4.3_x64-setup.exe`

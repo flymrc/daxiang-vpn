@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -94,10 +95,70 @@ func (s *Server) Bootstrap(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, bootstrapResponse{
 		Client:     clientResponse{Name: record.ClientName},
 		Hub:        record.Hub,
-		Egress:     record.Egress,
+		Egress:     dynamicEgress(record.Egress),
 		LocalProxy: record.LocalProxy,
 		WireGuard:  record.WireGuard,
 	})
+}
+
+func dynamicEgress(egress Egress) Egress {
+	carrier := currentAndroidCarrier(egress.ManagementAddr)
+	if carrier != "" {
+		egress.DisplayName = carrier
+	}
+	return egress
+}
+
+func currentAndroidCarrier(managementAddr string) string {
+	keyPath := firstNonEmptyEnv("ZHHUB_ANDROID_CONTROL_KEY", "DXHUB_ANDROID_CONTROL_KEY")
+	if strings.TrimSpace(keyPath) == "" {
+		return ""
+	}
+	host, port := splitHostPortDefault(managementAddr, "2022")
+	if host == "" {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ssh",
+		"-i", keyPath,
+		"-p", port,
+		"-o", "BatchMode=yes",
+		"-o", "ConnectTimeout=1",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile="+os.DevNull,
+		"root@"+host,
+		"getprop gsm.operator.alpha; getprop gsm.sim.operator.alpha",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if carrier := firstCSVValue(line); carrier != "" {
+			return carrier
+		}
+	}
+	return ""
+}
+
+func firstNonEmptyEnv(names ...string) string {
+	for _, name := range names {
+		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func firstCSVValue(value string) string {
+	for _, part := range strings.Split(value, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			return part
+		}
+	}
+	return ""
 }
 
 func (s *Server) claimToken(token string, sourceIP string, now time.Time) bool {

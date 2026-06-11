@@ -17,7 +17,7 @@ Hub: 36.50.84.68 / 10.66.0.1
   |
   +-- mac-mini       10.66.0.100:1080 -> 日本住宅出口
   |
-  +-- jp-android-01  zhreverse -> Hub/WG 10.66.0.1:18081 -> 日本手机卡出口
+  +-- jp-android-01  zhreverse -> Hub/WG 10.66.0.1:18081 -> 手机运营商出口
 ```
 
 Mac 出口仍是远端 mixed 代理。Android 出口数据面已迁到 `zhreverse` 反向 TCP/yamux,客户端经 WireGuard 访问 Hub 侧 `10.66.0.1:18081`;旧 `10.66.0.101:1080` 路径已从生产入口拆除,只在历史记录中保留。

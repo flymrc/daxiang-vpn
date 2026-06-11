@@ -62,3 +62,31 @@ func TestClientIPTrustsForwardedForFromLocalProxy(t *testing.T) {
 		t.Fatalf("clientIP() = %q, want forwarded source", got)
 	}
 }
+
+func TestDynamicEgressFallsBackToConfiguredDisplayName(t *testing.T) {
+	egress := dynamicEgress(Egress{DisplayName: "静态出口", ProxyAddr: "127.0.0.1:1"})
+
+	if egress.DisplayName != "静态出口" {
+		t.Fatalf("display name = %q", egress.DisplayName)
+	}
+}
+
+func TestSplitHostPortDefault(t *testing.T) {
+	host, port := splitHostPortDefault("10.66.0.101", "2022")
+	if host != "10.66.0.101" || port != "2022" {
+		t.Fatalf("host=%q port=%q", host, port)
+	}
+	host, port = splitHostPortDefault("10.66.0.101:2222", "2022")
+	if host != "10.66.0.101" || port != "2222" {
+		t.Fatalf("host=%q port=%q", host, port)
+	}
+}
+
+func TestFirstCSVValue(t *testing.T) {
+	if got := firstCSVValue("Rakuten,au"); got != "Rakuten" {
+		t.Fatalf("firstCSVValue = %q", got)
+	}
+	if got := firstCSVValue(", au "); got != "au" {
+		t.Fatalf("firstCSVValue = %q", got)
+	}
+}

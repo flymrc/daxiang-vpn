@@ -81,7 +81,7 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 
 ## Android 手机出口节点
 
-- 角色：日本手机卡出口节点
+- 角色：Android 手机运营商出口节点（运营商名由手机侧上报，token 配置仅作兜底）
 - 当前数据面设备：Google Pixel 7a（`lynx`）
 - 控制面 WireGuard IP：`10.66.0.101`
 - 控制面 SSH：`10.66.0.101:2022`（`zhandroid-control`,仅公钥,Hub 可登录）

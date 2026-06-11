@@ -2,6 +2,7 @@ package netcheck
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -26,16 +27,37 @@ func PublicIPViaHTTPProxy(proxyAddr string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	endpoints := []string{
+		"https://api64.ipify.org",
+		"https://ifconfig.me/ip",
+		"https://api.ipify.org",
+	}
+
+	var errs []error
+	for _, endpoint := range endpoints {
+		ip, err := publicIPViaHTTPProxyEndpoint(proxyURL, endpoint)
+		if err == nil && ip != "" {
+			return ip, nil
+		}
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return "", errors.Join(errs...)
+}
+
+func publicIPViaHTTPProxyEndpoint(proxyURL *url.URL, endpoint string) (string, error) {
 	client := &http.Client{
-		Timeout: 15 * time.Second,
+		Timeout: 5 * time.Second,
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(proxyURL),
 		},
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.ipify.org", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return "", err
 	}
@@ -44,10 +66,17 @@ func PublicIPViaHTTPProxy(proxyAddr string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", errors.New("public ip endpoint returned " + resp.Status)
+	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 128))
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(body)), nil
+	ip := strings.TrimSpace(string(body))
+	if net.ParseIP(ip) == nil {
+		return "", errors.New("public ip endpoint returned non-ip response")
+	}
+	return ip, nil
 }
