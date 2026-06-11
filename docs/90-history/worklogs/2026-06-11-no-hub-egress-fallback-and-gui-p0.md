@@ -67,3 +67,27 @@
 
 - `npm run check`:0 errors,1 warning(`tsconfig.json` 缺少 `node` 类型定义,既有 warning)。
 - `.\clients\desktop-gui\build.ps1 -Target amd64`:通过,重新产出 `纵横 VPN_0.4.5_x64-setup.exe`。
+
+## Windows 安装器覆盖 sidecar 失败修正
+
+用户升级安装 0.4.5 时遇到 NSIS 错误:
+
+- `Error opening file for writing: C:\Users\marui\AppData\Local\纵横 VPN\zhvpn.exe`
+
+原因:旧 sidecar/engine 仍占用 `zhvpn.exe`,NSIS 覆盖文件时被 Windows 文件锁拒绝。
+
+修正:
+
+- 新增 `src-tauri/installer-hooks.nsh`。
+- `tauri.conf.json` 配置 `bundle.windows.nsis.installerHooks`。
+- `NSIS_HOOK_PREINSTALL` 在复制文件前:
+  - 若 `$INSTDIR\zhvpn.exe` 存在,先执行 `"$INSTDIR\zhvpn.exe" stop`。
+  - 再执行 `taskkill /IM zhvpn.exe /T /F` 清理残留 sidecar。
+- 保留 Tauri 默认 `CheckIfAppIsRunning` 处理主 GUI 进程。
+
+验证:
+
+- `cargo check --manifest-path clients\desktop-gui\src-tauri\Cargo.toml`:通过。
+- `.\clients\desktop-gui\build.ps1 -Target amd64`:通过。
+- 生成的 `installer.nsi` 已 include `installer-hooks.nsh`,并在 `Section Install` 中插入 `NSIS_HOOK_PREINSTALL`。
+- 重新产出 `纵横 VPN_0.4.5_x64-setup.exe`。
