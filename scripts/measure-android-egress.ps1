@@ -1,5 +1,6 @@
 param(
     [string]$Hub = "root@36.50.84.68",
+    [string]$HubIdentityFile = "",
     [string]$Proxy = "http://10.66.0.1:18081",
     [string]$Url = "https://speed.cloudflare.com/__down?bytes=20000000",
     [string]$FallbackUrl = "https://proof.ovh.net/files/10Mb.dat",
@@ -13,14 +14,23 @@ if ($Runs -lt 1) {
     throw "Runs must be at least 1."
 }
 
-$ip = ssh $Hub "curl -sS -m 10 -x '$Proxy' https://api.ipify.org || true"
+function Invoke-Hub([string]$Command) {
+    $args = @()
+    if ($HubIdentityFile.Length -gt 0) {
+        $args += @("-i", $HubIdentityFile)
+    }
+    $args += @($Hub, $Command)
+    return ssh @args
+}
+
+$ip = Invoke-Hub "curl -sS -m 10 -x '$Proxy' https://api64.ipify.org || true"
 Write-Host "egress_ip=$ip"
 
 function Invoke-Benchmark([string]$TargetUrl, [string]$Label) {
     Write-Host "target=$Label url=$TargetUrl"
     $lines = @()
     for ($i = 1; $i -le $Runs; $i++) {
-        $line = ssh $Hub "curl -sS -L --max-time '$TimeoutSeconds' -x '$Proxy' -o /dev/null -w 'run=$i code=%{http_code} bytes=%{size_download} bps=%{speed_download} seconds=%{time_total}' '$TargetUrl'; rc=`$?; echo ' exit='`$rc"
+        $line = Invoke-Hub "curl -sS -L --max-time '$TimeoutSeconds' -x '$Proxy' -o /dev/null -w 'run=$i code=%{http_code} bytes=%{size_download} bps=%{speed_download} seconds=%{time_total}' '$TargetUrl'; rc=`$?; echo ' exit='`$rc"
         $lines += $line
         Write-Host $line
     }

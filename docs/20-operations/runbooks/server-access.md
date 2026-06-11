@@ -116,7 +116,7 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 - UFW 已允许 WireGuard 客户端访问 `10.66.0.1:18081/tcp`。
 - Hub 日志显示 Pixel Android 1 条 TCP reverse session 已连接。
 - Android 当前仅运行 `99-zhreverse-egress.sh` supervisor 和 `zhreverse client`。
-- Hub 经 reverse proxy 出口 IP：以 `curl --proxy http://10.66.0.1:18081 https://ifconfig.me/ip` 等实时结果为准。2026-06-10 Pixel 测得公网 IP 为 `133.106.34.62`。
+- Hub 经 reverse proxy 出口 IP：以 `curl --proxy http://10.66.0.1:18081 https://api64.ipify.org` 等实时结果为准。2026-06-11 Pixel 测得公网 IPv6 为 `240b:c010:421:d18c:0:42:e654:1701`。
 - Android 客户端 token 当前应绑定 `egress.proxy_addr=10.66.0.1:18081`;旧 `10.66.0.101:1080` 不再分配给 Android 客户端。
 
 常用检查命令：
@@ -125,7 +125,7 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 systemctl status zhreverse-hub.service
 journalctl -u zhreverse-hub.service -n 50 --no-pager
 scripts/check-android-reverse-egress.sh
-curl --proxy http://10.66.0.1:18081 https://api.ipify.org
+curl --proxy http://10.66.0.1:18081 https://api64.ipify.org
 ssh -i ~/.ssh/zhandroid_control_local -p 2022 root@10.66.0.101 \
   'ps -A -o PID,PPID,ARGS | grep -E "zhreverse|zhandroid-egress|99-zh" | grep -v grep || true'
 ```

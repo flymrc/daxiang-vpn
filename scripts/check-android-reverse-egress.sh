@@ -4,14 +4,14 @@
 set -eu
 
 PROXY=${PROXY:-http://10.66.0.1:18081}
-TEST_URL=${TEST_URL:-https://api.ipify.org}
+TEST_URL=${TEST_URL:-https://api64.ipify.org}
 TIMEOUT=${TIMEOUT:-20}
 
 echo "proxy=$PROXY"
 
 ip=$(curl -sS -L --connect-timeout 8 --max-time "$TIMEOUT" --proxy "$PROXY" "$TEST_URL" || true)
 case "$ip" in
-    *.*.*.*)
+    *.*.*.*|*:*)
         echo "PASS egress_ip=$ip"
         ;;
     *)

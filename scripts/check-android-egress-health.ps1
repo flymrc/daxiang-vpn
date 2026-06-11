@@ -1,9 +1,10 @@
 param(
     [string]$Hub = "root@36.50.84.68",
+    [string]$HubIdentityFile = "",
     [string]$Proxy = "http://10.66.0.1:18081",
     [string]$AndroidIP = "10.66.0.101",
     [string[]]$EgressIPUrls = @(
-        "https://api.ipify.org",
+        "https://api64.ipify.org",
         "https://ifconfig.me/ip",
         "https://ident.me",
         "https://cloudflare.com/cdn-cgi/trace"
@@ -27,7 +28,12 @@ function Write-Check([string]$Level, [string]$Message) {
 }
 
 function Invoke-Hub([string]$Command) {
-    return ssh $Hub $Command
+    $args = @()
+    if ($HubIdentityFile.Length -gt 0) {
+        $args += @("-i", $HubIdentityFile)
+    }
+    $args += @($Hub, $Command)
+    return ssh @args
 }
 
 function Join-Output($Output) {
@@ -50,7 +56,7 @@ $egressSource = ""
 $egressErrors = @()
 foreach ($url in $EgressIPUrls) {
     $body = Join-Output (Invoke-Hub "curl -sS -m '$TimeoutSeconds' -x '$Proxy' '$url' 2>/tmp/zhreverse-health-curl.err || true; cat /tmp/zhreverse-health-curl.err >&2; rm -f /tmp/zhreverse-health-curl.err")
-    if ($body -match "^\d{1,3}(\.\d{1,3}){3}$") {
+    if ($body -match "^\d{1,3}(\.\d{1,3}){3}$" -or $body -match "^[0-9a-fA-F:]{3,}$") {
         $egressIP = $body
         $egressSource = $url
         break

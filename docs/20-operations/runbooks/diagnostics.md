@@ -203,7 +203,7 @@ cat /usr/local/sbin/zhvpn-sing-box-run.sh
 
 ```bash
 scripts/check-android-reverse-egress.sh
-curl -x http://10.66.0.1:18081 -s https://api.ipify.org; echo
+curl -x http://10.66.0.1:18081 -s https://api64.ipify.org; echo
 curl -L --max-time 30 -x http://10.66.0.1:18081 -o /dev/null \
   -w "code=%{http_code} bytes=%{size_download} bps=%{speed_download} seconds=%{time_total}\n" \
   "https://speed.cloudflare.com/__down?bytes=50000000"
@@ -307,7 +307,7 @@ $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 
 - `ip route get 36.50.84.68` 是走 `rmnet_data*` 还是 `wlan0`。
 - 日志中是否有 `connected to reverse tcp server`。
-- 当前 `connections` 是否为预期值（生产为 2）。
+- 当前 `connections` 是否为预期值（Pixel 当前生产为 1）。
 - Hub `zhreverse-hub.service` 启动日志是否显示 `max_proxy_connections=96 max_proxy_connections_per_client=48`。
 - WireGuard App 是否创建了 `tun0 / 10.66.0.101`。
 - 若 `tun0` 缺失,watchdog 会最多每 120s 发一次 WireGuard App `SET_TUNNEL_UP` intent;若 `tun0` 存在但 Hub 内网 ping 失败,watchdog 会 `SET_TUNNEL_DOWN` 后再 `SET_TUNNEL_UP` 强制重拨。可看 `/data/local/tmp/zhandroid-control.log` 中的 `wireguard unhealthy` 记录。
@@ -331,7 +331,7 @@ wg show
 # ② 在 Hub 上：转发开着吗？端到端出口通吗？
 sysctl net.ipv4.ip_forward
 curl -x http://10.66.0.100:1080 -s https://api.ipify.org; echo
-curl -x http://10.66.0.1:18081 -s https://api.ipify.org; echo
+curl -x http://10.66.0.1:18081 -s https://api64.ipify.org; echo
 
 # ③ 若 ② 不通，再上 Mac 看 sing-box 和日志
 sudo /opt/homebrew/bin/wg show
