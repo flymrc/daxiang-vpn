@@ -27,6 +27,8 @@ Remove-Item Env:\GOOS, Env:\GOARCH
 /opt/zongheng-vpn/zhhub/tokens.yaml
 ```
 
+> 当前生产仍运行旧 unit `dxhub.service`，实际路径为 `/opt/daxiang-vpn/dxhub/dxhub` 与 `/opt/daxiang-vpn/dxhub/tokens.yaml`，监听同为 `0.0.0.0:18080`。2026-06-11 已先把实际线上 token 段名切为 `ZH-JP-TEST-*`；服务名和目录迁移到 `zhhub` 另行执行。
+
 ## 环境变量
 
 ```text

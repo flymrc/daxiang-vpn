@@ -69,6 +69,17 @@ fn connected_in(status: &Value) -> bool {
             .unwrap_or(false)
 }
 
+async fn enable_system_proxy_from_status(app: &AppHandle) -> Result<(), String> {
+    let (_ok, s_out, s_err) = sidecar(app, &["status", "--json"]).await?;
+    let v = parse_json(&s_out, &s_err)?;
+    let (host, port) = v
+        .get("proxy")
+        .and_then(|x| x.as_str())
+        .and_then(split_host_port)
+        .ok_or_else(|| "未从状态里读到本地代理地址".to_string())?;
+    sysproxy::enable(app, &host, port).map_err(|e| e.to_string())
+}
+
 // ---- shared action implementations (used by both #[command]s and the tray) ----
 
 async fn status_impl(app: &AppHandle) -> Result<Value, String> {
@@ -88,28 +99,20 @@ async fn connect_impl(app: &AppHandle, fast: bool) -> Result<Value, String> {
         args.push("--fast");
     }
     let (ok, stdout, stderr) = sidecar(app, &args).await?;
-    if ok && !fast {
-        // 默认用户态模式：自动把系统代理指向本地代理，浏览器等无需手动设置。
-        // --fast（系统 TUN）是全局路由，不需要也不应设系统代理。
-        if let Ok((_, s_out, s_err)) = sidecar(app, &["status", "--json"]).await {
-            if let Ok(v) = parse_json(&s_out, &s_err) {
-                if let Some((h, port)) = v
-                    .get("proxy")
-                    .and_then(|x| x.as_str())
-                    .and_then(split_host_port)
-                {
-                    if let Err(e) = sysproxy::enable(app, &h, port) {
-                        return Ok(json!({
-                            "ok": true,
-                            "message": stdout,
-                            "warning": format!("已连接，但自动设置系统代理失败：{e}")
-                        }));
-                    }
-                }
-            }
+    let msg = message(ok, stdout, stderr);
+    if ok {
+        // GUI 的可交付全局代理路径是 Windows 系统代理：连接后统一指向
+        // zhvpn 本地代理，断开/退出时还原。旧 --fast 目前不是完整全局 TUN，
+        // 所以即使调用方传 fast=true，也仍要设置系统代理兜住浏览器和常见 App。
+        if let Err(e) = enable_system_proxy_from_status(app).await {
+            return Ok(json!({
+                "ok": true,
+                "message": msg,
+                "warning": format!("已连接，但自动设置系统代理失败：{e}")
+            }));
         }
     }
-    Ok(json!({ "ok": ok, "message": message(ok, stdout, stderr) }))
+    Ok(json!({ "ok": ok, "message": msg }))
 }
 
 async fn disconnect_impl(app: &AppHandle) -> Result<Value, String> {

@@ -4,7 +4,6 @@
 
   let view = $state<"loading" | "login" | "main">("loading");
   let token = $state("");
-  let fast = $state(false);
   let busy = $state(false);
   let errMsg = $state("");
   let info = $state("");
@@ -52,7 +51,7 @@
     errMsg = "";
     info = "";
     try {
-      const r = connected ? await api.disconnect() : await api.connect(fast);
+      const r = connected ? await api.disconnect() : await api.connect(false);
       if (!r.ok) errMsg = r.message || "操作失败";
       else if (r.warning) errMsg = r.warning;
       await refresh();
@@ -134,11 +133,6 @@
         {connected ? "断开" : "连接"}
       </button>
 
-      <label class="fast">
-        <input type="checkbox" bind:checked={fast} disabled={busy || connected} />
-        全局模式（系统 TUN，启动时弹一次管理员授权）
-      </label>
-
       <dl class="info">
         <dt>出口</dt>
         <dd>{status?.egress ?? "—"}</dd>
@@ -184,7 +178,7 @@
   }
   .card {
     background: #fff;
-    border-radius: 14px;
+    border-radius: 8px;
     padding: 24px 20px;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
     display: flex;
@@ -249,15 +243,6 @@
     border-radius: 28px;
     font-size: 17px;
   }
-  .fast {
-    font-size: 12px;
-    color: #4b5563;
-    display: flex;
-    align-items: flex-start;
-    gap: 6px;
-    text-align: left;
-    line-height: 1.4;
-  }
   .info {
     width: 100%;
     display: grid;
@@ -318,8 +303,7 @@
       border-color: #3a3f4b;
     }
     .info dt,
-    .muted,
-    .fast {
+    .muted {
       color: #9ca3af;
     }
   }
