@@ -36,3 +36,32 @@
 - 随包 `zhvpn.exe status --json` 可执行；当前本机未登录，返回“未找到配置”属预期。
 - 产物：
   - `clients/desktop-gui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/纵横 VPN_0.4.0_x64-setup.exe`
+
+## 0.4.1 全局代理修正
+
+用户反馈 0.4.0 勾选「全局代理」后检测页仍显示本机 Wi-Fi IP。排查结果：
+
+- 显式走 `127.0.0.1:7890` 正常返回手机出口：
+  - IPv6：`240b:c010:421:d18c:0:42:e654:1701`
+  - IPv4：`133.106.34.62`
+- 问题在 Windows 系统代理写法。旧 `sysproxy` crate 只写 `ProxyServer=127.0.0.1:7890`，部分程序没有稳定套用到 HTTPS。
+
+处理：
+
+- 移除 `sysproxy` crate 依赖，改为直接写 WinINET 注册表。
+- 全局代理开启时写：
+  - `ProxyEnable=1`
+  - `ProxyServer=http=127.0.0.1:7890;https=127.0.0.1:7890;socks=127.0.0.1:7890`
+  - `ProxyOverride=localhost;*.localhost;127.*;10.*;172.16.*;...;<local>`
+- 备份和还原改为保存/恢复原始 `ProxyServer`、`ProxyOverride`、`AutoConfigURL`。
+- 版本号提升到 `0.4.1`。
+
+验证：
+
+- 手动写入同款协议映射后，不带显式代理参数的 `Invoke-WebRequest https://api.ipify.org` 返回 `133.106.34.62`。
+- `cargo check --manifest-path clients\desktop-gui\src-tauri\Cargo.toml`：通过。
+- `cargo fmt --manifest-path clients\desktop-gui\src-tauri\Cargo.toml --check`：通过。
+- `npm run check`：通过；保留既有 `Cannot find type definition file for 'node'` 警告。
+- `.\clients\desktop-gui\build.ps1 -Target amd64`：通过。
+- 产物：
+  - `clients/desktop-gui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/纵横 VPN_0.4.1_x64-setup.exe`

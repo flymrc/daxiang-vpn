@@ -9,21 +9,33 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use sysproxy::Sysproxy;
 use tauri::Manager;
+use winapi::shared::ntdef::NULL;
+use winapi::um::wininet::{
+    InternetSetOptionA, INTERNET_OPTION_REFRESH, INTERNET_OPTION_SETTINGS_CHANGED,
+};
+use winreg::{enums, RegKey};
 
 // 不走代理的地址：本机回环 + 内网段（含 WireGuard 隧道 10.66.0.0/16）。
 // `*.localhost` 必须有：Tauri 在 Windows 用 http://tauri.localhost 提供自身界面，
 // 不排除的话连接后 WebView 会把自己的资源请求丢去走代理，导致 app 窗口里显示错误页。
 const BYPASS: &str =
     "localhost;*.localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;192.168.*;<local>";
+const INTERNET_SETTINGS: &str = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
 
 #[derive(Serialize, Deserialize)]
 struct ProxyState {
     enable: bool,
+    #[serde(default)]
+    server: String,
+    #[serde(default)]
     host: String,
+    #[serde(default)]
     port: u16,
+    #[serde(default)]
     bypass: String,
+    #[serde(default)]
+    auto_config_url: String,
 }
 
 fn backup_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -31,30 +43,51 @@ fn backup_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("proxy-backup.json"))
 }
 
-fn current() -> Result<Sysproxy, String> {
-    Sysproxy::get_system_proxy().map_err(|e| format!("读取系统代理失败：{e}"))
+fn internet_settings_read() -> Result<RegKey, String> {
+    RegKey::predef(enums::HKEY_CURRENT_USER)
+        .open_subkey_with_flags(INTERNET_SETTINGS, enums::KEY_READ)
+        .map_err(|e| format!("读取系统代理失败：{e}"))
+}
+
+fn internet_settings_write() -> Result<RegKey, String> {
+    RegKey::predef(enums::HKEY_CURRENT_USER)
+        .open_subkey_with_flags(INTERNET_SETTINGS, enums::KEY_SET_VALUE)
+        .map_err(|e| format!("打开系统代理设置失败：{e}"))
+}
+
+fn flush_settings() {
+    unsafe {
+        InternetSetOptionA(NULL, INTERNET_OPTION_SETTINGS_CHANGED, NULL, 0);
+        InternetSetOptionA(NULL, INTERNET_OPTION_REFRESH, NULL, 0);
+    }
+}
+
+fn current() -> ProxyState {
+    let Ok(key) = internet_settings_read() else {
+        return ProxyState {
+            enable: false,
+            server: String::new(),
+            host: String::new(),
+            port: 0,
+            bypass: String::new(),
+            auto_config_url: String::new(),
+        };
+    };
+    ProxyState {
+        enable: key.get_value::<u32, _>("ProxyEnable").unwrap_or(0) == 1,
+        server: key.get_value("ProxyServer").unwrap_or_default(),
+        host: String::new(),
+        port: 0,
+        bypass: key.get_value("ProxyOverride").unwrap_or_default(),
+        auto_config_url: key.get_value("AutoConfigURL").unwrap_or_default(),
+    }
 }
 
 /// 打开系统代理指向本地代理；首次打开时把原状态备份到磁盘。
 pub fn enable(app: &tauri::AppHandle, host: &str, port: u16) -> Result<(), String> {
     let path = backup_path(app)?;
     if !path.exists() {
-        // 读当前系统代理做备份；读失败（本来没设代理，或注册表里是 ":0" 这类空值，
-        // sysproxy 解析会报 "failed to parse string"）就备份一个"关闭"状态，不要因此中断设置。
-        let st = match current() {
-            Ok(cur) => ProxyState {
-                enable: cur.enable,
-                host: cur.host,
-                port: cur.port,
-                bypass: cur.bypass,
-            },
-            Err(_) => ProxyState {
-                enable: false,
-                host: String::new(),
-                port: 0,
-                bypass: String::new(),
-            },
-        };
+        let st = current();
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
@@ -64,14 +97,17 @@ pub fn enable(app: &tauri::AppHandle, host: &str, port: u16) -> Result<(), Strin
         )
         .map_err(|e| e.to_string())?;
     }
-    let sp = Sysproxy {
-        enable: true,
-        host: host.to_string(),
-        port,
-        bypass: BYPASS.to_string(),
-    };
-    sp.set_system_proxy()
-        .map_err(|e| format!("设置系统代理失败：{e}"))
+    let key = internet_settings_write()?;
+    let server = format!("http={host}:{port};https={host}:{port};socks={host}:{port}");
+    key.set_value("ProxyEnable", &1u32)
+        .map_err(|e| format!("设置系统代理失败：{e}"))?;
+    key.set_value("ProxyServer", &server)
+        .map_err(|e| format!("设置系统代理失败：{e}"))?;
+    key.set_value("ProxyOverride", &BYPASS)
+        .map_err(|e| format!("设置系统代理失败：{e}"))?;
+    let _: Result<(), _> = key.delete_value("AutoConfigURL");
+    flush_settings();
+    Ok(())
 }
 
 /// 还原到备份的系统代理状态（无备份则直接关闭），并删除备份文件。
@@ -80,13 +116,24 @@ pub fn restore(app: &tauri::AppHandle) -> Result<(), String> {
     match fs::read_to_string(&path) {
         Ok(data) => {
             if let Ok(st) = serde_json::from_str::<ProxyState>(&data) {
-                let sp = Sysproxy {
-                    enable: st.enable,
-                    host: st.host,
-                    port: st.port,
-                    bypass: st.bypass,
-                };
-                let _ = sp.set_system_proxy();
+                if let Ok(key) = internet_settings_write() {
+                    let server = if !st.server.is_empty() {
+                        st.server
+                    } else if !st.host.is_empty() && st.port != 0 {
+                        format!("{}:{}", st.host, st.port)
+                    } else {
+                        String::new()
+                    };
+                    let _ = key.set_value("ProxyEnable", &(if st.enable { 1u32 } else { 0u32 }));
+                    let _ = key.set_value("ProxyServer", &server);
+                    let _ = key.set_value("ProxyOverride", &st.bypass);
+                    if st.auto_config_url.is_empty() {
+                        let _: Result<(), _> = key.delete_value("AutoConfigURL");
+                    } else {
+                        let _ = key.set_value("AutoConfigURL", &st.auto_config_url);
+                    }
+                    flush_settings();
+                }
             }
             let _ = fs::remove_file(&path);
             Ok(())
@@ -96,15 +143,11 @@ pub fn restore(app: &tauri::AppHandle) -> Result<(), String> {
 }
 
 fn disable() -> Result<(), String> {
-    let mut sp = current().unwrap_or(Sysproxy {
-        enable: false,
-        host: String::new(),
-        port: 0,
-        bypass: String::new(),
-    });
-    sp.enable = false;
-    sp.set_system_proxy()
-        .map_err(|e| format!("关闭系统代理失败：{e}"))
+    let key = internet_settings_write()?;
+    key.set_value("ProxyEnable", &0u32)
+        .map_err(|e| format!("关闭系统代理失败：{e}"))?;
+    flush_settings();
+    Ok(())
 }
 
 /// 是否存在未还原的备份（上次会话设过代理但没干净还原，可能是崩溃残留）。
