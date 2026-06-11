@@ -2,8 +2,11 @@
   import { onMount } from "svelte";
   import { api, type Status } from "$lib/api";
 
+  const LAST_TOKEN_KEY = "zhvpn.lastToken";
+
   let view = $state<"loading" | "login" | "main">("loading");
   let token = $state("");
+  let globalProxy = $state(false);
   let busy = $state(false);
   let errMsg = $state("");
   let info = $state("");
@@ -13,6 +16,11 @@
 
   const connected = $derived(!!status && (status.running || status.proxy_reachable));
 
+  function loadLastToken() {
+    const saved = localStorage.getItem(LAST_TOKEN_KEY);
+    if (saved && !token.trim()) token = saved;
+  }
+
   async function refresh() {
     if (refreshing) return;
     refreshing = true;
@@ -20,6 +28,7 @@
       const s = await api.status();
       status = s;
       view = s.error && s.error.includes("未找到配置") ? "login" : "main";
+      if (view === "login") loadLastToken();
     } catch (e) {
       errMsg = String(e);
     } finally {
@@ -32,8 +41,10 @@
     busy = true;
     errMsg = "";
     try {
-      const r = await api.login(token.trim());
+      const trimmed = token.trim();
+      const r = await api.login(trimmed);
       if (r.ok) {
+        localStorage.setItem(LAST_TOKEN_KEY, trimmed);
         token = "";
         await refresh();
       } else {
@@ -51,7 +62,7 @@
     errMsg = "";
     info = "";
     try {
-      const r = connected ? await api.disconnect() : await api.connect(false);
+      const r = connected ? await api.disconnect() : await api.connect(globalProxy);
       if (!r.ok) errMsg = r.message || "操作失败";
       else if (r.warning) errMsg = r.warning;
       await refresh();
@@ -93,6 +104,7 @@
   }
 
   onMount(() => {
+    loadLastToken();
     refresh();
     poll = setInterval(() => {
       if (view === "main" && !busy) refresh();
@@ -132,6 +144,11 @@
       >
         {connected ? "断开" : "连接"}
       </button>
+
+      <label class="global-proxy">
+        <input type="checkbox" bind:checked={globalProxy} disabled={busy || connected} />
+        全局代理
+      </label>
 
       <dl class="info">
         <dt>出口</dt>
@@ -243,6 +260,18 @@
     border-radius: 28px;
     font-size: 17px;
   }
+  .global-proxy {
+    font-size: 13px;
+    color: #4b5563;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    line-height: 1.4;
+  }
+  .global-proxy input {
+    width: 16px;
+    height: 16px;
+  }
   .info {
     width: 100%;
     display: grid;
@@ -303,7 +332,8 @@
       border-color: #3a3f4b;
     }
     .info dt,
-    .muted {
+    .muted,
+    .global-proxy {
       color: #9ca3af;
     }
   }

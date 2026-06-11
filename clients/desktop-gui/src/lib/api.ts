@@ -19,7 +19,8 @@ export type LoginResult = {
 };
 
 // connect/disconnect wrap `start`/`stop` (human output → {ok, message}).
-// connect may also carry a `warning` (e.g. system proxy auto-set failed).
+// connect(globalProxy=true) also enables the Windows system proxy and may carry
+// a `warning` if that automatic proxy setup failed.
 export type ActionResult = {
   ok: boolean;
   message: string;
@@ -38,7 +39,7 @@ export type RotateResult = {
 export const api = {
   status: () => invoke<Status>("status"),
   login: (token: string) => invoke<LoginResult>("login", { token }),
-  connect: (fast: boolean) => invoke<ActionResult>("connect", { fast }),
+  connect: (globalProxy: boolean) => invoke<ActionResult>("connect", { fast: globalProxy }),
   disconnect: () => invoke<ActionResult>("disconnect"),
   rotateIp: () => invoke<RotateResult>("rotate_ip"),
   logout: () => invoke<ActionResult>("logout"),

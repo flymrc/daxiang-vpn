@@ -93,17 +93,13 @@ async fn login_impl(app: &AppHandle, token: &str) -> Result<Value, String> {
     parse_json(&stdout, &stderr)
 }
 
-async fn connect_impl(app: &AppHandle, fast: bool) -> Result<Value, String> {
-    let mut args = vec!["start"];
-    if fast {
-        args.push("--fast");
-    }
+async fn connect_impl(app: &AppHandle, global_proxy: bool) -> Result<Value, String> {
+    let args = vec!["start"];
     let (ok, stdout, stderr) = sidecar(app, &args).await?;
     let msg = message(ok, stdout, stderr);
-    if ok {
-        // GUI 的可交付全局代理路径是 Windows 系统代理：连接后统一指向
-        // zhvpn 本地代理，断开/退出时还原。旧 --fast 目前不是完整全局 TUN，
-        // 所以即使调用方传 fast=true，也仍要设置系统代理兜住浏览器和常见 App。
+    if ok && global_proxy {
+        // GUI 默认只启动本地代理。用户勾选“全局代理”时，才把 Windows
+        // 系统代理指向本地代理；断开/退出时统一还原。
         if let Err(e) = enable_system_proxy_from_status(app).await {
             return Ok(json!({
                 "ok": true,
@@ -148,6 +144,8 @@ async fn login(app: AppHandle, token: String) -> Result<Value, String> {
 
 #[tauri::command]
 async fn connect(app: AppHandle, fast: bool) -> Result<Value, String> {
+    // The frontend argument is still named `fast` for Tauri API compatibility,
+    // but it now means "enable Windows system proxy".
     connect_impl(&app, fast).await
 }
 
