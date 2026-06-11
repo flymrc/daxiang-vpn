@@ -9,6 +9,7 @@
 - `egress/reverse`:废弃并忽略 `v4_only_direct`;移除 Hub 侧 v4-only 直拨路径。即使旧配置仍写 `v4_only_direct: true`,新版服务端也不会把 v4-only 目标改由 Hub 直拨。
 - `clients/cli`:公网 IP 探测结果若等于 Hub endpoint IP,不再作为 `egress_ipv4` 返回。
 - `clients/desktop-gui`:版本提升到 `0.4.5`;IPv4/IPv6 分开展示真实可用性,IPv4 探测完成但无手机 IPv4 时显示 `不可用`。
+- `clients/desktop-gui`:第二次打开时激活已有主窗口,避免重复点击桌面图标“没反应”。
 - `clients/desktop-gui`:新增“复制诊断”基础版,包含 GUI 版本、连接状态、当前 status JSON、最近一次 IPv4/IPv6 探测结果与时间。
 - 示例配置:Hub reverse server example 中 `v4_only_direct: false`,并标记为 deprecated/ignored。
 - 文档:更新 README、架构、server-access、diagnostics、desktop-gui 与 GUI TODO,明确 Hub 不作为出口兜底。
@@ -22,6 +23,7 @@
 - `cargo check --manifest-path clients\desktop-gui\src-tauri\Cargo.toml`:通过,识别 `zhvpn-desktop v0.4.5`。
 - `.\clients\desktop-gui\build.ps1 -Target amd64`:通过,产物:
   - `clients/desktop-gui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/纵横 VPN_0.4.5_x64-setup.exe`
+- 第二次打开激活已有窗口补丁后,重新执行 `cargo fmt --check`、`cargo check`、`.\clients\desktop-gui\build.ps1 -Target amd64`:通过,同一路径产出新版 0.4.5 安装包。
 
 构建时 `npm install` 报告 3 个 low severity vulnerabilities,未在本次修正中处理。
 

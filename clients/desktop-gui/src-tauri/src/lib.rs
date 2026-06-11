@@ -47,6 +47,7 @@ fn acquire_single_instance() -> bool {
     }
     let already_exists = unsafe { GetLastError() } == ERROR_ALREADY_EXISTS;
     if already_exists {
+        show_existing_instance();
         unsafe {
             winapi::um::handleapi::CloseHandle(handle);
         }
@@ -54,6 +55,27 @@ fn acquire_single_instance() -> bool {
     }
     let _ = INSTANCE_MUTEX.set(WindowsInstanceMutex(handle));
     true
+}
+
+#[cfg(windows)]
+fn show_existing_instance() {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use winapi::um::winuser::{FindWindowW, SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOW};
+
+    let title: Vec<u16> = OsStr::new("纵横 VPN")
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    let hwnd = unsafe { FindWindowW(std::ptr::null(), title.as_ptr()) };
+    if hwnd.is_null() {
+        return;
+    }
+    unsafe {
+        ShowWindow(hwnd, SW_SHOW);
+        ShowWindow(hwnd, SW_RESTORE);
+        SetForegroundWindow(hwnd);
+    }
 }
 
 #[cfg(not(windows))]

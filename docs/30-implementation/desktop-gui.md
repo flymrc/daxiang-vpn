@@ -246,5 +246,6 @@ clients/desktop-gui/
   - Hub 只做 Hub,不作为 IPv4 兜底出口；`egress/reverse` 已废弃并忽略 `v4_only_direct`。
   - CLI status 若观测到 IPv4 等于 Hub endpoint IP,不再把它作为 `egress_ipv4` 返回。
   - GUI 若 IPv4 探测完成但无手机 IPv4,如实显示 `不可用`;IPv6 仍单独显示 Rakuten IPv6。
+  - 第二次打开 GUI 时不再静默退出,而是激活已有主窗口。
   - 主界面新增“复制诊断”基础版,便于排查时一次性拿到版本、连接状态和最近一次 IPv4/IPv6 探测结果。
   - GUI 版本号显示为 `v0.4.5`。
