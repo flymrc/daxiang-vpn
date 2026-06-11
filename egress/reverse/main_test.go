@@ -21,6 +21,15 @@ func TestLoadReverseConfigExamples(t *testing.T) {
 	if server.Transport != "tcp" {
 		t.Fatalf("server transport = %q", server.Transport)
 	}
+	if server.MaxProxyConns != 96 {
+		t.Fatalf("server max proxy connections = %d", server.MaxProxyConns)
+	}
+	if server.MaxProxyConnsPeer != 48 {
+		t.Fatalf("server max proxy per-client connections = %d", server.MaxProxyConnsPeer)
+	}
+	if server.ProxyIdleTimeout != 2*time.Minute {
+		t.Fatalf("server proxy idle timeout = %s", server.ProxyIdleTimeout)
+	}
 
 	clientCfg, err := loadReverseConfig("../../docs/20-operations/configs/egress/android-reverse-client.yaml.example")
 	if err != nil {
@@ -148,6 +157,32 @@ func TestProxyAllowedCIDRs(t *testing.T) {
 	}
 	if manager.proxyAllowed("192.0.2.10:51234") {
 		t.Fatal("expected non-WireGuard client to be denied")
+	}
+}
+
+func TestPipeBothReapsIdleConnections(t *testing.T) {
+	clientConn, proxyClient := net.Pipe()
+	reverseClient, reverseServer := net.Pipe()
+	defer clientConn.Close()
+	defer reverseServer.Close()
+
+	done := make(chan struct{})
+	go func() {
+		pipeBoth(proxyClient, reverseClient, 20*time.Millisecond)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("idle proxy connection was not reaped")
+	}
+
+	if _, err := clientConn.Write([]byte("x")); err == nil {
+		t.Fatal("client side remained writable after idle reap")
+	}
+	if _, err := reverseServer.Write([]byte("x")); err == nil {
+		t.Fatal("reverse side remained writable after idle reap")
 	}
 }
 

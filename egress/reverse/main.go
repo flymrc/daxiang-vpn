@@ -64,18 +64,19 @@ type reverseConfig struct {
 }
 
 type serverOptions struct {
-	Listen            string   `json:"listen" yaml:"listen"`
-	Proxy             string   `json:"proxy" yaml:"proxy"`
-	Token             string   `json:"token,omitempty" yaml:"token,omitempty"`
-	TokenFile         string   `json:"token_file,omitempty" yaml:"token_file,omitempty"`
-	Transport         string   `json:"transport" yaml:"transport"`
-	Resolve           string   `json:"resolve" yaml:"resolve"`
-	TLSCertFile       string   `json:"tls_cert_file,omitempty" yaml:"tls_cert_file,omitempty"`
-	TLSKeyFile        string   `json:"tls_key_file,omitempty" yaml:"tls_key_file,omitempty"`
-	EnableFetch       bool     `json:"enable_fetch,omitempty" yaml:"enable_fetch,omitempty"`
-	AllowedProxyCIDRs []string `json:"allowed_proxy_cidrs,omitempty" yaml:"allowed_proxy_cidrs,omitempty"`
-	MaxProxyConns     int      `json:"max_proxy_connections,omitempty" yaml:"max_proxy_connections,omitempty"`
-	MaxProxyConnsPeer int      `json:"max_proxy_connections_per_client,omitempty" yaml:"max_proxy_connections_per_client,omitempty"`
+	Listen            string        `json:"listen" yaml:"listen"`
+	Proxy             string        `json:"proxy" yaml:"proxy"`
+	Token             string        `json:"token,omitempty" yaml:"token,omitempty"`
+	TokenFile         string        `json:"token_file,omitempty" yaml:"token_file,omitempty"`
+	Transport         string        `json:"transport" yaml:"transport"`
+	Resolve           string        `json:"resolve" yaml:"resolve"`
+	TLSCertFile       string        `json:"tls_cert_file,omitempty" yaml:"tls_cert_file,omitempty"`
+	TLSKeyFile        string        `json:"tls_key_file,omitempty" yaml:"tls_key_file,omitempty"`
+	EnableFetch       bool          `json:"enable_fetch,omitempty" yaml:"enable_fetch,omitempty"`
+	AllowedProxyCIDRs []string      `json:"allowed_proxy_cidrs,omitempty" yaml:"allowed_proxy_cidrs,omitempty"`
+	MaxProxyConns     int           `json:"max_proxy_connections,omitempty" yaml:"max_proxy_connections,omitempty"`
+	MaxProxyConnsPeer int           `json:"max_proxy_connections_per_client,omitempty" yaml:"max_proxy_connections_per_client,omitempty"`
+	ProxyIdleTimeout  time.Duration `json:"proxy_idle_timeout,omitempty" yaml:"proxy_idle_timeout,omitempty"`
 }
 
 type clientOptions struct {
@@ -92,10 +93,11 @@ type clientOptions struct {
 
 func defaultServerOptions() serverOptions {
 	return serverOptions{
-		Listen:    ":39093",
-		Proxy:     "127.0.0.1:18081",
-		Transport: "quic",
-		Resolve:   "server",
+		Listen:           ":39093",
+		Proxy:            "127.0.0.1:18081",
+		Transport:        "quic",
+		Resolve:          "server",
+		ProxyIdleTimeout: 2 * time.Minute,
 	}
 }
 
@@ -120,6 +122,9 @@ func (o serverOptions) withDefaults(defaults serverOptions) serverOptions {
 	}
 	if o.Resolve == "" {
 		o.Resolve = defaults.Resolve
+	}
+	if o.ProxyIdleTimeout == 0 {
+		o.ProxyIdleTimeout = defaults.ProxyIdleTimeout
 	}
 	return o
 }
@@ -192,6 +197,7 @@ func runServer(args []string) error {
 	enableFetch := fs.Bool("enable-fetch", defaults.EnableFetch, "enable diagnostic /fetch endpoint")
 	maxProxyConns := fs.Int("max-proxy-connections", defaults.MaxProxyConns, "maximum concurrent CONNECT proxy sessions; 0 disables the limit")
 	maxProxyConnsPeer := fs.Int("max-proxy-connections-per-client", defaults.MaxProxyConnsPeer, "maximum concurrent CONNECT proxy sessions per client IP; 0 disables the limit")
+	proxyIdleTimeout := fs.Duration("proxy-idle-timeout", defaults.ProxyIdleTimeout, "idle timeout for CONNECT proxy sessions; 0 disables idle reaping")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -237,6 +243,9 @@ func runServer(args []string) error {
 	if explicit["max-proxy-connections-per-client"] {
 		opts.MaxProxyConnsPeer = *maxProxyConnsPeer
 	}
+	if explicit["proxy-idle-timeout"] {
+		opts.ProxyIdleTimeout = *proxyIdleTimeout
+	}
 	resolvedToken, err := resolveToken(opts.Token, opts.TokenFile)
 	if err != nil {
 		return err
@@ -253,6 +262,9 @@ func runServer(args []string) error {
 	if opts.MaxProxyConnsPeer < 0 {
 		return errors.New("--max-proxy-connections-per-client must be >= 0")
 	}
+	if opts.ProxyIdleTimeout < 0 {
+		return errors.New("--proxy-idle-timeout must be >= 0")
+	}
 
 	allowedProxyNets, err := parseCIDRs(opts.AllowedProxyCIDRs)
 	if err != nil {
@@ -264,6 +276,7 @@ func runServer(args []string) error {
 		allowedProxyNets:  allowedProxyNets,
 		maxProxyConns:     opts.MaxProxyConns,
 		maxProxyConnsPeer: opts.MaxProxyConnsPeer,
+		proxyIdleTimeout:  opts.ProxyIdleTimeout,
 		activeProxyByPeer: map[string]int{},
 	}
 	tunnelReady := make(chan error, 1)
@@ -281,7 +294,7 @@ func runServer(args []string) error {
 		Handler:           http.HandlerFunc(manager.handleProxy),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	log.Printf("reverse server listening transport=%s resolve=%s tunnel=%s proxy=%s max_proxy_connections=%d max_proxy_connections_per_client=%d", opts.Transport, opts.Resolve, opts.Listen, opts.Proxy, opts.MaxProxyConns, opts.MaxProxyConnsPeer)
+	log.Printf("reverse server listening transport=%s resolve=%s tunnel=%s proxy=%s max_proxy_connections=%d max_proxy_connections_per_client=%d proxy_idle_timeout=%s", opts.Transport, opts.Resolve, opts.Listen, opts.Proxy, opts.MaxProxyConns, opts.MaxProxyConnsPeer, opts.ProxyIdleTimeout)
 	return server.ListenAndServe()
 }
 
@@ -448,6 +461,7 @@ type sessionManager struct {
 	allowedProxyNets  []*net.IPNet
 	maxProxyConns     int
 	maxProxyConnsPeer int
+	proxyIdleTimeout  time.Duration
 	activeProxyMu     sync.Mutex
 	activeProxyConns  int
 	activeProxyByPeer map[string]int
@@ -663,7 +677,7 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 	if _, err := io.WriteString(clientConn, "HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
 		return
 	}
-	pipeBoth(clientConn, &bufferedConn{Conn: stream, reader: streamReader})
+	pipeBoth(clientConn, &bufferedConn{Conn: stream, reader: streamReader}, m.proxyIdleTimeout)
 }
 
 func (m *sessionManager) acquireProxySlot(remoteAddr string) (func(), bool, string) {
@@ -1039,7 +1053,7 @@ func handleConnectStream(stream net.Conn, reader *bufio.Reader, target string, o
 	if _, err := io.WriteString(stream, "OK\n"); err != nil {
 		return
 	}
-	pipeBoth(&bufferedConn{Conn: stream, reader: reader}, targetConn)
+	pipeBoth(&bufferedConn{Conn: stream, reader: reader}, targetConn, 0)
 }
 
 func handleFetchStream(stream net.Conn, encodedURL string, opts clientOptions) {
@@ -1196,32 +1210,83 @@ func (c *bufferedConn) Read(p []byte) (int, error) {
 	return c.reader.Read(p)
 }
 
-func pipeBoth(a net.Conn, b net.Conn) {
+func pipeBoth(a net.Conn, b net.Conn, idleTimeout time.Duration) {
 	var wg sync.WaitGroup
+	var closeOnce sync.Once
+	closeBoth := func() {
+		closeOnce.Do(func() {
+			_ = a.Close()
+			_ = b.Close()
+		})
+	}
+
+	activity := make(chan struct{}, 1)
+	done := make(chan struct{})
+	if idleTimeout > 0 {
+		go reapIdleConnections(idleTimeout, activity, done, closeBoth)
+	}
+
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		_, _ = io.Copy(a, b)
-		closeWrite(a)
+		copyWithActivity(a, b, activity)
+		closeBoth()
 	}()
 	go func() {
 		defer wg.Done()
-		_, _ = io.Copy(b, a)
-		closeWrite(b)
+		copyWithActivity(b, a, activity)
+		closeBoth()
 	}()
 	wg.Wait()
+	close(done)
 }
 
-func closeWrite(conn net.Conn) {
-	if tcp, ok := conn.(*net.TCPConn); ok {
-		_ = tcp.CloseWrite()
+func copyWithActivity(dst net.Conn, src net.Conn, activity chan<- struct{}) {
+	buffer := make([]byte, 32*1024)
+	for {
+		n, readErr := src.Read(buffer)
+		if n > 0 {
+			if _, writeErr := dst.Write(buffer[:n]); writeErr != nil {
+				return
+			}
+			noteActivity(activity)
+		}
+		if readErr != nil {
+			return
+		}
+	}
+}
+
+func noteActivity(activity chan<- struct{}) {
+	if activity == nil {
 		return
 	}
-	if quicConn, ok := conn.(*quicStreamConn); ok {
-		_ = quicConn.Close()
-		return
+	select {
+	case activity <- struct{}{}:
+	default:
 	}
-	_ = conn.SetDeadline(time.Now())
+}
+
+func reapIdleConnections(idleTimeout time.Duration, activity <-chan struct{}, done <-chan struct{}, closeBoth func()) {
+	timer := time.NewTimer(idleTimeout)
+	defer timer.Stop()
+	for {
+		select {
+		case <-activity:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(idleTimeout)
+		case <-timer.C:
+			closeBoth()
+			return
+		case <-done:
+			return
+		}
+	}
 }
 
 func readHello(conn net.Conn, token string) error {

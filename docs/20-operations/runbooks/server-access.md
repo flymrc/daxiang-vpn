@@ -124,6 +124,7 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 - Android 当前 `transport: tcp`、`connections: 1`、`address_family: ipv6`;`client.server_cert_sha256` 保留用于 QUIC 回滚。
 - Hub 当前 `resolve: client`(2026-06-10 起):目标域名在手机侧解析并优先 IPv6 直拨,绕开乐天 F5 BIG-IP 透明代理故障率高的 v4 侧,详见 `docs/90-history/worklogs/2026-06-10-pixel-7a-speed-audit.md`。
 - Hub 当前 `max_proxy_connections=96`、`max_proxy_connections_per_client=48`,用于保护 Android 手机出口免受客户端突发并发拖死,同时避免误伤浏览器常驻连接。
+- Hub 当前 `proxy_idle_timeout=2m`,用于回收 FAST/浏览器异常中断后残留的空闲 CONNECT 隧道,避免单客户端并发槽被长期占满。
 - UFW 已允许 WireGuard 客户端访问 `10.66.0.1:18081/tcp`。
 - Hub 日志显示 Pixel Android 1 条 TCP reverse session 已连接。
 - Android 当前仅运行 `99-zhreverse-egress.sh` supervisor 和 `zhreverse client`。

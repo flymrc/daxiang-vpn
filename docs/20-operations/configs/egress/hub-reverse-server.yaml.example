@@ -19,5 +19,7 @@ server:
   # Excess CONNECT requests fail fast with HTTP 429 instead of piling up in the tunnel.
   max_proxy_connections: 96
   max_proxy_connections_per_client: 48
+  # Reap idle CONNECT tunnels so abandoned browser/speedtest connections release slots.
+  proxy_idle_timeout: 2m
   # Diagnostic /fetch endpoint is disabled unless explicitly enabled.
   enable_fetch: false
