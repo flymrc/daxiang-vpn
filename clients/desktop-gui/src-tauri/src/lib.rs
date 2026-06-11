@@ -93,8 +93,11 @@ async fn login_impl(app: &AppHandle, token: &str) -> Result<Value, String> {
     parse_json(&stdout, &stderr)
 }
 
-async fn connect_impl(app: &AppHandle, global_proxy: bool) -> Result<Value, String> {
-    let args = vec!["start"];
+async fn connect_impl(app: &AppHandle, global_proxy: bool, fast: bool) -> Result<Value, String> {
+    let mut args = vec!["start"];
+    if fast {
+        args.push("--fast");
+    }
     let (ok, stdout, stderr) = sidecar(app, &args).await?;
     let msg = message(ok, stdout, stderr);
     if ok && global_proxy {
@@ -143,10 +146,8 @@ async fn login(app: AppHandle, token: String) -> Result<Value, String> {
 }
 
 #[tauri::command]
-async fn connect(app: AppHandle, fast: bool) -> Result<Value, String> {
-    // The frontend argument is still named `fast` for Tauri API compatibility,
-    // but it now means "enable Windows system proxy".
-    connect_impl(&app, fast).await
+async fn connect(app: AppHandle, global_proxy: bool, fast: bool) -> Result<Value, String> {
+    connect_impl(&app, global_proxy, fast).await
 }
 
 #[tauri::command]
@@ -222,7 +223,7 @@ pub fn run() {
                     "connect" => {
                         let a = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            let _ = connect_impl(&a, false).await;
+                            let _ = connect_impl(&a, false, false).await;
                         });
                     }
                     "disconnect" => {

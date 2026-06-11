@@ -65,3 +65,25 @@
 - `.\clients\desktop-gui\build.ps1 -Target amd64`：通过。
 - 产物：
   - `clients/desktop-gui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/纵横 VPN_0.4.1_x64-setup.exe`
+
+## 0.4.2 高性能模式补齐
+
+用户确认「全局代理」只是 Windows 当前用户系统代理，不需要 UAC；如需走 `zhvpn start --fast`，UI 应单独暴露「高性能模式」。处理：
+
+- 主界面新增「高性能模式」复选框，默认关闭，连接中禁用。
+- `connect(globalProxy, fast)` 同时接收两个独立选项：
+  - 两者都不选：`zhvpn start`，只启动本地代理。
+  - 只选「全局代理」：`zhvpn start` + 自动写 Windows 系统代理。
+  - 只选「高性能模式」：`zhvpn start --fast`，不改系统代理。
+  - 两者都选：`zhvpn start --fast` + 自动写 Windows 系统代理。
+- 托盘菜单「连接」仍走保守默认：局部代理、非高性能。
+- 版本号提升到 `0.4.2`。
+
+验证：
+
+- `npm run check`：通过；保留既有 `Cannot find type definition file for 'node'` 警告。
+- `cargo check --manifest-path clients\desktop-gui\src-tauri\Cargo.toml`：通过。
+- `.\clients\desktop-gui\build.ps1 -Target amd64`：通过。
+- 随包 sidecar `zhvpn.exe status --json`：返回 `{"running":false,"proxy":"127.0.0.1:7890","proxy_reachable":false,"egress":"日本手机卡出口"}`，说明 sidecar 可执行且当前本机未连接。
+- 产物：
+  - `clients/desktop-gui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/纵横 VPN_0.4.2_x64-setup.exe`

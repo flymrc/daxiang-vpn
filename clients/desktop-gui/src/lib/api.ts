@@ -19,8 +19,8 @@ export type LoginResult = {
 };
 
 // connect/disconnect wrap `start`/`stop` (human output → {ok, message}).
-// connect(globalProxy=true) also enables the Windows system proxy and may carry
-// a `warning` if that automatic proxy setup failed.
+// connect(globalProxy=true) enables Windows system proxy; fast=true passes
+// `--fast` through to the sidecar and may trigger UAC.
 export type ActionResult = {
   ok: boolean;
   message: string;
@@ -39,7 +39,8 @@ export type RotateResult = {
 export const api = {
   status: () => invoke<Status>("status"),
   login: (token: string) => invoke<LoginResult>("login", { token }),
-  connect: (globalProxy: boolean) => invoke<ActionResult>("connect", { fast: globalProxy }),
+  connect: (globalProxy: boolean, fast: boolean) =>
+    invoke<ActionResult>("connect", { globalProxy, fast }),
   disconnect: () => invoke<ActionResult>("disconnect"),
   rotateIp: () => invoke<RotateResult>("rotate_ip"),
   logout: () => invoke<ActionResult>("logout"),

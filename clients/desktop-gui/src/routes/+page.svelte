@@ -7,6 +7,7 @@
   let view = $state<"loading" | "login" | "main">("loading");
   let token = $state("");
   let globalProxy = $state(false);
+  let fastMode = $state(false);
   let busy = $state(false);
   let errMsg = $state("");
   let info = $state("");
@@ -62,7 +63,7 @@
     errMsg = "";
     info = "";
     try {
-      const r = connected ? await api.disconnect() : await api.connect(globalProxy);
+      const r = connected ? await api.disconnect() : await api.connect(globalProxy, fastMode);
       if (!r.ok) errMsg = r.message || "操作失败";
       else if (r.warning) errMsg = r.warning;
       await refresh();
@@ -145,9 +146,14 @@
         {connected ? "断开" : "连接"}
       </button>
 
-      <label class="global-proxy">
+      <label class="mode-option">
         <input type="checkbox" bind:checked={globalProxy} disabled={busy || connected} />
         全局代理
+      </label>
+
+      <label class="mode-option">
+        <input type="checkbox" bind:checked={fastMode} disabled={busy || connected} />
+        高性能模式
       </label>
 
       <dl class="info">
@@ -260,7 +266,7 @@
     border-radius: 28px;
     font-size: 17px;
   }
-  .global-proxy {
+  .mode-option {
     font-size: 13px;
     color: #4b5563;
     display: flex;
@@ -268,7 +274,7 @@
     gap: 7px;
     line-height: 1.4;
   }
-  .global-proxy input {
+  .mode-option input {
     width: 16px;
     height: 16px;
   }
@@ -333,7 +339,7 @@
     }
     .info dt,
     .muted,
-    .global-proxy {
+    .mode-option {
       color: #9ca3af;
     }
   }
