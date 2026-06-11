@@ -134,11 +134,11 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 - Hub 当前 `resolve: client`(2026-06-10 起):目标域名在手机侧解析并优先 IPv6 直拨,绕开乐天 F5 BIG-IP 透明代理故障率高的 v4 侧,详见 `docs/90-history/worklogs/2026-06-10-pixel-7a-speed-audit.md`。
 - Hub 当前 `max_proxy_connections=96`、`max_proxy_connections_per_client=48`,用于保护 Android 手机出口免受客户端突发并发拖死,同时避免误伤浏览器常驻连接。
 - Hub 当前 `proxy_idle_timeout=2m`,用于回收 FAST/浏览器异常中断后残留的空闲 CONNECT 隧道,避免单客户端并发槽被长期占满。
-- Hub 当前 `v4_only_direct=true`:目标无 AAAA(或为 IPv4 字面量)时,Hub 本机直拨 `tcp4`,绕开乐天蜂窝 F5 BIG-IP v4 侧的高故障率;此类流量出口 IP 为 Hub VPS `36.50.84.68`,双栈目标仍走手机住宅 IPv6。详见 `docs/90-history/worklogs/2026-06-11-zhreverse-v4only-direct.md`。
+- Hub 不作为出口兜底:`v4_only_direct` 已废弃并被服务端忽略。目标无 AAAA(或为 IPv4 字面量)时仍应交给手机出口;若 Rakuten IPv4/CGNAT/F5 路径故障,就如实表现为 IPv4 出口异常,不能改由 Hub VPS `36.50.84.68` 出口。
 - UFW 已允许 WireGuard 客户端访问 `10.66.0.1:18081/tcp`。
 - Hub 日志显示 Pixel Android 1 条 TCP reverse session 已连接。
 - Android 当前仅运行 `99-zhreverse-egress.sh` supervisor 和 `zhreverse client`。
-- Hub 经 reverse proxy 出口 IP：以 `curl --proxy http://10.66.0.1:18081 https://api64.ipify.org` 等实时结果为准。2026-06-11 Pixel 测得公网 IPv6 为 `240b:c010:421:d18c:0:42:e654:1701`。
+- Hub 经 reverse proxy 出口 IP：以 `curl --proxy http://10.66.0.1:18081 https://api64.ipify.org` 等实时结果为准。2026-06-11 部署 no-Hub-fallback 版后测得公网 IPv6 为 `240b:c010:662:d7b7:0:44:f8bf:7901`;v4-only `https://api.ipify.org` 经代理超时(exit 28),不再返回 Hub VPS `36.50.84.68`。
 - Android 客户端 token 当前应绑定 `egress.proxy_addr=10.66.0.1:18081`;旧 `10.66.0.101:1080` 不再分配给 Android 客户端。
 
 常用检查命令：

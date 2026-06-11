@@ -490,10 +490,13 @@ func status(ctx paths.Context, args []string) error {
 				if ips, err := netcheck.PublicIPsViaHTTPProxy(cfg.LocalProxy.Addr()); err == nil {
 					res.EgressIPv4 = ips.IPv4
 					res.EgressIPv6 = ips.IPv6
+					if publicIPMatchesEndpoint(res.EgressIPv4, cfg.Hub.Endpoint) {
+						res.EgressIPv4 = ""
+					}
 					if ips.IPv6 != "" {
 						res.EgressIP = ips.IPv6
 					} else {
-						res.EgressIP = ips.IPv4
+						res.EgressIP = res.EgressIPv4
 					}
 				}
 			}
@@ -512,6 +515,9 @@ func status(ctx paths.Context, args []string) error {
 	if localReachable {
 		if opts.checkIP {
 			if ips, err := netcheck.PublicIPsViaHTTPProxy(cfg.LocalProxy.Addr()); err == nil {
+				if publicIPMatchesEndpoint(ips.IPv4, cfg.Hub.Endpoint) {
+					ips.IPv4 = ""
+				}
 				if ips.IPv6 != "" {
 					fmt.Printf("出口 IPv6：%s\n", ips.IPv6)
 				}
@@ -531,6 +537,17 @@ func status(ctx paths.Context, args []string) error {
 		fmt.Println("出口 IP：未连接")
 	}
 	return nil
+}
+
+func publicIPMatchesEndpoint(ip, endpoint string) bool {
+	if ip == "" {
+		return false
+	}
+	host, _, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		host = endpoint
+	}
+	return net.ParseIP(ip) != nil && net.ParseIP(host) != nil && net.ParseIP(ip).Equal(net.ParseIP(host))
 }
 
 func printBool(ok bool) {

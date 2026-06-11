@@ -42,3 +42,7 @@
   - `curl.exe -sS --max-time 8 -x http://127.0.0.1:7890 https://api64.ipify.org`
   - `Test-NetConnection 127.0.0.1 -Port 7890`
   用三者区分 UI、出口 IP endpoint、和本地代理端口。
+
+## 后续更正
+
+后续产品边界明确:Hub 不应作为出口兜底。本文中把 `api.ipify.org -> 36.50.84.68` 视为当时 `v4_only_direct` 预期,但该策略已废弃。新版 `zhreverse` 忽略 `v4_only_direct`,IPv4-only 目标仍应走手机出口;若 Rakuten IPv4 路径故障,GUI 应显示 IPv4 不可用。

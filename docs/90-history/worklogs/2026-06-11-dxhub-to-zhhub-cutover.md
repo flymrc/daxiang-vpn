@@ -48,6 +48,8 @@
   - 双栈 `api64.ipify.org` → 手机 IPv6;rotate 后前缀从 `…421:d18c:…e654:1701` 变为 `…4d3:9083:…c122:bb01`,**换 IP 实际生效**。
   - skymark(v4-only 站)0.16s 打开。
 
+> 后续更正:同日稍后明确 Hub 不应作为出口兜底,`v4_only_direct` 已废弃并被新版 `zhreverse` 忽略。上面的 v4-only 直拨结果仅记录当时临时止血状态,不代表当前产品语义。
+
 ## 回滚
 
 - 旧二进制 / 配置 / unit / key 全在 `/root/dx-attic-20260611/`;恢复 unit + 目录 + `daemon-reload` + `enable --now dxhub` 即回旧路径。

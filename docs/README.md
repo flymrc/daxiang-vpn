@@ -22,6 +22,8 @@ Hub: 36.50.84.68 / 10.66.0.1
 
 Mac 出口仍是远端 mixed 代理。Android 出口数据面已迁到 `zhreverse` 反向 TCP/yamux,客户端经 WireGuard 访问 Hub 侧 `10.66.0.1:18081`;旧 `10.66.0.101:1080` 路径已从生产入口拆除,只在历史记录中保留。
 
+Hub 只承担 WireGuard 入口、授权与反向出口中转职责,不作为备用公网出口。若手机 IPv4/Rakuten IPv4 路径异常,客户端应显示 IPv4 不可用或异常,不能把 Hub VPS `36.50.84.68` 当成兜底出口。
+
 Android 控制面仍保留 WireGuard App:`jp-android-01` 使用 `10.66.0.101`,Hub 可通过 `10.66.0.101:2022` 登录 `zhandroid-control`,TCP ADB `10.66.0.101:5555` 仅允许 WireGuard 内网来源。
 
 ## 目录说明
@@ -68,6 +70,7 @@ Android 控制面仍保留 WireGuard App:`jp-android-01` 使用 `10.66.0.101`,Hu
 - [zhvpn.exe 实现](30-implementation/zhvpn-exe-implementation.md)
 - [zhvpn.exe 本地单例实现计划](30-implementation/client-singleton-plan.md)
 - [桌面 GUI 客户端实现方案](30-implementation/desktop-gui.md)
+- [Windows GUI 客户端优化 TODO](30-implementation/desktop-gui-client-todo.md)
 - [服务端托管客户端配置](30-implementation/server-managed-client.md)
 - [管理内网状态栏工具](../clients/admin-menubar/README.md)
 

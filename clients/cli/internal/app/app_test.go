@@ -117,6 +117,18 @@ func TestParseStatusOptions(t *testing.T) {
 	}
 }
 
+func TestPublicIPMatchesEndpoint(t *testing.T) {
+	if !publicIPMatchesEndpoint("36.50.84.68", "36.50.84.68:51820") {
+		t.Fatal("expected public IP to match hub endpoint")
+	}
+	if publicIPMatchesEndpoint("133.106.34.62", "36.50.84.68:51820") {
+		t.Fatal("expected phone IPv4 not to match hub endpoint")
+	}
+	if publicIPMatchesEndpoint("", "36.50.84.68:51820") {
+		t.Fatal("empty ip should not match")
+	}
+}
+
 func TestHasFlag(t *testing.T) {
 	if !hasFlag([]string{"a", "--json", "b"}, "--json") {
 		t.Fatal("expected --json found")

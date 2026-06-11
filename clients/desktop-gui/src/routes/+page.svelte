@@ -12,9 +12,10 @@
   let errMsg = $state("");
   let info = $state("");
   let status = $state<Status | null>(null);
-  let appVersion = $state("0.4.4");
+  let appVersion = $state("0.4.5");
   let lastIPv4 = $state("");
   let lastIPv6 = $state("");
+  let ipChecked = $state(false);
   let ipRefreshing = $state(false);
   let lastIPRefreshAt = 0;
   let poll: ReturnType<typeof setInterval> | undefined;
@@ -33,12 +34,20 @@
   }
 
   function rememberIPs(s: Status) {
-    if (s.egress_ipv4) lastIPv4 = s.egress_ipv4;
-    if (s.egress_ipv6) lastIPv6 = s.egress_ipv6;
-    if (!s.egress_ipv4 && !s.egress_ipv6 && s.egress_ip) {
+    lastIPv4 = s.egress_ipv4 ?? "";
+    lastIPv6 = s.egress_ipv6 ?? "";
+    if (!lastIPv4 && !lastIPv6 && s.egress_ip) {
       if (s.egress_ip.includes(":")) lastIPv6 = s.egress_ip;
       else lastIPv4 = s.egress_ip;
     }
+    ipChecked = true;
+  }
+
+  function ipText(value: string) {
+    if (value) return value;
+    if (!connected) return "—";
+    if (ipRefreshing && !ipChecked) return "获取中…";
+    return ipChecked ? "不可用" : "获取中…";
   }
 
   async function refreshIp(force = false) {
@@ -72,6 +81,7 @@
       if (!isConnected(s)) {
         lastIPv4 = "";
         lastIPv6 = "";
+        ipChecked = false;
         lastIPRefreshAt = 0;
       } else {
         void refreshIp(forceIp);
@@ -151,6 +161,25 @@
     }
   }
 
+  async function copyDiagnostics() {
+    const payload = {
+      app_version: appVersion,
+      connected,
+      status,
+      egress_ipv6: lastIPv6 || null,
+      egress_ipv4: lastIPv4 || null,
+      ip_checked: ipChecked,
+      ip_checked_at: lastIPRefreshAt ? new Date(lastIPRefreshAt).toISOString() : null,
+    };
+    try {
+      errMsg = "";
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      info = "诊断信息已复制";
+    } catch {
+      errMsg = "复制诊断信息失败";
+    }
+  }
+
   onMount(() => {
     loadLastToken();
     api.appVersion().then((v) => (appVersion = v)).catch(() => {});
@@ -208,9 +237,9 @@
         <dt>出口</dt>
         <dd>{status?.egress ?? "—"}</dd>
         <dt>出口 IPv6</dt>
-        <dd>{lastIPv6 || (connected && ipRefreshing ? "获取中…" : "—")}</dd>
+        <dd>{ipText(lastIPv6)}</dd>
         <dt>出口 IPv4</dt>
-        <dd>{lastIPv4 || (connected && ipRefreshing ? "获取中…" : "—")}</dd>
+        <dd>{ipText(lastIPv4)}</dd>
         <dt>本地代理</dt>
         <dd>{status?.proxy ?? "—"}</dd>
       </dl>
@@ -218,6 +247,7 @@
       {#if connected}
         <button class="rotate" onclick={rotate} disabled={busy}>换 IP</button>
       {/if}
+      <button class="rotate" onclick={copyDiagnostics} disabled={busy}>复制诊断</button>
     </section>
     <button class="link" onclick={logout} disabled={busy}>登出</button>
     <p class="version">v{appVersion}</p>

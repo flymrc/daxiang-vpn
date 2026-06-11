@@ -357,8 +357,8 @@ tail -n 50 /usr/local/var/log/zhvpn/*.log
 | 出口 IP 不是 `118.158.252.9` | Mac 的 WAN/住宅网络变了，或走了别的出口 |
 | Android 手机卡直连快但代理慢 | 多半是手机上行到 Hub 慢，不是手机下行慢 |
 | Android 日志大量 `message too long` | Android WireGuard/sing-box 发包路径仍需优化 |
-| v4-only 站点经代理卡 15s 后 TLS 失败 | 乐天 F5 v4 侧故障;确认 Hub `v4_only_direct=true` 已开,该站点应改由 Hub 直拨 |
-| v4-only 站点出口 IP 变成 `36.50.84.68` | 正常:`v4_only_direct` 把无 AAAA 目标改为 Hub VPS 直拨,不再经手机 |
+| v4-only 站点经代理卡 15s 后 TLS 失败 | Rakuten IPv4/CGNAT/F5 侧故障;这是手机 IPv4 出口真实异常,不要改由 Hub 直拨 |
+| v4-only 站点出口 IP 变成 `36.50.84.68` | 异常:Hub 不应作为出口兜底;检查 `zhreverse` 是否已部署忽略 `v4_only_direct` 的版本 |
 | 一键换 IP 报「Hub 未能触发 Android 控制面换 IP」 | zhhub 找不到控制面私钥;查 `journalctl -u zhhub.service | grep rotate-ip` 的 `control key unavailable` 路径,核对 `ZHHUB_ANDROID_CONTROL_KEY` 指向真实存在的 `/root/.ssh/zhandroid_control_hub` |
 | 客户端提示授权码正在其他网络使用 | 同一 token 正在另一个公网来源 bootstrap，等待约 30 秒或先断开另一台设备 |
 | `ip_forward = 0` | Hub 没开转发，流量到 Hub 就断 |

@@ -69,3 +69,7 @@ skymark 从「15s 后白屏」变成「0.15s 打开」。
 
 - v4-only 出口 IP 是机房 IP,部分风控站点可能识别;主流大流量站点基本都有 v6 不受影响。
 - 终态仍是 worklog 6-10 建议的 QUIC over v6 隧道 + Hub VPS 启用 IPv6,让隧道腿也上 v6。
+
+## 后续废弃
+
+同日后续产品边界明确:Hub 只能做 Hub,不能作为出口兜底。`v4_only_direct` 已在代码中废弃并忽略,示例配置改回 `false`;即使旧生产配置仍写 `true`,新版 `zhreverse` 也不会再由 Hub 直拨 v4-only 目标。IPv4 烂就如实表现为手机 IPv4 出口异常。
