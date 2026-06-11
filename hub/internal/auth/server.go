@@ -110,10 +110,7 @@ func dynamicEgress(egress Egress) Egress {
 }
 
 func currentAndroidCarrier(managementAddr string) string {
-	keyPath := firstNonEmptyEnv("ZHHUB_ANDROID_CONTROL_KEY", "DXHUB_ANDROID_CONTROL_KEY")
-	if strings.TrimSpace(keyPath) == "" {
-		return ""
-	}
+	keyPath := androidControlKeyPath()
 	host, port := splitHostPortDefault(managementAddr, "2022")
 	if host == "" {
 		return ""
@@ -142,13 +139,11 @@ func currentAndroidCarrier(managementAddr string) string {
 	return ""
 }
 
-func firstNonEmptyEnv(names ...string) string {
-	for _, name := range names {
-		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
-			return value
-		}
+func androidControlKeyPath() string {
+	if value := strings.TrimSpace(os.Getenv("ZHHUB_ANDROID_CONTROL_KEY")); value != "" {
+		return value
 	}
-	return ""
+	return "/root/.ssh/zhandroid_control_hub"
 }
 
 func firstCSVValue(value string) string {
@@ -241,10 +236,7 @@ func triggerAndroidRotateIP(managementAddr string, downSeconds int) error {
 	if host == "" {
 		host = "10.66.0.101"
 	}
-	keyPath := strings.TrimSpace(os.Getenv("ZHHUB_ANDROID_CONTROL_KEY"))
-	if keyPath == "" {
-		keyPath = "/root/.ssh/zhandroid_control"
-	}
+	keyPath := androidControlKeyPath()
 	if _, err := os.Stat(keyPath); err != nil {
 		return fmt.Errorf("control key unavailable: %w", err)
 	}

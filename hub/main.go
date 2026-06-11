@@ -9,8 +9,8 @@ import (
 )
 
 func main() {
-	configPath := envAny([]string{"ZHHUB_TOKENS", "DXHUB_TOKENS"}, "./config/tokens.yaml")
-	listenAddr := envAny([]string{"ZHHUB_LISTEN", "DXHUB_LISTEN"}, "0.0.0.0:18080")
+	configPath := env("ZHHUB_TOKENS", "./config/tokens.yaml")
+	listenAddr := env("ZHHUB_LISTEN", "0.0.0.0:18080")
 
 	store, err := auth.LoadTokenStore(configPath)
 	if err != nil {
@@ -35,13 +35,4 @@ func env(name, fallback string) string {
 		return fallback
 	}
 	return value
-}
-
-func envAny(names []string, fallback string) string {
-	for _, name := range names {
-		if value := env(name, ""); value != "" {
-			return value
-		}
-	}
-	return fallback
 }

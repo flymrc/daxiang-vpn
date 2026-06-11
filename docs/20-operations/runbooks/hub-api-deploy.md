@@ -17,22 +17,22 @@ Remove-Item Env:\GOOS, Env:\GOARCH
 建议部署到：
 
 ```text
-/opt/zongheng-vpn/zhhub
+/opt/zongheng/zhhub
 ```
 
 文件：
 
 ```text
-/opt/zongheng-vpn/zhhub/zhhub
-/opt/zongheng-vpn/zhhub/tokens.yaml
+/opt/zongheng/zhhub/zhhub
+/opt/zongheng/zhhub/tokens.yaml
 ```
 
-> 当前生产仍运行旧 unit `dxhub.service`，实际路径为 `/opt/daxiang-vpn/dxhub/dxhub` 与 `/opt/daxiang-vpn/dxhub/tokens.yaml`，监听同为 `0.0.0.0:18080`。2026-06-11 已先把实际线上 token 段名切为 `ZH-JP-TEST-*`；服务名和目录迁移到 `zhhub` 另行执行。
+> 2026-06-11 已完成 `dxhub` → `zhhub` 迁移:生产 unit 为 `zhhub.service`,二进制与 tokens 在 `/opt/zongheng/zhhub/`,环境变量全部 `ZHHUB_*`,控制面 key `/root/.ssh/zhandroid_control_hub`,监听 `0.0.0.0:18080`。旧 dx 服务 / 目录 / key 已归档到 Hub `/root/dx-attic-20260611/`(可回滚)。详见 [2026-06-11-dxhub-to-zhhub-cutover.md](../../90-history/worklogs/2026-06-11-dxhub-to-zhhub-cutover.md)。
 
 ## 环境变量
 
 ```text
-ZHHUB_TOKENS=/opt/zongheng-vpn/zhhub/tokens.yaml
+ZHHUB_TOKENS=/opt/zongheng/zhhub/tokens.yaml
 ZHHUB_LISTEN=0.0.0.0:18080
 ZHHUB_ANDROID_CONTROL_KEY=/root/.ssh/zhandroid_control_hub
 ZHHUB_TOKEN_LEASE_SECONDS=30
@@ -47,12 +47,12 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/zongheng-vpn/zhhub
-Environment=ZHHUB_TOKENS=/opt/zongheng-vpn/zhhub/tokens.yaml
+WorkingDirectory=/opt/zongheng/zhhub
+Environment=ZHHUB_TOKENS=/opt/zongheng/zhhub/tokens.yaml
 Environment=ZHHUB_LISTEN=0.0.0.0:18080
 Environment=ZHHUB_ANDROID_CONTROL_KEY=/root/.ssh/zhandroid_control_hub
 Environment=ZHHUB_TOKEN_LEASE_SECONDS=30
-ExecStart=/opt/zongheng-vpn/zhhub/zhhub
+ExecStart=/opt/zongheng/zhhub/zhhub
 Restart=always
 RestartSec=3
 
