@@ -77,6 +77,7 @@ type serverOptions struct {
 	MaxProxyConns     int           `json:"max_proxy_connections,omitempty" yaml:"max_proxy_connections,omitempty"`
 	MaxProxyConnsPeer int           `json:"max_proxy_connections_per_client,omitempty" yaml:"max_proxy_connections_per_client,omitempty"`
 	ProxyIdleTimeout  time.Duration `json:"proxy_idle_timeout,omitempty" yaml:"proxy_idle_timeout,omitempty"`
+	V4OnlyDirect      bool          `json:"v4_only_direct,omitempty" yaml:"v4_only_direct,omitempty"`
 }
 
 type clientOptions struct {
@@ -198,6 +199,7 @@ func runServer(args []string) error {
 	maxProxyConns := fs.Int("max-proxy-connections", defaults.MaxProxyConns, "maximum concurrent CONNECT proxy sessions; 0 disables the limit")
 	maxProxyConnsPeer := fs.Int("max-proxy-connections-per-client", defaults.MaxProxyConnsPeer, "maximum concurrent CONNECT proxy sessions per client IP; 0 disables the limit")
 	proxyIdleTimeout := fs.Duration("proxy-idle-timeout", defaults.ProxyIdleTimeout, "idle timeout for CONNECT proxy sessions; 0 disables idle reaping")
+	v4OnlyDirect := fs.Bool("v4-only-direct", defaults.V4OnlyDirect, "dial IPv4-only targets directly from the server instead of the reverse client")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -246,6 +248,9 @@ func runServer(args []string) error {
 	if explicit["proxy-idle-timeout"] {
 		opts.ProxyIdleTimeout = *proxyIdleTimeout
 	}
+	if explicit["v4-only-direct"] {
+		opts.V4OnlyDirect = *v4OnlyDirect
+	}
 	resolvedToken, err := resolveToken(opts.Token, opts.TokenFile)
 	if err != nil {
 		return err
@@ -277,6 +282,7 @@ func runServer(args []string) error {
 		maxProxyConns:     opts.MaxProxyConns,
 		maxProxyConnsPeer: opts.MaxProxyConnsPeer,
 		proxyIdleTimeout:  opts.ProxyIdleTimeout,
+		v4OnlyDirect:      opts.V4OnlyDirect,
 		activeProxyByPeer: map[string]int{},
 	}
 	tunnelReady := make(chan error, 1)
@@ -294,7 +300,7 @@ func runServer(args []string) error {
 		Handler:           http.HandlerFunc(manager.handleProxy),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	log.Printf("reverse server listening transport=%s resolve=%s tunnel=%s proxy=%s max_proxy_connections=%d max_proxy_connections_per_client=%d proxy_idle_timeout=%s", opts.Transport, opts.Resolve, opts.Listen, opts.Proxy, opts.MaxProxyConns, opts.MaxProxyConnsPeer, opts.ProxyIdleTimeout)
+	log.Printf("reverse server listening transport=%s resolve=%s tunnel=%s proxy=%s max_proxy_connections=%d max_proxy_connections_per_client=%d proxy_idle_timeout=%s v4_only_direct=%v", opts.Transport, opts.Resolve, opts.Listen, opts.Proxy, opts.MaxProxyConns, opts.MaxProxyConnsPeer, opts.ProxyIdleTimeout, opts.V4OnlyDirect)
 	return server.ListenAndServe()
 }
 
@@ -462,6 +468,9 @@ type sessionManager struct {
 	maxProxyConns     int
 	maxProxyConnsPeer int
 	proxyIdleTimeout  time.Duration
+	v4OnlyDirect      bool
+	v4DirectMu        sync.Mutex
+	v4DirectCache     map[string]v6LookupEntry
 	activeProxyMu     sync.Mutex
 	activeProxyConns  int
 	activeProxyByPeer map[string]int
@@ -644,6 +653,11 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 	}
 	defer release()
 
+	if m.shouldDialDirect(req.Host) {
+		m.handleProxyDirect(w, req.Host)
+		return
+	}
+
 	target := req.Host
 	if m.resolve == "server" {
 		resolvedTarget, err := resolveTarget(req.Host)
@@ -678,6 +692,92 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	pipeBoth(clientConn, &bufferedConn{Conn: stream, reader: streamReader}, m.proxyIdleTimeout)
+}
+
+const v4DirectCacheTTL = 10 * time.Minute
+
+type v6LookupEntry struct {
+	hasIPv6 bool
+	expires time.Time
+}
+
+// shouldDialDirect 判断目标是否绕过手机出口、由 Hub 本机直拨。
+// 仅在 v4_only_direct 开启时生效:乐天蜂窝网 F5 透明代理的 v4 侧故障率高,
+// v4-only 目标(无 AAAA 或 IPv4 字面量)没有 v6 可走,只能从 Hub 直拨。
+func (m *sessionManager) shouldDialDirect(authority string) bool {
+	if !m.v4OnlyDirect {
+		return false
+	}
+	host, _, err := net.SplitHostPort(authority)
+	if err != nil {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.To4() != nil
+	}
+	return !m.targetHasIPv6(strings.ToLower(host))
+}
+
+func (m *sessionManager) targetHasIPv6(host string) bool {
+	now := time.Now()
+	m.v4DirectMu.Lock()
+	if entry, ok := m.v4DirectCache[host]; ok && now.Before(entry.expires) {
+		m.v4DirectMu.Unlock()
+		return entry.hasIPv6
+	}
+	m.v4DirectMu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	cancel()
+	if err != nil {
+		// Hub 侧解析失败不缓存,按双栈处理交给手机侧解析器兜底。
+		return true
+	}
+	hasIPv6 := false
+	for _, ip := range ips {
+		if ip.IP.To4() == nil {
+			hasIPv6 = true
+			break
+		}
+	}
+
+	m.v4DirectMu.Lock()
+	if m.v4DirectCache == nil {
+		m.v4DirectCache = map[string]v6LookupEntry{}
+	}
+	if len(m.v4DirectCache) >= 4096 {
+		m.v4DirectCache = map[string]v6LookupEntry{}
+	}
+	m.v4DirectCache[host] = v6LookupEntry{hasIPv6: hasIPv6, expires: now.Add(v4DirectCacheTTL)}
+	m.v4DirectMu.Unlock()
+	return hasIPv6
+}
+
+func (m *sessionManager) handleProxyDirect(w http.ResponseWriter, target string) {
+	dialer := net.Dialer{Timeout: 15 * time.Second}
+	targetConn, err := dialer.Dial("tcp4", target)
+	if err != nil {
+		log.Printf("v4-only direct dial %s failed: %v", target, err)
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer targetConn.Close()
+
+	hijacker, ok := w.(http.Hijacker)
+	if !ok {
+		http.Error(w, "hijacking not supported", http.StatusInternalServerError)
+		return
+	}
+	clientConn, _, err := hijacker.Hijack()
+	if err != nil {
+		return
+	}
+	defer clientConn.Close()
+	if _, err := io.WriteString(clientConn, "HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
+		return
+	}
+	pipeBoth(clientConn, targetConn, m.proxyIdleTimeout)
 }
 
 func (m *sessionManager) acquireProxySlot(remoteAddr string) (func(), bool, string) {

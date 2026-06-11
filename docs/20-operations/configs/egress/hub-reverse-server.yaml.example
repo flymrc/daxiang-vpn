@@ -21,5 +21,9 @@ server:
   max_proxy_connections_per_client: 48
   # Reap idle CONNECT tunnels so abandoned browser/speedtest connections release slots.
   proxy_idle_timeout: 2m
+  # IPv4-only targets (no AAAA) cannot use the phone's healthy IPv6 path and die in
+  # Rakuten's F5 v4 side, so dial them directly from the Hub. Their egress IP becomes
+  # the Hub VPS address instead of the phone's residential address.
+  v4_only_direct: true
   # Diagnostic /fetch endpoint is disabled unless explicitly enabled.
   enable_fetch: false

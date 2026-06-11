@@ -30,6 +30,9 @@ func TestLoadReverseConfigExamples(t *testing.T) {
 	if server.ProxyIdleTimeout != 2*time.Minute {
 		t.Fatalf("server proxy idle timeout = %s", server.ProxyIdleTimeout)
 	}
+	if !server.V4OnlyDirect {
+		t.Fatal("server v4_only_direct should be enabled in the example")
+	}
 
 	clientCfg, err := loadReverseConfig("../../docs/20-operations/configs/egress/android-reverse-client.yaml.example")
 	if err != nil {
@@ -157,6 +160,37 @@ func TestProxyAllowedCIDRs(t *testing.T) {
 	}
 	if manager.proxyAllowed("192.0.2.10:51234") {
 		t.Fatal("expected non-WireGuard client to be denied")
+	}
+}
+
+func TestShouldDialDirect(t *testing.T) {
+	manager := &sessionManager{
+		v4OnlyDirect: true,
+		v4DirectCache: map[string]v6LookupEntry{
+			"v4only.example.com":    {hasIPv6: false, expires: time.Now().Add(time.Minute)},
+			"dualstack.example.com": {hasIPv6: true, expires: time.Now().Add(time.Minute)},
+		},
+	}
+
+	if !manager.shouldDialDirect("192.0.2.10:443") {
+		t.Fatal("IPv4 literal target should dial direct")
+	}
+	if manager.shouldDialDirect("[2001:db8::1]:443") {
+		t.Fatal("IPv6 literal target should use the reverse client")
+	}
+	if !manager.shouldDialDirect("v4only.example.com:443") {
+		t.Fatal("cached v4-only host should dial direct")
+	}
+	if manager.shouldDialDirect("DualStack.example.com:443") {
+		t.Fatal("cached dual-stack host should use the reverse client")
+	}
+	if manager.shouldDialDirect("missing-port.example.com") {
+		t.Fatal("malformed authority should use the reverse client")
+	}
+
+	disabled := &sessionManager{v4OnlyDirect: false}
+	if disabled.shouldDialDirect("192.0.2.10:443") {
+		t.Fatal("disabled v4_only_direct should never dial direct")
 	}
 }
 
