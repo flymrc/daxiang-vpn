@@ -91,3 +91,47 @@
 - `.\clients\desktop-gui\build.ps1 -Target amd64`:通过。
 - 生成的 `installer.nsi` 已 include `installer-hooks.nsh`,并在 `Section Install` 中插入 `NSIS_HOOK_PREINSTALL`。
 - 重新产出 `纵横 VPN_0.4.5_x64-setup.exe`。
+
+## 0.4.6 打包
+
+为区分前面多个同名 0.4.5 安装包,桌面 GUI 版本提升到 `0.4.6`。包含:
+
+- Hub 不作为出口兜底的客户端展示修正。
+- 第二次打开激活已有主窗口。
+- 紧凑布局,避免默认窗口出现右侧滚动条。
+- 安装前释放/清理旧 `zhvpn.exe` sidecar 文件锁。
+- IP 探测暂时失败或返回空时,未拿到任何 IP 前改为 5 秒重试;复制诊断前强制刷新一次 IP,避免 GUI 长时间停在 `不可用`。
+
+验证:
+
+- `npm run check`:0 errors,1 warning(`tsconfig.json` 缺少 `node` 类型定义,既有 warning)。
+- `cargo check --manifest-path clients\desktop-gui\src-tauri\Cargo.toml`:通过,识别 `zhvpn-desktop v0.4.6`。
+- `.\clients\desktop-gui\build.ps1 -Target amd64`:通过,产出 `纵横 VPN_0.4.6_x64-setup.exe`。
+
+## 0.4.7 打包
+
+按用户要求继续提升桌面 GUI 版本,避免 0.4.6 安装包名称反复覆盖造成混淆。0.4.7 包含:
+
+- 安装前释放/清理旧 `zhvpn.exe` sidecar 文件锁。
+- 主界面紧凑布局。
+- IP 探测失败后 5 秒重试,复制诊断前强制刷新 IP。
+
+验证:
+
+- `npm run check`:0 errors,1 warning(`tsconfig.json` 缺少 `node` 类型定义,既有 warning)。
+- `cargo check --manifest-path clients\desktop-gui\src-tauri\Cargo.toml`:通过,识别 `zhvpn-desktop v0.4.7`。
+- `.\clients\desktop-gui\build.ps1 -Target amd64`:通过,产出 `纵横 VPN_0.4.7_x64-setup.exe`。
+
+## 0.4.8 打包
+
+继续提升桌面 GUI 版本,避免 0.4.7 安装包名称复用。0.4.8 保持 0.4.7 的修正集合:
+
+- 安装前释放/清理旧 `zhvpn.exe` sidecar 文件锁。
+- 主界面紧凑布局。
+- IP 探测失败后 5 秒重试,复制诊断前强制刷新 IP。
+
+验证:
+
+- `npm run check`:0 errors,1 warning(`tsconfig.json` 缺少 `node` 类型定义,既有 warning)。
+- `cargo check --manifest-path clients\desktop-gui\src-tauri\Cargo.toml`:通过,识别 `zhvpn-desktop v0.4.8`。
+- `.\clients\desktop-gui\build.ps1 -Target amd64`:通过,产出 `纵横 VPN_0.4.8_x64-setup.exe`。

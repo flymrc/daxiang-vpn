@@ -130,15 +130,15 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 - `zhandroid-control` 生产路径等 `tun0` 地址就绪后绑定 `10.66.0.101:2022`,不使用 `IP_FREEBIND`,避免 Pixel 上 `accept4: invalid argument`。
 - Hub 可通过 `/root/.ssh/zhandroid_control_hub` 登录 `root@10.66.0.101:2022`;本机可用 `~/.ssh/zhandroid_control_local` 作为另一把授权钥匙。
 - TCP ADB 已启用在 `5555`,并由 `97-zhadb-tcp-wg-only.sh` 用 iptables 限制为 WireGuard 内网来源。
-- Android 当前 `transport: tcp`、`connections: 1`、`address_family: ipv6`;`client.server_cert_sha256` 保留用于 QUIC 回滚。
+- Android 当前 `transport: tcp`、`connections: 2`(2026-06-11 起,两条 yamux 会话互为兜底,单条隧道冻死不再连坐全部代理连接)、`address_family: ipv6`;`client.server_cert_sha256` 保留用于 QUIC 回滚。
 - Hub 当前 `resolve: client`(2026-06-10 起):目标域名在手机侧解析并优先 IPv6 直拨,绕开乐天 F5 BIG-IP 透明代理故障率高的 v4 侧,详见 `docs/90-history/worklogs/2026-06-10-pixel-7a-speed-audit.md`。
 - Hub 当前 `max_proxy_connections=96`、`max_proxy_connections_per_client=48`,用于保护 Android 手机出口免受客户端突发并发拖死,同时避免误伤浏览器常驻连接。
 - Hub 当前 `proxy_idle_timeout=2m`,用于回收 FAST/浏览器异常中断后残留的空闲 CONNECT 隧道,避免单客户端并发槽被长期占满。
 - Hub 不作为出口兜底:`v4_only_direct` 已废弃并被服务端忽略。目标无 AAAA(或为 IPv4 字面量)时仍应交给手机出口;若 Rakuten IPv4/CGNAT/F5 路径故障,就如实表现为 IPv4 出口异常,不能改由 Hub VPS `36.50.84.68` 出口。
 - UFW 已允许 WireGuard 客户端访问 `10.66.0.1:18081/tcp`。
-- Hub 日志显示 Pixel Android 1 条 TCP reverse session 已连接。
+- Hub 日志显示 Pixel Android 2 条 TCP reverse session 已连接(`connections: 2`)。
 - Android 当前仅运行 `99-zhreverse-egress.sh` supervisor 和 `zhreverse client`。
-- Hub 经 reverse proxy 出口 IP：以 `curl --proxy http://10.66.0.1:18081 https://api64.ipify.org` 等实时结果为准。2026-06-11 部署 no-Hub-fallback 版后测得公网 IPv6 为 `240b:c010:662:d7b7:0:44:f8bf:7901`;v4-only `https://api.ipify.org` 经代理超时(exit 28),不再返回 Hub VPS `36.50.84.68`。
+- Hub 经 reverse proxy 出口 IP：以 `curl --proxy http://10.66.0.1:18081 https://api6.ipify.org`(v6 主路径)与 `https://api.ipify.org`(v4)实时结果为准。v6 应回 `240b:`(乐天);v4 走手机乐天 v4(`133.106.x` 或 `210.157.x` 等),**时好时坏是常态**(F5 v4 侧故障率时变),失败按 WARN 对待;但 v4 若回 Hub VPS `36.50.84.68` 即 hub-fallback 回归,按 FAIL 处理。2026-06-11 起手机端部署 TLS 首飞看门狗,v4 坏窗口下自动重拨重放(手机日志 `redialing` 可观测)。
 - Android 客户端 token 当前应绑定 `egress.proxy_addr=10.66.0.1:18081`;旧 `10.66.0.101:1080` 不再分配给 Android 客户端。
 
 常用检查命令：
@@ -146,8 +146,9 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 ```bash
 systemctl status zhreverse-hub.service
 journalctl -u zhreverse-hub.service -n 50 --no-pager
-scripts/check-android-reverse-egress.sh
-curl --proxy http://10.66.0.1:18081 https://api64.ipify.org
+scripts/check-android-reverse-egress.sh   # v6 主路径 FAIL 级,v4 兜底 WARN 级
+curl --proxy http://10.66.0.1:18081 https://api6.ipify.org   # v6 主路径,应回 240b:
+curl --proxy http://10.66.0.1:18081 https://api.ipify.org    # v4 兜底,时好时坏
 ssh -i ~/.ssh/zhandroid_control_local -p 2022 root@10.66.0.101 \
   'ps -A -o PID,PPID,ARGS | grep -E "zhreverse|zhandroid-egress|99-zh" | grep -v grep || true'
 ```

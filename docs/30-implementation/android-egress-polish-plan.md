@@ -10,16 +10,18 @@
 
 | 序 | 项目 | 预估 | 前置 |
 | --- | --- | --- | --- |
-| 1 | 手机端 DNS 缓存 | ~1h | 无 |
-| 2 | 健康检查对齐 v6 形态 | ~30min | 无 |
-| 3 | QUIC over UDP A/B | ~半天 | 无 |
-| 4 | `connections: 2` 复测 | ~30min | 建议在 3 决策后 |
-| 5 | WireGuard 控制面迁移到 Pixel | ~半天 | 无（运维兜底，越早越安心） |
-| 6 | Hub VPS 启用 IPv6 | 待调研 | 若 3 切 QUIC 可降级 |
+| 1 | 手机端 DNS 缓存 | ~1h | 无 | ✅ 已完成 2026-06-11 |
+| 2 | 健康检查对齐 v6 形态 | ~30min | 无 | ✅ 已完成 2026-06-11 |
+| 3 | QUIC over UDP A/B | ~半天 | 无 | 🔜 2026-06-12 与 IPv6 并行 |
+| 4 | `connections: 2` 复测 | ~30min | 建议在 3 决策后 | ✅ 已完成 2026-06-11 |
+| 5 | WireGuard 控制面迁移到 Pixel | ~半天 | 无（运维兜底，越早越安心） | ✅ 已完成 |
+| 6 | Hub VPS 启用 IPv6 | 待运维操作 | 机房需先分配 IPv6 | 🔜 2026-06-12 运维执行 |
 
 ---
 
-## 1. 手机端 DNS 缓存
+## 1. 手机端 DNS 缓存 ✅ 已完成 2026-06-11
+
+按下述方案实现并部署（`dnsCacheGet/dnsCachePut` + `TestDNSCacheHitAndExpiry`/`TestDNSCacheCapacityReset`，二进制 SHA256 `e622f386...aefb33`，手机备份 `zhreverse.bak-20260611-dnscache`）。详见 [2026-06-11-zhreverse-tls-first-flight-retry.md](../90-history/worklogs/2026-06-11-zhreverse-tls-first-flight-retry.md)。
 
 **动机**：`resolve: client` 后每个 CONNECT 都做一次 DNS（v6 UDP 约 20-60ms，偶发更慢），浏览器并发开页时放大明显。
 
@@ -34,7 +36,9 @@
 
 **部署**：重编 arm64 → 手机替换 → supervisor 拉起（流程见文末"已知坑"）。
 
-## 2. 健康检查对齐 v6 形态
+## 2. 健康检查对齐 v6 形态 ✅ 已完成 2026-06-11
+
+`check-android-reverse-egress.sh` 与 `check-android-egress-health.ps1` 均已改为：v6 主路径（`api6.ipify.org`，FAIL 级，`240b:` 前缀标注 Rakuten）+ v4 兜底（`api.ipify.org`，失败仅 WARN；**等于 Hub IP `36.50.84.68` 则按 hub-fallback 回归 FAIL**）。v4 出口前缀不做断言（实测有 `133.106.x` 与 `210.157.x` 等多段）。`measure-android-egress.ps1` 用 api64 仅作展示无断言，未动。`server-access.md` 常用检查命令已同步。
 
 **动机**：`scripts/check-android-reverse-egress.sh` 默认 `TEST_URL=https://api.ipify.org`（v4-only）——现在测的是 F5 v4 最差路径，不代表生产主路径（v6）。
 
@@ -61,13 +65,12 @@
 
 **风险**：乐天对 UDP 的 QoS/限速未知——实测说话；CGNAT UDP 映射超时——`KeepAlivePeriod: 5s` 已在 `quicConfig()` 配好。
 
-## 4. `connections: 2` 复测
+## 4. `connections: 2` 复测 ✅ 已完成 2026-06-11
 
-之前第二条 session 连不上大概率是当时 v4 路径抖动，环境已变。若第 3 项切了 QUIC，直接在 QUIC 上测。
+看门狗部署后用户仍报 v4 不稳，Hub 日志确认隧道腿（39093，单 yamux 会话）当天掉线 57 次，`connections: 1` 时一条冻死则当时所有代理连接连坐全死。已改 `client.yaml` `connections: 2`（备份 `client.yaml.bak-20260611-conn2`），重启后手机两行 `connected`、Hub 侧两条 session（`:17733` + `:6650`），ip138 8/8 成功。示例配置与 `TestLoadReverseConfigExamples` 已同步断言 2。详见 [2026-06-11-zhreverse-tls-first-flight-retry.md](../90-history/worklogs/2026-06-11-zhreverse-tls-first-flight-retry.md)。
 
-- 改 `client.yaml` `connections: 2`，重启 client，Hub 确认两条 session 都建立且保持。
-- 跑同一速度矩阵对比 `connections: 1`；并发 8 流小文件测试看尾延迟。
-- 任一条频繁断连 → 回滚到 1。改动只在手机配置，回滚成本为零。
+- 回滚：`cp client.yaml.bak-20260611-conn2 client.yaml && pkill zhreverse`。改动只在手机配置，回滚成本为零。
+- 后续若切 QUIC（第 3 项），在 QUIC 上复跑同一速度矩阵确认两条 session 都稳。
 
 ## 5. WireGuard 控制面迁移到 Pixel
 
@@ -83,10 +86,56 @@
 4. 已验收：Hub `ssh -i /root/.ssh/zhandroid_control_hub -p 2022 root@10.66.0.101` 通；Hub ping 通；watchdog UP 与 DOWN-wait-UP 自愈演练通过。
 5. 已更新 `server-access.md` / `diagnostics.md` 并新增 2026-06-11 工作日志。
 
-## 6. Hub VPS 启用 IPv6（待调研）
+## 6. Hub VPS 启用 IPv6（🔜 2026-06-12 运维执行）
 
-- 查 VPS 商是否提供 IPv6；若有：netplan 配置 → `jp-proxy.ruichao.dev` 加 AAAA → UFW v6 规则（39093/39094、18081 wg0）→ 手机 `client.server` 改域名或 v6 字面量。
-- 价值：隧道腿脱离 CGNAT v4 流表（偶发 dial timeout 之源）。**若 QUIC 已切生产，此项降级为"有空再做"。**
+**目标**：隧道腿（手机→Hub:39093）现在跑在手机 IPv4/CGNAT 上，是隧道反复冻死/dial timeout 的根源。给 Hub 配上全局 IPv6 后，手机经原生 v6（乐天 `240b:...`，实测健康）连 Hub，隧道腿落到 F5 健康的 v6 侧，绕开 CGNAT TCP 流表。
+
+### 勘察结论（2026-06-11，SSH 只读确认）
+
+- Hub `36.50.84.68`（Ubuntu 24.04，提供商 **Hostsymbol Pte Ltd**，机房日本）**当前没有任何全局 IPv6**：eth0 仅 link-local `fe80::216:3eff:fe22:5ee`，无 GUA、无 v6 默认路由。
+- 链路上**有 IPv6 路由器存在**：`ping6 ff02::2%eth0`（all-routers）得到 `fe80::d6ba:5b56:d1b6:94fb` 响应（4ms）。说明机房网络支持 v6，只是没主动下发 RA → **静态分配**模式。
+- 网络配置走 **ifupdown**（`/etc/network/interfaces`，eth0 静态 v4），**不是 netplan**（本计划旧版误写 netplan，已订正）。systemd-networkd 在跑但 eth0 标 unmanaged。
+
+### 前置（运维先做，卡点）
+
+登 **Hostsymbol 控制面板** → 该 VPS 的 IPv6 / Networking 栏，取：
+
+- 分配的 **IPv6 地址或前缀**（如单个 `2xxx:...::2/64` 或一个 `/64` 段）；
+- **IPv6 默认网关**（很可能就是上面探到的 `fe80::d6ba:5b56:d1b6:94fb`，但以面板/工单为准）。
+
+面板查不到就开工单：「Does this VPS have an IPv6 allocation? Please provide the IPv6 address/prefix and gateway.」**没有这个分配，下面任何命令都不要执行**（猜地址不通且可能冲突）。
+
+### Hub 侧配置（拿到分配后，`<ADDR>`/`<GW>` 替换为实际值）
+
+1. 备份：`cp /etc/network/interfaces /etc/network/interfaces.bak-20260612-ipv6`。
+2. 在 `iface eth0` 段后追加 v6：
+   ```
+   iface eth0 inet6 static
+       address <ADDR>          # 如 2xxx:...::2
+       netmask 64
+       gateway <GW>            # 网关若是 link-local 需带 %eth0
+   ```
+   网关为 link-local 时 ifupdown 可能需改用 `post-up ip -6 route add default via <GW> dev eth0`。
+3. 生效：`ifdown eth0 && ifup eth0`（**有断网风险，用面板 VNC/串口兜底，勿纯 SSH 执行**），或更安全地先 `ip -6 addr add <ADDR> dev eth0 && ip -6 route add default via <GW> dev eth0` 临时验证，确认连通再落盘。
+4. 验证 Hub 自身 v6 出网：`ping6 -c2 2606:4700:4700::1111`、`curl -6 https://api6.ipify.org`。
+5. 防火墙：放行 v6 入站隧道端口。现网用 nftables/iptables（**先 `nft list ruleset` 看实际，本计划勿假设 UFW**）；至少放行 `tcp dport 39093`（QUIC 若上则加 `udp dport 39094`），wg0 上的 `18081` 已是内网无需动。
+6. DNS：给 `jp-proxy.ruichao.dev` 加 **AAAA** 记录指向 `<ADDR>`（手机用域名连时才需要）。
+
+### 手机侧切换（Hub v6 通了之后）
+
+- `client.yaml` `server:` 改成 `[<ADDR>]:39093` 或 `jp-proxy.ruichao.dev:39093`（带 AAAA）；备份 `client.yaml.bak-20260612-v6tunnel`。
+- 重启 client，Hub 侧确认 `reverse tcp client connected from [240b:...]`（来源变成手机 v6 而非 `210.157.x` v4）。
+- 验证隧道稳定性：撑 30min 看掉线次数对比 v4 基线（今天 57 次/天）。
+- 回滚：`server:` 改回 `36.50.84.68:39093`，零成本。
+
+### 与 QUIC（第 3 项）的关系
+
+两者解决**同一个隧道腿问题**，但路径不同：
+
+- **IPv6** 绕开的是 CGNAT v4 流表，仍是 TCP；**依赖机房分配**（外部卡点）。
+- **QUIC over UDP** 绕开的是 F5/CGNAT 对 TCP 的处理（RST 注入对 UDP 无效），**不依赖机房**、代码已就绪。
+
+建议明天**两条并行**：IPv6 等运维查面板分配（可能要工单等），QUIC 当场就能起第二实例 A/B（见第 3 项），哪条先验证通就先上哪条。理想终态是 **QUIC over IPv6** 叠加。
 
 ---
 

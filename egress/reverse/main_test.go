@@ -2,7 +2,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"testing"
@@ -48,7 +51,7 @@ func TestLoadReverseConfigExamples(t *testing.T) {
 	if client.Transport != "tcp" {
 		t.Fatalf("client transport = %q", client.Transport)
 	}
-	if client.Connections != 1 {
+	if client.Connections != 2 {
 		t.Fatalf("client connections = %d", client.Connections)
 	}
 	if client.AddressFamily != "ipv6" {
@@ -186,6 +189,314 @@ func TestPipeBothReapsIdleConnections(t *testing.T) {
 	}
 	if _, err := reverseServer.Write([]byte("x")); err == nil {
 		t.Fatal("reverse side remained writable after idle reap")
+	}
+}
+
+func resetDNSCache() {
+	dnsCacheMu.Lock()
+	defer dnsCacheMu.Unlock()
+	dnsCache = map[string]dnsCacheEntry{}
+}
+
+func TestDNSCacheHitAndExpiry(t *testing.T) {
+	resetDNSCache()
+	now := time.Now()
+	ips := []net.IPAddr{{IP: net.ParseIP("192.0.2.10")}, {IP: net.ParseIP("2001:db8::1")}}
+
+	if _, ok := dnsCacheGet("example.com", now); ok {
+		t.Fatal("unexpected hit on empty cache")
+	}
+	dnsCachePut("example.com", ips, now)
+	got, ok := dnsCacheGet("example.com", now.Add(dnsCacheTTL-time.Second))
+	if !ok || len(got) != 2 || got[0].IP.String() != "192.0.2.10" {
+		t.Fatalf("cache hit = %v ok=%v", got, ok)
+	}
+	if _, ok := dnsCacheGet("example.com", now.Add(dnsCacheTTL+time.Second)); ok {
+		t.Fatal("expired entry still served")
+	}
+	if _, ok := dnsCacheGet("other.example.com", now); ok {
+		t.Fatal("hit for host never stored")
+	}
+}
+
+func TestDNSCacheCapacityReset(t *testing.T) {
+	resetDNSCache()
+	now := time.Now()
+	ips := []net.IPAddr{{IP: net.ParseIP("192.0.2.10")}}
+	for i := 0; i < dnsCacheMaxEntries; i++ {
+		dnsCachePut(fmt.Sprintf("host%d.example.com", i), ips, now)
+	}
+	dnsCachePut("overflow.example.com", ips, now)
+	dnsCacheMu.Lock()
+	size := len(dnsCache)
+	dnsCacheMu.Unlock()
+	if size != 1 {
+		t.Fatalf("cache size after overflow = %d, want 1", size)
+	}
+	if _, ok := dnsCacheGet("overflow.example.com", now); !ok {
+		t.Fatal("entry stored after reset not served")
+	}
+	resetDNSCache()
+}
+
+func TestLooksLikeTLSClientHello(t *testing.T) {
+	hello := []byte{0x16, 0x03, 0x01, 0x00, 0x05, 0x01, 0x00, 0x00, 0x01, 0x00}
+	if !looksLikeTLSClientHello(hello) {
+		t.Fatal("client hello not recognized")
+	}
+	for name, payload := range map[string][]byte{
+		"plain http":      []byte("GET / HTTP/1.1\r\n"),
+		"too short":       {0x16, 0x03, 0x01},
+		"not handshake":   {0x17, 0x03, 0x03, 0x00, 0x05, 0x01},
+		"server hello":    {0x16, 0x03, 0x03, 0x00, 0x05, 0x02},
+		"bad tls version": {0x16, 0x02, 0x01, 0x00, 0x05, 0x01},
+	} {
+		if looksLikeTLSClientHello(payload) {
+			t.Fatalf("%s misdetected as client hello", name)
+		}
+	}
+}
+
+func relayTestHello() []byte {
+	return append([]byte{0x16, 0x03, 0x01, 0x00, 0x06, 0x01}, []byte("hello")...)
+}
+
+func TestRelayHandshakeRetryReplaysClientHello(t *testing.T) {
+	oldTimeout := handshakeFirstByteTimeout
+	handshakeFirstByteTimeout = 40 * time.Millisecond
+	defer func() { handshakeFirstByteTimeout = oldTimeout }()
+
+	hello := relayTestHello()
+	hubSide, clientSide := net.Pipe()
+	defer hubSide.Close()
+
+	// 第一条目标连接:吞掉 ClientHello 后永远不响应(模拟 F5 v4 黑洞)。
+	deadNear, deadFar := net.Pipe()
+	go func() { _, _ = io.Copy(io.Discard, deadFar) }()
+
+	redials := 0
+	redial := func() (net.Conn, error) {
+		redials++
+		near, far := net.Pipe()
+		go func() {
+			defer far.Close()
+			got := make([]byte, len(hello))
+			if _, err := io.ReadFull(far, got); err != nil {
+				return
+			}
+			if !bytes.Equal(got, hello) {
+				return // 重放内容不对就不回包,让测试在读响应处失败
+			}
+			_, _ = far.Write([]byte("SH"))
+		}()
+		return near, nil
+	}
+
+	done := make(chan struct{})
+	go func() {
+		relayWithHandshakeRetry(clientSide, deadNear, "example.com:443", redial)
+		close(done)
+	}()
+
+	if _, err := hubSide.Write(hello); err != nil {
+		t.Fatalf("write hello: %v", err)
+	}
+	_ = hubSide.SetReadDeadline(time.Now().Add(2 * time.Second))
+	resp := make([]byte, 2)
+	if _, err := io.ReadFull(hubSide, resp); err != nil {
+		t.Fatalf("read response after replay: %v", err)
+	}
+	if string(resp) != "SH" {
+		t.Fatalf("response = %q", resp)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("relay did not finish")
+	}
+	if redials != 1 {
+		t.Fatalf("redials = %d", redials)
+	}
+}
+
+func TestRelayHandshakeNoRetryForNonTLS(t *testing.T) {
+	oldTimeout := handshakeFirstByteTimeout
+	handshakeFirstByteTimeout = 40 * time.Millisecond
+	defer func() { handshakeFirstByteTimeout = oldTimeout }()
+
+	hubSide, clientSide := net.Pipe()
+	defer hubSide.Close()
+
+	targetNear, targetFar := net.Pipe()
+	go func() {
+		buf := make([]byte, 1024)
+		_, _ = targetFar.Read(buf)
+		_ = targetFar.Close() // 收到明文请求后直接断开:不应触发重拨
+	}()
+
+	redials := 0
+	redial := func() (net.Conn, error) {
+		redials++
+		return nil, errors.New("must not redial")
+	}
+
+	go func() { _, _ = hubSide.Write([]byte("GET / HTTP/1.1\r\n\r\n")) }()
+	relayWithHandshakeRetry(clientSide, targetNear, "example.com:80", redial)
+	if redials != 0 {
+		t.Fatalf("redials = %d", redials)
+	}
+}
+
+func TestRelayHandshakeNoRetryAfterServerBytes(t *testing.T) {
+	oldTimeout := handshakeFirstByteTimeout
+	handshakeFirstByteTimeout = 40 * time.Millisecond
+	defer func() { handshakeFirstByteTimeout = oldTimeout }()
+
+	hello := relayTestHello()
+	hubSide, clientSide := net.Pipe()
+	defer hubSide.Close()
+
+	targetNear, targetFar := net.Pipe()
+	go func() {
+		got := make([]byte, len(hello))
+		_, _ = io.ReadFull(targetFar, got)
+		_, _ = targetFar.Write([]byte{0x16}) // 回一个字节后断开
+		_ = targetFar.Close()
+	}()
+
+	redials := 0
+	redial := func() (net.Conn, error) {
+		redials++
+		return nil, errors.New("must not redial")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		relayWithHandshakeRetry(clientSide, targetNear, "example.com:443", redial)
+		close(done)
+	}()
+
+	if _, err := hubSide.Write(hello); err != nil {
+		t.Fatalf("write hello: %v", err)
+	}
+	_ = hubSide.SetReadDeadline(time.Now().Add(2 * time.Second))
+	resp := make([]byte, 1)
+	if _, err := io.ReadFull(hubSide, resp); err != nil {
+		t.Fatalf("read server byte: %v", err)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("relay did not finish")
+	}
+	if redials != 0 {
+		t.Fatalf("redials = %d", redials)
+	}
+}
+
+func TestRelayHandshakeFallsBackAfterMaxDials(t *testing.T) {
+	oldTimeout := handshakeFirstByteTimeout
+	handshakeFirstByteTimeout = 40 * time.Millisecond
+	defer func() { handshakeFirstByteTimeout = oldTimeout }()
+
+	hello := relayTestHello()
+	hubSide, clientSide := net.Pipe()
+	defer hubSide.Close()
+
+	deadNear, deadFar := net.Pipe()
+	go func() { _, _ = io.Copy(io.Discard, deadFar) }()
+
+	redials := 0
+	redial := func() (net.Conn, error) {
+		redials++
+		near, far := net.Pipe()
+		if redials == handshakeMaxDials-1 {
+			// 最后一次拨号:超过看门狗死线后才响应,验证额度用完会退回
+			// 阻塞中继而不是掐掉连接。
+			go func() {
+				defer far.Close()
+				got := make([]byte, len(hello))
+				if _, err := io.ReadFull(far, got); err != nil {
+					return
+				}
+				time.Sleep(6 * handshakeFirstByteTimeout)
+				_, _ = far.Write([]byte("LATE"))
+			}()
+		} else {
+			go func() { _, _ = io.Copy(io.Discard, far) }()
+		}
+		return near, nil
+	}
+
+	done := make(chan struct{})
+	go func() {
+		relayWithHandshakeRetry(clientSide, deadNear, "example.com:443", redial)
+		close(done)
+	}()
+
+	if _, err := hubSide.Write(hello); err != nil {
+		t.Fatalf("write hello: %v", err)
+	}
+	_ = hubSide.SetReadDeadline(time.Now().Add(2 * time.Second))
+	resp := make([]byte, 4)
+	if _, err := io.ReadFull(hubSide, resp); err != nil {
+		t.Fatalf("read late response: %v", err)
+	}
+	if string(resp) != "LATE" {
+		t.Fatalf("response = %q", resp)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("relay did not finish")
+	}
+	if redials != handshakeMaxDials-1 {
+		t.Fatalf("redials = %d, want %d", redials, handshakeMaxDials-1)
+	}
+}
+
+func TestRelayHandshakeReplayLimitDisablesRetry(t *testing.T) {
+	oldTimeout := handshakeFirstByteTimeout
+	handshakeFirstByteTimeout = 40 * time.Millisecond
+	defer func() { handshakeFirstByteTimeout = oldTimeout }()
+
+	hubSide, clientSide := net.Pipe()
+
+	deadNear, deadFar := net.Pipe()
+	go func() { _, _ = io.Copy(io.Discard, deadFar) }()
+
+	redials := 0
+	redial := func() (net.Conn, error) {
+		redials++
+		return nil, errors.New("must not redial")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		relayWithHandshakeRetry(clientSide, deadNear, "example.com:443", redial)
+		close(done)
+	}()
+
+	if _, err := hubSide.Write(relayTestHello()); err != nil {
+		t.Fatalf("write hello: %v", err)
+	}
+	// 超过重放缓冲上限后,看门狗必须放弃重试退回阻塞中继。
+	if _, err := hubSide.Write(make([]byte, handshakeReplayLimit)); err != nil {
+		t.Fatalf("write oversized flight: %v", err)
+	}
+	time.Sleep(3 * handshakeFirstByteTimeout)
+	_ = hubSide.Close()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("relay did not finish")
+	}
+	if redials != 0 {
+		t.Fatalf("redials = %d", redials)
 	}
 }
 

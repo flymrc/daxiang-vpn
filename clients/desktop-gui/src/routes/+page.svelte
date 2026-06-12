@@ -12,7 +12,7 @@
   let errMsg = $state("");
   let info = $state("");
   let status = $state<Status | null>(null);
-  let appVersion = $state("0.4.5");
+  let appVersion = $state("0.4.8");
   let lastIPv4 = $state("");
   let lastIPv6 = $state("");
   let ipChecked = $state(false);
@@ -23,6 +23,7 @@
 
   const connected = $derived(!!status && (status.running || status.proxy_reachable));
   const IP_REFRESH_INTERVAL_MS = 60_000;
+  const IP_RETRY_INTERVAL_MS = 5_000;
 
   function loadLastToken() {
     const saved = localStorage.getItem(LAST_TOKEN_KEY);
@@ -53,7 +54,9 @@
   async function refreshIp(force = false) {
     if (ipRefreshing || !isConnected(status)) return;
     const now = Date.now();
-    if (!force && now - lastIPRefreshAt < IP_REFRESH_INTERVAL_MS) return;
+    const hasObservedIP = !!lastIPv4 || !!lastIPv6;
+    const interval = hasObservedIP ? IP_REFRESH_INTERVAL_MS : IP_RETRY_INTERVAL_MS;
+    if (!force && now - lastIPRefreshAt < interval) return;
     ipRefreshing = true;
     try {
       const s = await api.statusIp();
@@ -162,6 +165,9 @@
   }
 
   async function copyDiagnostics() {
+    if (connected) {
+      await refreshIp(true);
+    }
     const payload = {
       app_version: appVersion,
       connected,

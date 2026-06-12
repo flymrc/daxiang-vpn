@@ -3,12 +3,14 @@ param(
     [string]$HubIdentityFile = "",
     [string]$Proxy = "http://10.66.0.1:18081",
     [string]$AndroidIP = "10.66.0.101",
-    [string[]]$EgressIPUrls = @(
-        "https://api64.ipify.org",
-        "https://ifconfig.me/ip",
-        "https://ident.me",
-        "https://cloudflare.com/cdn-cgi/trace"
+    # 主路径探针:必须返回 IPv6(生产 address_family: ipv6)。
+    [string[]]$EgressIPv6Urls = @(
+        "https://api6.ipify.org",
+        "https://api64.ipify.org"
     ),
+    # v4 兜底探针:手机 v4 经乐天 F5,时好时坏,失败仅 WARN。
+    [string]$EgressIPv4Url = "https://api.ipify.org",
+    [string]$HubPublicIP = "36.50.84.68",
     [int]$ExpectedRouteMtu = 1120,
     [int]$ExpectedMss = 0,
     [int]$StaleHandshakeSeconds = 180,
@@ -51,18 +53,14 @@ Write-Host ("hub={0}" -f $Hub)
 Write-Host ("android_ip={0}" -f $AndroidIP)
 Write-Host ("proxy={0}" -f $Proxy)
 
-$egressIP = ""
+# 主路径:v6。拿不到 v6 出口 = FAIL(api64 双栈兜底,但只认 v6 形态结果)。
+$egressIPv6 = ""
 $egressSource = ""
 $egressErrors = @()
-foreach ($url in $EgressIPUrls) {
+foreach ($url in $EgressIPv6Urls) {
     $body = Join-Output (Invoke-Hub "curl -sS -m '$TimeoutSeconds' -x '$Proxy' '$url' 2>/tmp/zhreverse-health-curl.err || true; cat /tmp/zhreverse-health-curl.err >&2; rm -f /tmp/zhreverse-health-curl.err")
-    if ($body -match "^\d{1,3}(\.\d{1,3}){3}$" -or $body -match "^[0-9a-fA-F:]{3,}$") {
-        $egressIP = $body
-        $egressSource = $url
-        break
-    }
-    if ($body -match "(?m)^ip=([0-9a-fA-F:.]+|\d{1,3}(\.\d{1,3}){3})$") {
-        $egressIP = $matches[1]
+    if ($body -match "^[0-9a-fA-F:]{3,}$" -and $body.Contains(":")) {
+        $egressIPv6 = $body
         $egressSource = $url
         break
     }
@@ -72,14 +70,31 @@ foreach ($url in $EgressIPUrls) {
         $egressErrors += ("{0}: empty response" -f $url)
     }
 }
-if ($egressIP.Length -gt 0) {
-    Write-Check "PASS" ("proxy reachable, egress_ip={0}, source={1}" -f $egressIP, $egressSource)
+if ($egressIPv6.Length -gt 0) {
+    if ($egressIPv6 -like "240b:*") {
+        Write-Check "PASS" ("v6 egress ok (Rakuten), egress_ip={0}, source={1}" -f $egressIPv6, $egressSource)
+    } else {
+        Write-Check "PASS" ("v6 egress ok (non-Rakuten prefix, check SIM/carrier), egress_ip={0}, source={1}" -f $egressIPv6, $egressSource)
+    }
 } else {
-    Write-Check "FAIL" ("proxy did not return an egress IP; tried {0}" -f ($EgressIPUrls -join ", "))
+    Write-Check "FAIL" ("v6 egress (main path) unavailable; tried {0}" -f ($EgressIPv6Urls -join ", "))
     foreach ($err in $egressErrors) {
         Write-Check "WARN" $err
     }
     Set-Failed
+}
+
+# v4 兜底:失败仅 WARN;等于 Hub IP 则是 hub-fallback 回归,FAIL。
+$v4Body = Join-Output (Invoke-Hub "curl -sS -m '$TimeoutSeconds' -x '$Proxy' '$EgressIPv4Url' 2>/dev/null || true")
+if ($v4Body -match "^\d{1,3}(\.\d{1,3}){3}$") {
+    if ($v4Body -eq $HubPublicIP) {
+        Write-Check "FAIL" ("v4 egress is Hub VPS {0}: hub-fallback regression" -f $HubPublicIP)
+        Set-Failed
+    } else {
+        Write-Check "PASS" ("v4 egress ok (phone v4, flaky by nature), egress_ip={0}" -f $v4Body)
+    }
+} else {
+    Write-Check "WARN" ("v4 egress unavailable (F5 v4 bad window; v4-only sites degraded): {0}" -f $v4Body)
 }
 
 $route = Join-Output (Invoke-Hub "ip route show '$AndroidIP/32' || true")

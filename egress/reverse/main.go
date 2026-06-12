@@ -1057,11 +1057,207 @@ func handleConnectStream(stream net.Conn, reader *bufio.Reader, target string, o
 		_, _ = fmt.Fprintf(stream, "ERR %v\n", err)
 		return
 	}
-	defer targetConn.Close()
 	if _, err := io.WriteString(stream, "OK\n"); err != nil {
+		_ = targetConn.Close()
 		return
 	}
-	pipeBoth(&bufferedConn{Conn: stream, reader: reader}, targetConn, 0)
+	relayWithHandshakeRetry(&bufferedConn{Conn: stream, reader: reader}, targetConn, target, func() (net.Conn, error) {
+		return dialTarget(target, opts.AddressFamily)
+	})
+}
+
+// 乐天 F5 的 v4 侧会非确定性地黑洞新建连接:TCP 握手成功、ClientHello 被
+// ACK,但一个响应字节都等不到(约 15s 后才 RST)。故障按单条连接随机,换
+// 一条新连接重发同样的首包通常就能成功(见 worklog 2026-06-10/11)。看门
+// 狗只在「首个客户端载荷是 TLS ClientHello 且目标还没回过任何字节」时启
+// 用,此时重放在协议上等价于客户端自己断开重连。
+var handshakeFirstByteTimeout = 3 * time.Second
+
+const (
+	handshakeMaxDials    = 3
+	handshakeReplayLimit = 16 * 1024
+)
+
+type handshakeRelay struct {
+	mu         sync.Mutex
+	target     net.Conn
+	replay     []byte // 已发给目标的客户端字节,重拨后整体重放
+	replayOK   bool   // 重放仍可行;目标回过字节或缓冲超限后永久关闭
+	seenClient bool
+	armed      bool // 首个客户端载荷是 TLS ClientHello,看门狗生效
+	settled    bool // 目标已回字节,退化为普通双向中继
+	closed     bool
+}
+
+func looksLikeTLSClientHello(p []byte) bool {
+	// TLS record 头:content type handshake(22) + 版本主号 3,record 头后
+	// 紧跟的握手消息类型必须是 client_hello(1)。
+	return len(p) >= 6 && p[0] == 0x16 && p[1] == 0x03 && p[5] == 0x01
+}
+
+func (r *handshakeRelay) writeToTarget(p []byte) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.replayOK && !r.settled {
+		if !r.seenClient {
+			r.seenClient = true
+			if looksLikeTLSClientHello(p) {
+				r.armed = true
+				_ = r.target.SetReadDeadline(time.Now().Add(handshakeFirstByteTimeout))
+			} else {
+				// 非 TLS 首包(如明文 HTTP 请求)重放可能重复执行副作用,
+				// 不启用看门狗。
+				r.replayOK = false
+				r.replay = nil
+			}
+		}
+		if r.replayOK {
+			if len(r.replay)+len(p) > handshakeReplayLimit {
+				r.replayOK = false
+				r.replay = nil
+			} else {
+				r.replay = append(r.replay, p...)
+			}
+		}
+	}
+	if _, err := r.target.Write(p); err != nil {
+		if r.armed && r.replayOK && !r.settled && !r.closed {
+			// 写失败的字节都在 replay 缓冲里,看门狗随后会重拨重放。
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *handshakeRelay) settle() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.settled = true
+	r.replayOK = false
+	r.replay = nil
+	_ = r.target.SetReadDeadline(time.Time{})
+}
+
+func (r *handshakeRelay) retryable() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.armed && r.replayOK && !r.settled && !r.closed && len(r.replay) > 0
+}
+
+// disarm 在重试额度耗尽或重放不可行时清掉首字节死线,让中继退回与旧实现
+// 一致的阻塞行为;返回是否真的解除了已布防的看门狗。
+func (r *handshakeRelay) disarm() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.armed || r.settled || r.closed {
+		return false
+	}
+	r.armed = false
+	r.replayOK = false
+	r.replay = nil
+	_ = r.target.SetReadDeadline(time.Time{})
+	return true
+}
+
+func (r *handshakeRelay) swapTarget(newConn net.Conn) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed || !r.replayOK || r.settled {
+		_ = newConn.Close()
+		return errors.New("handshake replay no longer possible")
+	}
+	_ = r.target.Close()
+	r.target = newConn
+	_ = newConn.SetReadDeadline(time.Now().Add(handshakeFirstByteTimeout))
+	if _, err := newConn.Write(r.replay); err != nil {
+		return err
+	}
+	return nil
+}
+
+// relayWithHandshakeRetry 等价于 pipeBoth(client, targetConn, 0),但对 TLS
+// 首飞加看门狗:目标在 handshakeFirstByteTimeout 内零响应(或直接被 RST)
+// 时重拨并重放已缓冲的客户端字节,总共最多 handshakeMaxDials 次拨号;额度
+// 用完退回普通阻塞中继。目标回过第一个字节后重放窗口永久关闭。
+func relayWithHandshakeRetry(client net.Conn, targetConn net.Conn, target string, redial func() (net.Conn, error)) {
+	relay := &handshakeRelay{target: targetConn, replayOK: true}
+
+	var closeOnce sync.Once
+	closeBoth := func() {
+		closeOnce.Do(func() {
+			relay.mu.Lock()
+			relay.closed = true
+			tc := relay.target
+			relay.mu.Unlock()
+			_ = client.Close()
+			_ = tc.Close()
+		})
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		buf := make([]byte, 32*1024)
+		for {
+			n, readErr := client.Read(buf)
+			if n > 0 {
+				if err := relay.writeToTarget(buf[:n]); err != nil {
+					break
+				}
+			}
+			if readErr != nil {
+				break
+			}
+		}
+		closeBoth()
+	}()
+
+	tc := targetConn
+	dials := 1
+	settled := false
+	buf := make([]byte, 32*1024)
+	for {
+		n, readErr := tc.Read(buf)
+		if n > 0 {
+			if !settled {
+				settled = true
+				relay.settle()
+				if dials > 1 {
+					log.Printf("connect %s: target answered on dial %d/%d", target, dials, handshakeMaxDials)
+				}
+			}
+			if _, err := client.Write(buf[:n]); err != nil {
+				break
+			}
+		}
+		if readErr == nil {
+			continue
+		}
+		if settled || !relay.retryable() || dials >= handshakeMaxDials {
+			var netErr net.Error
+			if !settled && errors.As(readErr, &netErr) && netErr.Timeout() && relay.disarm() {
+				// 看门狗死线到了但已无法重试:解除死线继续阻塞等待,
+				// 行为与旧实现一致(由对端或上游空闲回收兜底)。
+				continue
+			}
+			break
+		}
+		log.Printf("connect %s: no server bytes (%v), redialing %d/%d", target, readErr, dials+1, handshakeMaxDials)
+		newConn, dialErr := redial()
+		if dialErr != nil {
+			log.Printf("connect %s: redial failed: %v", target, dialErr)
+			break
+		}
+		dials++
+		if err := relay.swapTarget(newConn); err != nil {
+			break
+		}
+		tc = newConn
+	}
+	closeBoth()
+	wg.Wait()
 }
 
 func handleFetchStream(stream net.Conn, encodedURL string, opts clientOptions) {
@@ -1130,6 +1326,44 @@ func fetchRootCAs() *x509.CertPool {
 	return pool
 }
 
+// resolve: client 后每个 CONNECT 都要做一次 DNS(v6 UDP 约 20-60ms,偶发更
+// 慢),浏览器并发开页时放大明显;进程内缓存 60s 抹平这部分延迟。缓存存原
+// 始解析结果,orderIPs 仍在拨号时按地址族偏好排序。
+const (
+	dnsCacheTTL        = 60 * time.Second
+	dnsCacheMaxEntries = 1024
+)
+
+type dnsCacheEntry struct {
+	ips     []net.IPAddr
+	expires time.Time
+}
+
+var (
+	dnsCacheMu sync.Mutex
+	dnsCache   = map[string]dnsCacheEntry{}
+)
+
+func dnsCacheGet(host string, now time.Time) ([]net.IPAddr, bool) {
+	dnsCacheMu.Lock()
+	defer dnsCacheMu.Unlock()
+	entry, ok := dnsCache[host]
+	if !ok || now.After(entry.expires) {
+		return nil, false
+	}
+	return entry.ips, true
+}
+
+func dnsCachePut(host string, ips []net.IPAddr, now time.Time) {
+	dnsCacheMu.Lock()
+	defer dnsCacheMu.Unlock()
+	// 条目封顶,满了整体清空,不值得为此上 LRU。
+	if len(dnsCache) >= dnsCacheMaxEntries {
+		clear(dnsCache)
+	}
+	dnsCache[host] = dnsCacheEntry{ips: ips, expires: now.Add(dnsCacheTTL)}
+}
+
 func dialTarget(target string, addressFamily string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(target)
 	if err != nil {
@@ -1138,14 +1372,20 @@ func dialTarget(target string, addressFamily string) (net.Conn, error) {
 	if net.ParseIP(host) != nil {
 		return net.DialTimeout("tcp", target, 15*time.Second)
 	}
-	// Hub-side openCommand gives the whole CONNECT 20s, so keep DNS and the
-	// dial attempts on separate budgets instead of sharing one context.
-	dnsCtx, dnsCancel := context.WithTimeout(context.Background(), 6*time.Second)
-	resolver := publicResolver()
-	ips, err := resolver.LookupIPAddr(dnsCtx, host)
-	dnsCancel()
-	if err != nil {
-		return nil, err
+	ips, cached := dnsCacheGet(host, time.Now())
+	if !cached {
+		// Hub-side openCommand gives the whole CONNECT 20s, so keep DNS and the
+		// dial attempts on separate budgets instead of sharing one context.
+		dnsCtx, dnsCancel := context.WithTimeout(context.Background(), 6*time.Second)
+		resolver := publicResolver()
+		resolved, err := resolver.LookupIPAddr(dnsCtx, host)
+		dnsCancel()
+		if err != nil {
+			// 解析失败不缓存,下次连接重试。
+			return nil, err
+		}
+		ips = resolved
+		dnsCachePut(host, ips, time.Now())
 	}
 	var lastErr error
 	for attempt, ip := range orderIPs(ips, addressFamily) {

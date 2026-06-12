@@ -12,5 +12,10 @@ client:
   # resets flows, while the IPv6 side is healthy. See the 2026-06-10 speed
   # audit worklog. auto/ipv4 keep the historical IPv4-first behavior.
   address_family: ipv6
-  connections: 1
+  # 2+ independent tunnel sessions: the reverse tunnel runs over the phone's
+  # IPv4/CGNAT leg (port 39093), which periodically freezes or gets reset. With
+  # a single session every in-flight proxied connection dies together; a second
+  # session lets the Hub round-robin onto a healthy one. See the 2026-06-11
+  # TLS-first-flight-retry worklog.
+  connections: 2
   reconnect: 3s
