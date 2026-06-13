@@ -713,6 +713,110 @@ func TestTunnelBenchEndpointRejectsBadParams(t *testing.T) {
 	}
 }
 
+func TestParseStripedConnectRequest(t *testing.T) {
+	req := httptest.NewRequest(http.MethodConnect, "http://example.com:443", nil)
+	streams, enabled, err := parseStripedConnectRequest(req)
+	if err != nil || enabled || streams != 0 {
+		t.Fatalf("default striped parse streams=%d enabled=%v err=%v", streams, enabled, err)
+	}
+
+	req.Header.Set(stripedConnectHeader, "2")
+	streams, enabled, err = parseStripedConnectRequest(req)
+	if err != nil || !enabled || streams != 2 {
+		t.Fatalf("enabled striped parse streams=%d enabled=%v err=%v", streams, enabled, err)
+	}
+
+	req.Header.Set(stripedConnectHeader, "3")
+	if _, _, err := parseStripedConnectRequest(req); err == nil {
+		t.Fatal("expected unsupported stream count error")
+	}
+}
+
+func TestWriteOrderedStripedFramesReordersData(t *testing.T) {
+	frames := make(chan stripedFrameResult, 3)
+	frames <- stripedFrameResult{seq: 1, data: []byte("world")}
+	frames <- stripedFrameResult{seq: 0, data: []byte("hello ")}
+	frames <- stripedFrameResult{seq: 2, eof: true}
+
+	var out bytes.Buffer
+	if err := writeOrderedStripedFrames(&out, frames, 1); err != nil {
+		t.Fatalf("write ordered frames: %v", err)
+	}
+	if out.String() != "hello world" {
+		t.Fatalf("out = %q", out.String())
+	}
+}
+
+func TestStripedConnectRelaysDownloadInOrder(t *testing.T) {
+	payload := bytes.Repeat([]byte("0123456789abcdef"), 6000)
+	request := []byte("GET / HTTP/1.1\r\n\r\n")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		got := make([]byte, len(request))
+		if _, err := io.ReadFull(conn, got); err != nil {
+			return
+		}
+		if !bytes.Equal(got, request) {
+			return
+		}
+		_, _ = conn.Write(payload)
+	}()
+
+	manager := &sessionManager{
+		sessions: []tunnelSession{
+			stripedTunnelSession("lane0"),
+			stripedTunnelSession("lane1"),
+		},
+	}
+	lanes, err := manager.openStripedConnect(ln.Addr().String(), 2)
+	if err != nil {
+		t.Fatalf("open striped connect: %v", err)
+	}
+
+	client, proxy := net.Pipe()
+	relayDone := make(chan struct{})
+	go func() {
+		relayStripedConnect(proxy, lanes)
+		close(relayDone)
+	}()
+	if _, err := client.Write(request); err != nil {
+		t.Fatalf("write request: %v", err)
+	}
+	_ = client.SetReadDeadline(time.Now().Add(2 * time.Second))
+	got := make([]byte, len(payload))
+	if _, err := io.ReadFull(client, got); err != nil {
+		t.Fatalf("read payload: %v", err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatal("payload was not relayed in order")
+	}
+	_ = client.Close()
+	closeStripedHubLanes(lanes)
+
+	select {
+	case <-relayDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("striped relay did not finish")
+	}
+	select {
+	case <-serverDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("target server did not finish")
+	}
+}
+
 func okTunnelSession(name string) *fakeTunnelSession {
 	return &fakeTunnelSession{
 		remote: dummyAddr(name),
@@ -720,6 +824,15 @@ func okTunnelSession(name string) *fakeTunnelSession {
 			defer conn.Close()
 			_, _ = bufio.NewReader(conn).ReadString('\n')
 			_, _ = io.WriteString(conn, "OK\n")
+		},
+	}
+}
+
+func stripedTunnelSession(name string) *fakeTunnelSession {
+	return &fakeTunnelSession{
+		remote: dummyAddr(name),
+		handler: func(conn net.Conn) {
+			handleClientStream(conn, clientOptions{AddressFamily: "auto"})
 		},
 	}
 }

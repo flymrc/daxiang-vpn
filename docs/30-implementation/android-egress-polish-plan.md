@@ -19,6 +19,7 @@
 | 7 | Hub session 健康优先调度 | ~1h | `connections: 2` | ✅ 已部署 2026-06-14 |
 | 8 | Hub session 健康观测接口 | ~30min | 7 | ✅ 已部署 2026-06-14 |
 | 9 | reverse tunnel micro-benchmark | ~45min | 8 | ✅ 已部署 2026-06-14 |
+| 10 | opt-in striped CONNECT 原型 | ~2h | 9 | ✅ 已部署 2026-06-14 |
 
 ---
 
@@ -127,6 +128,42 @@
 ```
 
 `streams=2` 相对单流几乎翻倍,说明当前 Android -> Hub 隧道腿存在明显并行收益;`streams=4` 只小幅高于双流,说明收益主要来自两条 reverse session,继续堆流开始接近总链路上限。下一步可评估 striped CONNECT / 多流分片,但应优先设计为按需启用,避免给普通小请求增加复杂度。
+
+## 10. opt-in striped CONNECT 原型 ✅ 已部署 2026-06-14
+
+**动机**：`/debug/tunnel-bench` 已证明 2 条 reverse stream 的 Android -> Hub 回传几乎能把 20MB 合成数据从 `22.74 Mbps` 提到 `46.57 Mbps`。下一步需要验证这个收益能否搬到真实 HTTPS 大下载,同时避免影响默认代理路径。
+
+**实现**（`egress/reverse/main.go`）：
+
+- 默认 `CONNECT` 路径不变。
+- 只有请求带 proxy header `X-ZH-Striped-Streams: 2` 时启用实验路径;目前只支持 2 lanes。
+- Hub 发送 `STRIPED_CONNECT <id> <lane> <lanes> <target>` 打开两条 reverse stream。
+- Android 只建立一条目标 TCP 连接;lane 0 承载 client -> target 上传字节。
+- Android 从目标连接读取下载字节,按 32KB frame 轮询投递到两条 lane;每条 lane 有独立 writer goroutine,避免串行写 lane 把双流收益吃掉。Hub 按 frame 序号重排后写回客户端。
+- Hub 侧 pending reorder window 上限 `8MB`,避免异常乱序无限占内存。
+
+**验收**：专项测试覆盖 header 解析、frame 重排和端到端双 lane relay;`go test ./egress/reverse -run 'Striped|TunnelBench|OpenCommand' -count=1`、`go test ./egress/reverse` 与 `go test ./...` 均通过。Hub 和 Android 均已部署并发 lane writer 版：
+
+- Hub SHA256 `0911c09868a1842cbba5aa6367b9fdd47dbf4769b53485bc25a5c1aded2b3f04`,备份 `/opt/zongheng/zhreverse/zhreverse.bak-20260614-striped-connect-writers`。
+- Android SHA256 `b7597b74ceae75d89793690716b25fcb6edeb877c6afa9ab921aded195dfa745`,备份 `/data/adb/zhreverse/bin/zhreverse.bak-20260614-striped-connect-writers`。
+
+部署后健康检查 PASS：`session_count=2`,两条 session `consecutive_failures=0`,v6/v4 出口、MTU/TCPMSS、WireGuard handshake 均正常。20MB 顺序 A/B:
+
+```text
+normal20_seq  code=200 bytes=20000000 Bps=3252101 seconds=6.149869
+striped20_seq code=200 bytes=20000000 Bps=4421103 seconds=4.523757
+```
+
+实测 striped 比默认 CONNECT 快约 `36%`,但还没有接近 tunnel bench 双流合成数据的极限收益,所以暂时保持显式 opt-in。测试命令:
+
+```bash
+curl --proxy http://10.66.0.1:18081 \
+  --proxy-header 'X-ZH-Striped-Streams: 2' \
+  -L -o /dev/null \
+  'https://speed.cloudflare.com/__down?bytes=20000000'
+```
+
+下一步应继续观察真实下载和手机温度。如果连续多轮收益稳定,再考虑按文件大小/域名/内容长度自动启用;若收益不稳定,保留为诊断开关。
 
 ## 5. WireGuard 控制面迁移到 Pixel
 

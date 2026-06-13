@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -44,6 +45,16 @@ const (
 	maxTunnelBenchBytes     = 100_000_000
 	maxTunnelBenchStreams   = 8
 	tunnelBenchTimeout      = 2 * time.Minute
+)
+
+const (
+	stripedConnectHeader      = "X-ZH-Striped-Streams"
+	maxStripedConnectStreams  = 2
+	stripedFrameHeaderSize    = 12
+	stripedChunkSize          = 32 * 1024
+	maxStripedPendingBytes    = 8 * 1024 * 1024
+	stripedLaneAttachTimeout  = 10 * time.Second
+	stripedTargetReadyTimeout = 10 * time.Second
 )
 
 func main() {
@@ -922,6 +933,16 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 		}
 		target = resolvedTarget
 	}
+	stripedStreams, striped, err := parseStripedConnectRequest(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if striped {
+		m.handleStripedConnect(w, target, stripedStreams)
+		return
+	}
+
 	stream, streamReader, status, err := m.openCommand("CONNECT " + target)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -947,6 +968,224 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	pipeBoth(clientConn, &bufferedConn{Conn: stream, reader: streamReader}, m.proxyIdleTimeout)
+}
+
+func parseStripedConnectRequest(req *http.Request) (int, bool, error) {
+	raw := strings.TrimSpace(req.Header.Get(stripedConnectHeader))
+	if raw == "" {
+		return 0, false, nil
+	}
+	streams, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, false, fmt.Errorf("%s must be an integer", stripedConnectHeader)
+	}
+	if streams <= 1 {
+		return 0, false, nil
+	}
+	if streams != maxStripedConnectStreams {
+		return 0, false, fmt.Errorf("%s currently supports only %d", stripedConnectHeader, maxStripedConnectStreams)
+	}
+	return streams, true, nil
+}
+
+type stripedHubLane struct {
+	conn   net.Conn
+	reader *bufio.Reader
+}
+
+func (m *sessionManager) handleStripedConnect(w http.ResponseWriter, target string, streams int) {
+	lanes, err := m.openStripedConnect(target, streams)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	defer closeStripedHubLanes(lanes)
+
+	hijacker, ok := w.(http.Hijacker)
+	if !ok {
+		http.Error(w, "hijacking not supported", http.StatusInternalServerError)
+		return
+	}
+	clientConn, _, err := hijacker.Hijack()
+	if err != nil {
+		return
+	}
+	defer clientConn.Close()
+	if _, err := io.WriteString(clientConn, "HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
+		return
+	}
+	relayStripedConnect(clientConn, lanes)
+}
+
+func (m *sessionManager) openStripedConnect(target string, streams int) ([]stripedHubLane, error) {
+	id := newStripedConnectID()
+	lanes := make([]stripedHubLane, 0, streams)
+	for i := 0; i < streams; i++ {
+		command := fmt.Sprintf("STRIPED_CONNECT %s %d %d %s", id, i, streams, target)
+		conn, reader, status, err := m.openCommand(command)
+		if err != nil {
+			closeStripedHubLanes(lanes)
+			return nil, err
+		}
+		if status != "OK" {
+			_ = conn.Close()
+			closeStripedHubLanes(lanes)
+			return nil, fmt.Errorf("striped connect lane %d: %s", i, status)
+		}
+		lanes = append(lanes, stripedHubLane{conn: conn, reader: reader})
+	}
+	return lanes, nil
+}
+
+func newStripedConnectID() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err == nil {
+		return hex.EncodeToString(b[:])
+	}
+	return strconv.FormatInt(time.Now().UnixNano(), 36)
+}
+
+func closeStripedHubLanes(lanes []stripedHubLane) {
+	for _, lane := range lanes {
+		if lane.conn != nil {
+			_ = lane.conn.Close()
+		}
+	}
+}
+
+type stripedFrameResult struct {
+	lane int
+	seq  uint64
+	data []byte
+	eof  bool
+	err  error
+}
+
+func relayStripedConnect(client net.Conn, lanes []stripedHubLane) {
+	if len(lanes) == 0 {
+		return
+	}
+	done := make(chan struct{})
+	var closeOnce sync.Once
+	closeAll := func() {
+		closeOnce.Do(func() {
+			close(done)
+			_ = client.Close()
+			closeStripedHubLanes(lanes)
+		})
+	}
+	defer closeAll()
+
+	go func() {
+		_, _ = io.Copy(lanes[0].conn, client)
+		closeAll()
+	}()
+
+	frames := make(chan stripedFrameResult, len(lanes)*2)
+	for i := range lanes {
+		go readStripedFrames(done, i, lanes[i].reader, frames)
+	}
+	if err := writeOrderedStripedFrames(client, frames, len(lanes)); err != nil {
+		log.Printf("striped connect relay failed: %v", err)
+	}
+}
+
+func readStripedFrames(done <-chan struct{}, lane int, reader *bufio.Reader, out chan<- stripedFrameResult) {
+	for {
+		seq, data, eof, err := readStripedFrame(reader)
+		result := stripedFrameResult{lane: lane, seq: seq, data: data, eof: eof, err: err}
+		select {
+		case out <- result:
+		case <-done:
+			return
+		}
+		if err != nil || eof {
+			return
+		}
+	}
+}
+
+func writeOrderedStripedFrames(client io.Writer, frames <-chan stripedFrameResult, laneCount int) error {
+	nextSeq := uint64(0)
+	activeReaders := laneCount
+	pending := map[uint64][]byte{}
+	pendingBytes := 0
+	var eofSeq *uint64
+
+	for activeReaders > 0 {
+		result := <-frames
+		if result.err != nil {
+			if errors.Is(result.err, io.EOF) {
+				activeReaders--
+				continue
+			}
+			return result.err
+		}
+		if result.eof {
+			seq := result.seq
+			eofSeq = &seq
+		} else {
+			pending[result.seq] = result.data
+			pendingBytes += len(result.data)
+			if pendingBytes > maxStripedPendingBytes {
+				return errors.New("striped pending window exceeded")
+			}
+		}
+
+		for {
+			if eofSeq != nil && nextSeq == *eofSeq {
+				return nil
+			}
+			data, ok := pending[nextSeq]
+			if !ok {
+				break
+			}
+			if _, err := client.Write(data); err != nil {
+				return err
+			}
+			delete(pending, nextSeq)
+			pendingBytes -= len(data)
+			nextSeq++
+		}
+	}
+	if eofSeq != nil && nextSeq == *eofSeq {
+		return nil
+	}
+	return io.ErrUnexpectedEOF
+}
+
+func writeStripedFrame(writer io.Writer, seq uint64, data []byte) error {
+	var header [stripedFrameHeaderSize]byte
+	binary.BigEndian.PutUint64(header[:8], seq)
+	binary.BigEndian.PutUint32(header[8:], uint32(len(data)))
+	if _, err := writer.Write(header[:]); err != nil {
+		return err
+	}
+	if len(data) == 0 {
+		return nil
+	}
+	_, err := writer.Write(data)
+	return err
+}
+
+func readStripedFrame(reader *bufio.Reader) (uint64, []byte, bool, error) {
+	var header [stripedFrameHeaderSize]byte
+	if _, err := io.ReadFull(reader, header[:]); err != nil {
+		return 0, nil, false, err
+	}
+	seq := binary.BigEndian.Uint64(header[:8])
+	length := binary.BigEndian.Uint32(header[8:])
+	if length == 0 {
+		return seq, nil, true, nil
+	}
+	if length > stripedChunkSize {
+		return 0, nil, false, fmt.Errorf("striped frame too large: %d", length)
+	}
+	data := make([]byte, int(length))
+	if _, err := io.ReadFull(reader, data); err != nil {
+		return 0, nil, false, err
+	}
+	return seq, data, false, nil
 }
 
 func (m *sessionManager) handleSessionHealth(w http.ResponseWriter, _ *http.Request) {
@@ -1456,6 +1695,11 @@ func handleClientStream(stream net.Conn, opts clientOptions) {
 		handleFetchStream(stream, fetchURL, opts)
 		return
 	}
+	stripedConnect, ok := strings.CutPrefix(strings.TrimSpace(line), "STRIPED_CONNECT ")
+	if ok {
+		handleStripedConnectStream(stream, stripedConnect, opts)
+		return
+	}
 	benchBytes, ok := strings.CutPrefix(strings.TrimSpace(line), "BENCH ")
 	if ok {
 		handleBenchStream(stream, benchBytes)
@@ -1481,6 +1725,329 @@ func handleConnectStream(stream net.Conn, reader *bufio.Reader, target string, o
 	relayWithHandshakeRetry(&bufferedConn{Conn: stream, reader: reader}, targetConn, target, func() (net.Conn, error) {
 		return dialTarget(target, opts.AddressFamily)
 	})
+}
+
+var stripedClientGroups sync.Map
+
+type stripedClientGroup struct {
+	id        string
+	target    string
+	laneCount int
+
+	mu                sync.Mutex
+	lanes             []net.Conn
+	laneReady         []bool
+	readyCount        int
+	targetConn        net.Conn
+	err               error
+	targetReadyCh     chan struct{}
+	allReadyCh        chan struct{}
+	done              chan struct{}
+	targetReadyClosed bool
+	allReadyClosed    bool
+	doneClosed        bool
+}
+
+type stripedOutboundFrame struct {
+	seq  uint64
+	data []byte
+}
+
+func newStripedClientGroup(id string, target string, laneCount int) *stripedClientGroup {
+	return &stripedClientGroup{
+		id:            id,
+		target:        target,
+		laneCount:     laneCount,
+		lanes:         make([]net.Conn, laneCount),
+		laneReady:     make([]bool, laneCount),
+		targetReadyCh: make(chan struct{}),
+		allReadyCh:    make(chan struct{}),
+		done:          make(chan struct{}),
+	}
+}
+
+func getStripedClientGroup(id string, target string, laneCount int) (*stripedClientGroup, error) {
+	actual, _ := stripedClientGroups.LoadOrStore(id, newStripedClientGroup(id, target, laneCount))
+	group := actual.(*stripedClientGroup)
+	group.mu.Lock()
+	defer group.mu.Unlock()
+	if group.target != target || group.laneCount != laneCount {
+		return nil, errors.New("striped connect group mismatch")
+	}
+	return group, nil
+}
+
+func (g *stripedClientGroup) attachLane(index int, conn net.Conn) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if index < 0 || index >= g.laneCount {
+		return errors.New("striped lane index out of range")
+	}
+	if g.lanes[index] != nil {
+		return errors.New("striped lane already attached")
+	}
+	g.lanes[index] = conn
+	return nil
+}
+
+func (g *stripedClientGroup) setTarget(conn net.Conn) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.targetConn = conn
+	g.closeTargetReadyLocked()
+}
+
+func (g *stripedClientGroup) fail(err error) {
+	stripedClientGroups.Delete(g.id)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.err == nil {
+		g.err = err
+	}
+	g.closeTargetReadyLocked()
+	g.closeAllReadyLocked()
+	g.closeDoneLocked()
+	for _, lane := range g.lanes {
+		if lane != nil {
+			_ = lane.Close()
+		}
+	}
+	if g.targetConn != nil {
+		_ = g.targetConn.Close()
+	}
+}
+
+func (g *stripedClientGroup) markLaneReady(index int) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if index >= 0 && index < len(g.laneReady) && !g.laneReady[index] {
+		g.laneReady[index] = true
+		g.readyCount++
+	}
+	if g.readyCount == g.laneCount {
+		g.closeAllReadyLocked()
+	}
+}
+
+func (g *stripedClientGroup) error() error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.err
+}
+
+func (g *stripedClientGroup) closeTargetReadyLocked() {
+	if !g.targetReadyClosed {
+		close(g.targetReadyCh)
+		g.targetReadyClosed = true
+	}
+}
+
+func (g *stripedClientGroup) closeAllReadyLocked() {
+	if !g.allReadyClosed {
+		close(g.allReadyCh)
+		g.allReadyClosed = true
+	}
+}
+
+func (g *stripedClientGroup) closeDoneLocked() {
+	if !g.doneClosed {
+		close(g.done)
+		g.doneClosed = true
+	}
+}
+
+func waitForSignal(ch <-chan struct{}, timeout time.Duration) bool {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-ch:
+		return true
+	case <-timer.C:
+		return false
+	}
+}
+
+func handleStripedConnectStream(stream net.Conn, args string, opts clientOptions) {
+	fields := strings.Fields(args)
+	if len(fields) != 4 {
+		_, _ = io.WriteString(stream, "ERR invalid striped connect command\n")
+		return
+	}
+	id := fields[0]
+	laneIndex, err := strconv.Atoi(fields[1])
+	if err != nil {
+		_, _ = io.WriteString(stream, "ERR invalid striped lane index\n")
+		return
+	}
+	laneCount, err := strconv.Atoi(fields[2])
+	if err != nil || laneCount != maxStripedConnectStreams {
+		_, _ = io.WriteString(stream, "ERR invalid striped lane count\n")
+		return
+	}
+	target := fields[3]
+	group, err := getStripedClientGroup(id, target, laneCount)
+	if err != nil {
+		_, _ = fmt.Fprintf(stream, "ERR %v\n", err)
+		return
+	}
+	if err := group.attachLane(laneIndex, stream); err != nil {
+		_, _ = fmt.Fprintf(stream, "ERR %v\n", err)
+		return
+	}
+
+	if laneIndex == 0 {
+		handleStripedPrimaryLane(stream, group, target, opts)
+		return
+	}
+	handleStripedExtraLane(stream, group, laneIndex)
+}
+
+func handleStripedPrimaryLane(stream net.Conn, group *stripedClientGroup, target string, opts clientOptions) {
+	defer stripedClientGroups.Delete(group.id)
+	targetConn, err := dialTarget(target, opts.AddressFamily)
+	if err != nil {
+		_, _ = fmt.Fprintf(stream, "ERR %v\n", err)
+		group.fail(err)
+		return
+	}
+	group.setTarget(targetConn)
+	if _, err := io.WriteString(stream, "OK\n"); err != nil {
+		group.fail(err)
+		return
+	}
+	group.markLaneReady(0)
+	if !waitForSignal(group.allReadyCh, stripedLaneAttachTimeout) {
+		group.fail(errors.New("striped lanes did not attach in time"))
+		return
+	}
+	if err := group.error(); err != nil {
+		group.fail(err)
+		return
+	}
+	group.run()
+}
+
+func handleStripedExtraLane(stream net.Conn, group *stripedClientGroup, laneIndex int) {
+	if !waitForSignal(group.targetReadyCh, stripedTargetReadyTimeout) {
+		_, _ = io.WriteString(stream, "ERR striped target not ready\n")
+		group.fail(errors.New("striped target not ready in time"))
+		return
+	}
+	if err := group.error(); err != nil {
+		_, _ = fmt.Fprintf(stream, "ERR %v\n", err)
+		return
+	}
+	if _, err := io.WriteString(stream, "OK\n"); err != nil {
+		group.fail(err)
+		return
+	}
+	group.markLaneReady(laneIndex)
+	<-group.done
+}
+
+func (g *stripedClientGroup) run() {
+	g.mu.Lock()
+	targetConn := g.targetConn
+	lanes := append([]net.Conn(nil), g.lanes...)
+	g.mu.Unlock()
+
+	done := make(chan struct{})
+	var closeOnce sync.Once
+	closeAll := func() {
+		closeOnce.Do(func() {
+			close(done)
+			for _, lane := range lanes {
+				if lane != nil {
+					_ = lane.Close()
+				}
+			}
+			if targetConn != nil {
+				_ = targetConn.Close()
+			}
+			g.mu.Lock()
+			g.closeDoneLocked()
+			g.mu.Unlock()
+		})
+	}
+	defer closeAll()
+
+	laneChans := make([]chan stripedOutboundFrame, len(lanes))
+	writerErrs := make(chan error, len(lanes))
+	var writers sync.WaitGroup
+	var closeFrameChansOnce sync.Once
+	closeFrameChans := func() {
+		closeFrameChansOnce.Do(func() {
+			for _, ch := range laneChans {
+				if ch != nil {
+					close(ch)
+				}
+			}
+		})
+	}
+	for i, lane := range lanes {
+		laneChans[i] = make(chan stripedOutboundFrame, 8)
+		writers.Add(1)
+		go func(conn net.Conn, frames <-chan stripedOutboundFrame) {
+			defer writers.Done()
+			for frame := range frames {
+				if err := writeStripedFrame(conn, frame.seq, frame.data); err != nil {
+					select {
+					case writerErrs <- err:
+					default:
+					}
+					return
+				}
+				if len(frame.data) == 0 {
+					return
+				}
+			}
+		}(lane, laneChans[i])
+	}
+	defer func() {
+		closeFrameChans()
+		writers.Wait()
+	}()
+
+	sendFrame := func(index int, frame stripedOutboundFrame) bool {
+		select {
+		case laneChans[index] <- frame:
+			return true
+		case err := <-writerErrs:
+			if err != nil {
+				log.Printf("striped connect writer failed: %v", err)
+			}
+			closeAll()
+			return false
+		case <-done:
+			return false
+		}
+	}
+
+	go func() {
+		_, _ = io.Copy(targetConn, lanes[0])
+		closeAll()
+	}()
+
+	buf := make([]byte, stripedChunkSize)
+	seq := uint64(0)
+	laneIndex := 0
+	for {
+		n, readErr := targetConn.Read(buf)
+		if n > 0 {
+			data := append([]byte(nil), buf[:n]...)
+			if !sendFrame(laneIndex, stripedOutboundFrame{seq: seq, data: data}) {
+				return
+			}
+			seq++
+			laneIndex = (laneIndex + 1) % len(lanes)
+		}
+		if readErr != nil {
+			_ = sendFrame(laneIndex%len(lanes), stripedOutboundFrame{seq: seq})
+			closeFrameChans()
+			writers.Wait()
+			return
+		}
+	}
 }
 
 // 乐天 F5 的 v4 侧会非确定性地黑洞新建连接:TCP 握手成功、ClientHello 被

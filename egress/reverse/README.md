@@ -148,6 +148,13 @@ Hub reverse tunnel throughput. It splits the requested byte count across up to
 command, and returns per-stream plus aggregate Mbps. This avoids DNS, target
 TLS, CDN, and public-site variability; it is not a replacement for real egress
 download tests.
+An experimental striped CONNECT path can be enabled per request with proxy
+header `X-ZH-Striped-Streams: 2`. Hub opens two reverse streams to Android; lane
+0 carries the client -> target upload bytes, while Android frames target ->
+client download bytes across both lanes and Hub reorders them before writing to
+the client. This is intentionally opt-in and limited to two lanes because
+`/debug/tunnel-bench` showed the useful gain is mainly from the two existing
+reverse sessions.
 The Hub server can also cap concurrent `CONNECT` sessions with
 `max_proxy_connections` and `max_proxy_connections_per_client`; production uses
 these as a fast-fail guard so browser burst concurrency does not pile up inside
@@ -160,6 +167,10 @@ scripts/check-android-reverse-egress.sh
 curl -s http://10.66.0.1:18081/debug/session-health
 curl -s 'http://10.66.0.1:18081/debug/tunnel-bench?bytes=20000000&streams=1'
 curl -s 'http://10.66.0.1:18081/debug/tunnel-bench?bytes=20000000&streams=2'
+curl --proxy http://10.66.0.1:18081 \
+  --proxy-header 'X-ZH-Striped-Streams: 2' \
+  -L -o /dev/null \
+  'https://speed.cloudflare.com/__down?bytes=20000000'
 curl --proxy http://10.66.0.1:18081 https://api.ipify.org
 curl -L --proxy http://10.66.0.1:18081 -o /dev/null \
   'https://speed.cloudflare.com/__down?bytes=20000000'
