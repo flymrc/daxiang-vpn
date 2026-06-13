@@ -34,6 +34,9 @@ func TestLoadReverseConfigExamples(t *testing.T) {
 	if server.MaxProxyConnsPeer != 48 {
 		t.Fatalf("server max proxy per-client connections = %d", server.MaxProxyConnsPeer)
 	}
+	if len(server.DebugAllowedCIDRs) != 1 || server.DebugAllowedCIDRs[0] != "10.66.0.1/32" {
+		t.Fatalf("server debug allowed cidrs = %#v", server.DebugAllowedCIDRs)
+	}
 	if server.ProxyIdleTimeout != 2*time.Minute {
 		t.Fatalf("server proxy idle timeout = %s", server.ProxyIdleTimeout)
 	}
@@ -167,6 +170,37 @@ func TestProxyAllowedCIDRs(t *testing.T) {
 	}
 	if manager.proxyAllowed("192.0.2.10:51234") {
 		t.Fatal("expected non-WireGuard client to be denied")
+	}
+}
+
+func TestDebugAllowedCIDRs(t *testing.T) {
+	_, proxyNetwork, err := net.ParseCIDR("10.66.0.0/24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, debugNetwork, err := net.ParseCIDR("10.66.0.1/32")
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &sessionManager{
+		allowedProxyNets: []*net.IPNet{proxyNetwork},
+		debugAllowedNets: []*net.IPNet{debugNetwork},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "http://10.66.0.1:18081/debug/session-health", nil)
+	req.RemoteAddr = "10.66.0.29:12345"
+	recorder := httptest.NewRecorder()
+	manager.handleProxy(recorder, req)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("non-admin debug status = %d", recorder.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "http://10.66.0.1:18081/debug/session-health", nil)
+	req.RemoteAddr = "10.66.0.1:12345"
+	recorder = httptest.NewRecorder()
+	manager.handleProxy(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("admin debug status = %d, body = %q", recorder.Code, recorder.Body.String())
 	}
 }
 
@@ -847,6 +881,17 @@ func TestWriteOrderedStripedFramesReordersData(t *testing.T) {
 	}
 	if out.String() != "hello world" {
 		t.Fatalf("out = %q", out.String())
+	}
+}
+
+func TestWriteOrderedStripedFramesReturnsWhenReadersExit(t *testing.T) {
+	frames := make(chan stripedFrameResult)
+	close(frames)
+
+	var out bytes.Buffer
+	err := writeOrderedStripedFrames(&out, frames, 2)
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("err = %v, want unexpected EOF", err)
 	}
 }
 

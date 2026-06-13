@@ -15,6 +15,10 @@ server:
   # Limit who can use the Hub-side proxy. Narrow these to issued client /32s in production.
   allowed_proxy_cidrs:
     - 10.66.0.0/24
+  # Debug endpoints can reveal operational state and /debug/tunnel-bench can
+  # push synthetic traffic through the phone. Keep this narrower than proxy use.
+  debug_allowed_cidrs:
+    - 10.66.0.1/32
   # Protect the Android mobile egress from client-side burst concurrency.
   # Excess CONNECT requests fail fast with HTTP 429 instead of piling up in the tunnel.
   max_proxy_connections: 96

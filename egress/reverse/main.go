@@ -99,6 +99,7 @@ type serverOptions struct {
 	TLSKeyFile        string        `json:"tls_key_file,omitempty" yaml:"tls_key_file,omitempty"`
 	EnableFetch       bool          `json:"enable_fetch,omitempty" yaml:"enable_fetch,omitempty"`
 	AllowedProxyCIDRs []string      `json:"allowed_proxy_cidrs,omitempty" yaml:"allowed_proxy_cidrs,omitempty"`
+	DebugAllowedCIDRs []string      `json:"debug_allowed_cidrs,omitempty" yaml:"debug_allowed_cidrs,omitempty"`
 	MaxProxyConns     int           `json:"max_proxy_connections,omitempty" yaml:"max_proxy_connections,omitempty"`
 	MaxProxyConnsPeer int           `json:"max_proxy_connections_per_client,omitempty" yaml:"max_proxy_connections_per_client,omitempty"`
 	ProxyIdleTimeout  time.Duration `json:"proxy_idle_timeout,omitempty" yaml:"proxy_idle_timeout,omitempty"`
@@ -151,6 +152,9 @@ func (o serverOptions) withDefaults(defaults serverOptions) serverOptions {
 	}
 	if o.ProxyIdleTimeout == 0 {
 		o.ProxyIdleTimeout = defaults.ProxyIdleTimeout
+	}
+	if len(o.DebugAllowedCIDRs) == 0 {
+		o.DebugAllowedCIDRs = o.AllowedProxyCIDRs
 	}
 	return o
 }
@@ -296,7 +300,11 @@ func runServer(args []string) error {
 		return errors.New("--proxy-idle-timeout must be >= 0")
 	}
 
-	allowedProxyNets, err := parseCIDRs(opts.AllowedProxyCIDRs)
+	allowedProxyNets, err := parseCIDRs("allowed_proxy_cidrs", opts.AllowedProxyCIDRs)
+	if err != nil {
+		return err
+	}
+	debugAllowedNets, err := parseCIDRs("debug_allowed_cidrs", opts.DebugAllowedCIDRs)
 	if err != nil {
 		return err
 	}
@@ -304,6 +312,7 @@ func runServer(args []string) error {
 		resolve:           opts.Resolve,
 		fetch:             opts.EnableFetch,
 		allowedProxyNets:  allowedProxyNets,
+		debugAllowedNets:  debugAllowedNets,
 		maxProxyConns:     opts.MaxProxyConns,
 		maxProxyConnsPeer: opts.MaxProxyConnsPeer,
 		proxyIdleTimeout:  opts.ProxyIdleTimeout,
@@ -493,6 +502,7 @@ type sessionManager struct {
 	resolve               string
 	fetch                 bool
 	allowedProxyNets      []*net.IPNet
+	debugAllowedNets      []*net.IPNet
 	maxProxyConns         int
 	maxProxyConnsPeer     int
 	proxyIdleTimeout      time.Duration
@@ -1002,10 +1012,18 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if req.Method == http.MethodGet && req.URL.Path == "/debug/session-health" {
+		if !m.debugAllowed(req.RemoteAddr) {
+			http.Error(w, "debug forbidden", http.StatusForbidden)
+			return
+		}
 		m.handleSessionHealth(w, req)
 		return
 	}
 	if req.Method == http.MethodGet && req.URL.Path == "/debug/tunnel-bench" {
+		if !m.debugAllowed(req.RemoteAddr) {
+			http.Error(w, "debug forbidden", http.StatusForbidden)
+			return
+		}
 		m.handleTunnelBench(w, req)
 		return
 	}
@@ -1264,9 +1282,18 @@ func relayStripedConnect(client net.Conn, lanes []stripedHubLane) proxyTransferS
 	}()
 
 	frames := make(chan stripedFrameResult, len(lanes)*2)
+	var readers sync.WaitGroup
 	for i := range lanes {
-		go readStripedFrames(done, i, lanes[i].reader, frames)
+		readers.Add(1)
+		go func(index int) {
+			defer readers.Done()
+			readStripedFrames(done, index, lanes[index].reader, frames)
+		}(i)
 	}
+	go func() {
+		readers.Wait()
+		close(frames)
+	}()
 	downloadStats, err := writeOrderedStripedFramesMeasured(client, frames, len(lanes), started)
 	stats.TargetToClientBytes = downloadStats.TargetToClientBytes
 	stats.FirstTargetByteAfter = downloadStats.FirstTargetByteAfter
@@ -1307,7 +1334,13 @@ func writeOrderedStripedFramesMeasured(client io.Writer, frames <-chan stripedFr
 	var eofSeq *uint64
 
 	for activeReaders > 0 {
-		result := <-frames
+		result, ok := <-frames
+		if !ok {
+			if eofSeq != nil && nextSeq == *eofSeq {
+				return stats, nil
+			}
+			return stats, io.ErrUnexpectedEOF
+		}
 		if result.err != nil {
 			if errors.Is(result.err, io.EOF) {
 				activeReaders--
@@ -1750,7 +1783,15 @@ func proxyPeer(remoteAddr string) string {
 }
 
 func (m *sessionManager) proxyAllowed(remoteAddr string) bool {
-	if len(m.allowedProxyNets) == 0 {
+	return ipAllowed(remoteAddr, m.allowedProxyNets)
+}
+
+func (m *sessionManager) debugAllowed(remoteAddr string) bool {
+	return ipAllowed(remoteAddr, m.debugAllowedNets)
+}
+
+func ipAllowed(remoteAddr string, networks []*net.IPNet) bool {
+	if len(networks) == 0 {
 		return true
 	}
 	host, _, err := net.SplitHostPort(remoteAddr)
@@ -1761,7 +1802,7 @@ func (m *sessionManager) proxyAllowed(remoteAddr string) bool {
 	if ip == nil {
 		return false
 	}
-	for _, network := range m.allowedProxyNets {
+	for _, network := range networks {
 		if network.Contains(ip) {
 			return true
 		}
@@ -1769,7 +1810,7 @@ func (m *sessionManager) proxyAllowed(remoteAddr string) bool {
 	return false
 }
 
-func parseCIDRs(values []string) ([]*net.IPNet, error) {
+func parseCIDRs(field string, values []string) ([]*net.IPNet, error) {
 	var out []*net.IPNet
 	for _, value := range values {
 		value = strings.TrimSpace(value)
@@ -1778,7 +1819,7 @@ func parseCIDRs(values []string) ([]*net.IPNet, error) {
 		}
 		_, network, err := net.ParseCIDR(value)
 		if err != nil {
-			return nil, fmt.Errorf("invalid allowed_proxy_cidrs entry %q: %w", value, err)
+			return nil, fmt.Errorf("invalid %s entry %q: %w", field, value, err)
 		}
 		out = append(out, network)
 	}

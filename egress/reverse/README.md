@@ -139,9 +139,12 @@ commands update a per-session RTT estimate and active stream count, so new
 CONNECT requests avoid busy or slower tunnel sessions when another session is
 healthier.
 Hub-side diagnostics are exposed at `GET /debug/session-health` on the same
-proxy listener. The endpoint is protected by `allowed_proxy_cidrs` and returns
-the current reverse session count, per-session active stream count, consecutive
-failure count, command RTT EWMA, scheduler score, and active proxy concurrency.
+proxy listener. The endpoint is protected by `debug_allowed_cidrs`, which
+should be narrower than `allowed_proxy_cidrs` because diagnostics reveal
+operational state and `/debug/tunnel-bench` can push synthetic traffic through
+the phone. The endpoint returns the current reverse session count, per-session
+active stream count, consecutive failure count, command RTT EWMA, scheduler
+score, and active proxy concurrency.
 It also includes a rolling in-memory CONNECT experience window with setup,
 Android target dial, first target byte, total duration, byte counts, recent
 failures, and active proxy concurrency peaks. This is meant for small-request

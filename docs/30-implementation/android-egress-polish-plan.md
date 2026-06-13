@@ -22,6 +22,7 @@
 | 10 | opt-in striped CONNECT 原型 | ~2h | 9 | ✅ 已部署 2026-06-14 |
 | 11 | 小请求尾延迟指标与脚本 | ~1h | 8 | ✅ 已部署 2026-06-14 |
 | 12 | 住宅 WiFi 承载隧道腿 + 蜂窝 IPv6 出口 POC | ~半天 | 11 | 🔜 明天验证 |
+| 13 | 审计修复: striped 取消路径 + debug 权限收窄 | ~45min | 10/11 | ✅ 已实现待部署 |
 
 ---
 
@@ -253,6 +254,26 @@ zhreverse target socket -> rmnet_data* / cellular IPv6 -> target website
 - `measure-android-tail-latency.ps1 -Runs 30` 的 p95/p99 不劣于当前蜂窝隧道基线。
 
 **回滚**：恢复 `zhreverse client.yaml server=36.50.84.68:39093` 或关闭 WiFi,`pkill zhreverse` 让 service 脚本拉起原生产路径。
+
+## 13. 审计修复: striped 取消路径 + debug 权限收窄 ✅ 已实现待部署
+
+**动机**：审计今天的改动后发现两个收口点:实验性 striped CONNECT 在客户端取消时存在 reader goroutine 退出但聚合器仍等待 frame 的风险;`/debug/tunnel-bench` 继承普通代理白名单,普通客户端也可能触发手机合成回传压测。
+
+**实现**：
+
+- `relayStripedConnect` 为每条 striped reader 加 `WaitGroup`,所有 reader 退出后关闭 `frames` channel。
+- `writeOrderedStripedFramesMeasured` 识别 `frames` channel 关闭并返回 `io.ErrUnexpectedEOF`,避免 handler 永久等待。
+- 新增 `server.debug_allowed_cidrs`,默认继承 `allowed_proxy_cidrs` 保持旧配置兼容;生产示例显式收窄为 `10.66.0.1/32`。
+- `/debug/session-health` 与 `/debug/tunnel-bench` 在普通 proxy CIDR 之外再检查 `debug_allowed_cidrs`。
+
+**部署要点**：先部署 Hub 二进制并在 `/etc/zongheng/zhreverse/server.yaml` 增加:
+
+```yaml
+debug_allowed_cidrs:
+  - 10.66.0.1/32
+```
+
+Android 二进制无需为该修复变更,但如果统一部署也兼容。
 
 ## 5. WireGuard 控制面迁移到 Pixel
 

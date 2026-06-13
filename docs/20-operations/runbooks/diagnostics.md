@@ -234,7 +234,7 @@ iptables -L ufw-user-input -n -v --line-numbers | grep 18081
 判断：
 
 - 返回公网 IP 代表代理可用。
-- `/debug/session-health` 返回 `session_count`、每条 session 的 `active_streams`、`consecutive_failures`、`ewma_command_rtt_ms` 和 `scheduler_score_ms`；两条 Android 反连都在线时 `session_count` 应为 2。新版本还返回 `active_proxy_connections_peak`、`active_proxy_connections_peak_by_peer` 和 `proxy_metrics`,用于观察最近 CONNECT 的 setup、Android target dial、首字节、总时长 p50/p95/p99、失败数和上下行字节。
+- `/debug/session-health` 返回 `session_count`、每条 session 的 `active_streams`、`consecutive_failures`、`ewma_command_rtt_ms` 和 `scheduler_score_ms`；两条 Android 反连都在线时 `session_count` 应为 2。新版本还返回 `active_proxy_connections_peak`、`active_proxy_connections_peak_by_peer` 和 `proxy_metrics`,用于观察最近 CONNECT 的 setup、Android target dial、首字节、总时长 p50/p95/p99、失败数和上下行字节。诊断接口受 `debug_allowed_cidrs` 保护,生产应收窄到 Hub 本机/管理员 peer,不要直接对普通客户端开放 `/debug/tunnel-bench`。
 - `measure-android-tail-latency.ps1` 从 Hub 侧走 Android proxy 多轮请求小 HTTPS 目标,输出 curl 视角的 `appconnect`、`starttransfer`、`total` p50/p95/p99,并拉取 `/debug/session-health` 的 Hub 侧滚动指标;适合排查网页小请求尾延迟和发热前的并发峰值。
 - `/debug/tunnel-bench` 只测 Android 到 Hub 的 reverse tunnel 回传吞吐,不访问公网目标;用 `streams=1` vs `streams=2` 判断多 session 并行是否真的提高隧道腿容量。
 - `X-ZH-Striped-Streams: 2` 是实验性 per-request 开关,只用于验证大下载是否能吃到双 reverse stream 回传收益;默认代理请求不会启用。
