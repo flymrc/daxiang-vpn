@@ -42,7 +42,7 @@ WireGuard App 仍保留为控制面,用于:
 
 watchdog [watchdog.sh](../../egress/android-control/watchdog.sh) 会周期性重放这些底层基线,并确保 WireGuard 控制面、`zhandroid-control` 和 `zhreverse` supervisor 都在运行。
 
-Hub 侧 `zhreverse server` 对每次 `CONNECT` / `FETCH` 反向命令设置超时。若某条 reverse session 半死、能被选中但不再回应,Hub 会把它从 session 池剔除并重试其它 session,避免 `10.66.0.1:18081` 的 HTTP proxy 请求长期卡住。生产当前使用 TCP/yamux 双连接,用于降低单条 TCP/yamux 在客户端并发下的队头阻塞;Hub 侧同时启用 CONNECT 并发护栏,当前 `max_proxy_connections=96`、`max_proxy_connections_per_client=48`,超限请求快速返回 HTTP 429,避免继续堆积到手机出口。QUIC/UDP 在 Rakuten 手机卡上容易出现空闲超时和半死 session,仅保留为回滚/实验路径。
+Hub 侧 `zhreverse server` 对每次 `CONNECT` / `FETCH` 反向命令设置超时。若某条 reverse session 半死、能被选中但不再回应,Hub 会把它从 session 池剔除并重试其它 session,避免 `10.66.0.1:18081` 的 HTTP proxy 请求长期卡住。生产当前使用 TCP/yamux 双连接,用于降低单条 TCP/yamux 在客户端并发下的队头阻塞;Hub 侧会记录每条 session 的 active stream 数和命令 RTT,新 CONNECT 优先选择空闲且低 RTT 的健康 session,不再盲目轮询。Hub 侧同时启用 CONNECT 并发护栏,当前 `max_proxy_connections=96`、`max_proxy_connections_per_client=48`,超限请求快速返回 HTTP 429,避免继续堆积到手机出口。QUIC/UDP 在 Rakuten 手机卡上容易出现空闲超时和半死 session,仅保留为回滚/实验路径。
 
 ## 部署验证
 

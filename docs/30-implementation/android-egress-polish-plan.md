@@ -16,6 +16,7 @@
 | 4 | `connections: 2` 复测 | ~30min | 建议在 3 决策后 | ✅ 已完成 2026-06-11 |
 | 5 | WireGuard 控制面迁移到 Pixel | ~半天 | 无（运维兜底，越早越安心） | ✅ 已完成 |
 | 6 | Hub VPS 启用 IPv6 | 待运维操作 | 机房需先分配 IPv6 | 🔜 2026-06-12 运维执行 |
+| 7 | Hub session 健康优先调度 | ~1h | `connections: 2` | ✅ 已部署 2026-06-14 |
 
 ---
 
@@ -71,6 +72,19 @@
 
 - 回滚：`cp client.yaml.bak-20260611-conn2 client.yaml && pkill zhreverse`。改动只在手机配置，回滚成本为零。
 - 后续若切 QUIC（第 3 项），在 QUIC 上复跑同一速度矩阵确认两条 session 都稳。
+
+## 7. Hub session 健康优先调度 ✅ 已部署 2026-06-14
+
+**动机**：`connections: 2` 只能提供两条隧道会话;如果 Hub 盲目轮询,新 CONNECT 仍可能落到更忙、RTT 更高或刚失败过的 session。健康优先调度把已有双连接收益吃满,不增加手机端连接数和额外耗电。
+
+**实现**（`egress/reverse/main.go` Hub 侧）：
+
+- 每条 reverse session 维护 active stream 数、连续失败、最近失败时间和 command RTT EWMA。
+- 新 CONNECT / FETCH 优先选择 active 少、RTT 低、近期无失败的 session。
+- stream 关闭时释放 active 计数;命令阶段失败仍沿用旧逻辑剔除该 session 并重试其它 session。
+- 单测覆盖低 RTT 优先、空闲 session 优先和 stale session 剔除。
+
+**验收**：`go test ./egress/reverse` 与 `go test ./...` 通过。Hub 已部署新二进制,备份 `/opt/zongheng/zhreverse/zhreverse.bak-20260614-health-picker`;部署后 Android 双 session 重连、健康检查 PASS、20MB x2 平均约 `24.98 Mbps`。后续继续观察 Hub 日志中 stale session 剔除频率、客户端测速和浏览器并发打开时的尾延迟。
 
 ## 5. WireGuard 控制面迁移到 Pixel
 

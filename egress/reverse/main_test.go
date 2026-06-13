@@ -536,12 +536,73 @@ func TestOpenCommandDropsStaleSession(t *testing.T) {
 	}
 }
 
+func TestOpenCommandPrefersLowerRTTSession(t *testing.T) {
+	slow := okTunnelSession("slow")
+	fast := okTunnelSession("fast")
+	manager := &sessionManager{
+		sessions: []tunnelSession{slow, fast},
+		sessionStats: map[tunnelSession]*sessionHealth{
+			slow: {ewmaCommandRTT: 500 * time.Millisecond},
+			fast: {ewmaCommandRTT: 20 * time.Millisecond},
+		},
+	}
+
+	stream, _, status, err := manager.openCommand("CONNECT example.com:443")
+	if err != nil {
+		t.Fatalf("open command: %v", err)
+	}
+	defer stream.Close()
+	if status != "OK" {
+		t.Fatalf("status = %q", status)
+	}
+	if slow.opens != 0 || fast.opens != 1 {
+		t.Fatalf("opens slow=%d fast=%d, want slow=0 fast=1", slow.opens, fast.opens)
+	}
+}
+
+func TestOpenCommandPrefersIdleSessionOverLowerRTTBusySession(t *testing.T) {
+	idle := okTunnelSession("idle")
+	busy := okTunnelSession("busy")
+	manager := &sessionManager{
+		sessions: []tunnelSession{idle, busy},
+		sessionStats: map[tunnelSession]*sessionHealth{
+			idle: {ewmaCommandRTT: 500 * time.Millisecond},
+			busy: {activeStreams: 1, ewmaCommandRTT: 20 * time.Millisecond},
+		},
+	}
+
+	stream, _, status, err := manager.openCommand("CONNECT example.com:443")
+	if err != nil {
+		t.Fatalf("open command: %v", err)
+	}
+	defer stream.Close()
+	if status != "OK" {
+		t.Fatalf("status = %q", status)
+	}
+	if idle.opens != 1 || busy.opens != 0 {
+		t.Fatalf("opens idle=%d busy=%d, want idle=1 busy=0", idle.opens, busy.opens)
+	}
+}
+
+func okTunnelSession(name string) *fakeTunnelSession {
+	return &fakeTunnelSession{
+		remote: dummyAddr(name),
+		handler: func(conn net.Conn) {
+			defer conn.Close()
+			_, _ = bufio.NewReader(conn).ReadString('\n')
+			_, _ = io.WriteString(conn, "OK\n")
+		},
+	}
+}
+
 type fakeTunnelSession struct {
 	remote  net.Addr
 	handler func(net.Conn)
+	opens   int
 }
 
 func (s *fakeTunnelSession) OpenStream(context.Context) (net.Conn, error) {
+	s.opens++
 	client, server := net.Pipe()
 	go s.handler(server)
 	return client, nil

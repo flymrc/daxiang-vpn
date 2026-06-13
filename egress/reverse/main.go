@@ -463,6 +463,7 @@ func (s *quicSession) RemoteAddr() net.Addr {
 type sessionManager struct {
 	mu                sync.RWMutex
 	sessions          []tunnelSession
+	sessionStats      map[tunnelSession]*sessionHealth
 	next              int
 	resolve           string
 	fetch             bool
@@ -475,10 +476,23 @@ type sessionManager struct {
 	activeProxyByPeer map[string]int
 }
 
+type sessionHealth struct {
+	activeStreams       int
+	consecutiveFailures int
+	ewmaCommandRTT      time.Duration
+	lastFailure         time.Time
+}
+
 func (m *sessionManager) set(session tunnelSession) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sessions = append(m.sessions, session)
+	if m.sessionStats == nil {
+		m.sessionStats = map[tunnelSession]*sessionHealth{}
+	}
+	if _, ok := m.sessionStats[session]; !ok {
+		m.sessionStats[session] = &sessionHealth{}
+	}
 }
 
 func (m *sessionManager) clear(session any) {
@@ -495,6 +509,8 @@ func (m *sessionManager) clear(session any) {
 		}
 		if !remove {
 			filtered = append(filtered, current)
+		} else if m.sessionStats != nil {
+			delete(m.sessionStats, current)
 		}
 	}
 	m.sessions = filtered
@@ -512,6 +528,8 @@ func (m *sessionManager) clearCurrent(session tunnelSession) {
 	for _, current := range m.sessions {
 		if current != session {
 			filtered = append(filtered, current)
+		} else if m.sessionStats != nil {
+			delete(m.sessionStats, current)
 		}
 	}
 	m.sessions = filtered
@@ -525,7 +543,7 @@ func (m *sessionManager) clearCurrent(session tunnelSession) {
 func (m *sessionManager) openStream() (net.Conn, error) {
 	attempts := m.sessionCount()
 	for attempt := 0; attempt < attempts; attempt++ {
-		session := m.pickSession()
+		session, release := m.reserveSession()
 		if session == nil {
 			return nil, errors.New("reverse client is not connected")
 		}
@@ -533,8 +551,10 @@ func (m *sessionManager) openStream() (net.Conn, error) {
 		stream, err := session.OpenStream(ctx)
 		cancel()
 		if err == nil {
-			return stream, nil
+			return &trackedConn{Conn: stream, release: release}, nil
 		}
+		release()
+		m.recordSessionFailure(session)
 		log.Printf("open stream via %s failed: %v", session.RemoteAddr(), err)
 		m.clearCurrent(session)
 	}
@@ -544,26 +564,32 @@ func (m *sessionManager) openStream() (net.Conn, error) {
 func (m *sessionManager) openCommand(command string) (net.Conn, *bufio.Reader, string, error) {
 	attempts := m.sessionCount()
 	for attempt := 0; attempt < attempts; attempt++ {
-		session := m.pickSession()
+		session, release := m.reserveSession()
 		if session == nil {
 			return nil, nil, "", errors.New("reverse client is not connected")
 		}
+		started := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		stream, err := session.OpenStream(ctx)
 		cancel()
 		if err != nil {
+			release()
+			m.recordSessionFailure(session)
 			log.Printf("open stream via %s failed: %v", session.RemoteAddr(), err)
 			m.clearCurrent(session)
 			continue
 		}
+		tracked := &trackedConn{Conn: stream, release: release}
 		if err := stream.SetDeadline(time.Now().Add(reverseCommandTimeout)); err != nil {
-			_ = stream.Close()
+			_ = tracked.Close()
+			m.recordSessionFailure(session)
 			log.Printf("set reverse command deadline via %s failed: %v", session.RemoteAddr(), err)
 			m.clearCurrent(session)
 			continue
 		}
 		if _, err := fmt.Fprintf(stream, "%s\n", command); err != nil {
-			_ = stream.Close()
+			_ = tracked.Close()
+			m.recordSessionFailure(session)
 			log.Printf("write reverse command via %s failed: %v", session.RemoteAddr(), err)
 			m.clearCurrent(session)
 			continue
@@ -571,18 +597,21 @@ func (m *sessionManager) openCommand(command string) (net.Conn, *bufio.Reader, s
 		reader := bufio.NewReader(stream)
 		status, err := reader.ReadString('\n')
 		if err != nil {
-			_ = stream.Close()
+			_ = tracked.Close()
+			m.recordSessionFailure(session)
 			log.Printf("read reverse command response via %s failed: %v", session.RemoteAddr(), err)
 			m.clearCurrent(session)
 			continue
 		}
 		if err := stream.SetDeadline(time.Time{}); err != nil {
-			_ = stream.Close()
+			_ = tracked.Close()
+			m.recordSessionFailure(session)
 			log.Printf("clear reverse command deadline via %s failed: %v", session.RemoteAddr(), err)
 			m.clearCurrent(session)
 			continue
 		}
-		return stream, reader, strings.TrimSpace(status), nil
+		m.recordSessionSuccess(session, time.Since(started))
+		return tracked, reader, strings.TrimSpace(status), nil
 	}
 	return nil, nil, "", errors.New("no usable reverse client session")
 }
@@ -594,6 +623,9 @@ func (m *sessionManager) sessionCount() int {
 	filtered := m.sessions[:0]
 	for _, session := range m.sessions {
 		if session.IsClosed() {
+			if m.sessionStats != nil {
+				delete(m.sessionStats, session)
+			}
 			continue
 		}
 		filtered = append(filtered, session)
@@ -608,24 +640,128 @@ func (m *sessionManager) sessionCount() int {
 	return count
 }
 
-func (m *sessionManager) pickSession() tunnelSession {
+func (m *sessionManager) reserveSession() (tunnelSession, func()) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if len(m.sessions) == 0 {
-		return nil
+		return nil, func() {}
 	}
+	if m.sessionStats == nil {
+		m.sessionStats = map[tunnelSession]*sessionHealth{}
+	}
+	filtered := m.sessions[:0]
+	for _, session := range m.sessions {
+		if session.IsClosed() {
+			delete(m.sessionStats, session)
+			continue
+		}
+		filtered = append(filtered, session)
+	}
+	m.sessions = filtered
+	if len(m.sessions) == 0 {
+		m.next = 0
+		return nil, func() {}
+	} else if m.next >= len(m.sessions) {
+		m.next %= len(m.sessions)
+	}
+
+	bestIdx := -1
+	var bestScore time.Duration
 	for i := 0; i < len(m.sessions); i++ {
 		idx := (m.next + i) % len(m.sessions)
 		session := m.sessions[idx]
-		if session.IsClosed() {
-			continue
+		score := m.sessionScoreLocked(session)
+		if bestIdx == -1 || score < bestScore {
+			bestIdx = idx
+			bestScore = score
 		}
-		m.next = (idx + 1) % len(m.sessions)
-		return session
+	}
+	if bestIdx >= 0 {
+		session := m.sessions[bestIdx]
+		m.sessionStats[session].activeStreams++
+		m.next = (bestIdx + 1) % len(m.sessions)
+		var once sync.Once
+		release := func() {
+			once.Do(func() {
+				m.releaseSession(session)
+			})
+		}
+		return session, release
 	}
 	m.sessions = nil
 	m.next = 0
-	return nil
+	return nil, func() {}
+}
+
+func (m *sessionManager) sessionScoreLocked(session tunnelSession) time.Duration {
+	health := m.sessionStats[session]
+	if health == nil {
+		health = &sessionHealth{}
+		m.sessionStats[session] = health
+	}
+
+	score := time.Duration(health.activeStreams) * 10 * time.Second
+	score += time.Duration(health.consecutiveFailures) * 30 * time.Second
+	if health.ewmaCommandRTT > 0 {
+		score += health.ewmaCommandRTT
+	}
+	if !health.lastFailure.IsZero() {
+		if since := time.Since(health.lastFailure); since < 30*time.Second {
+			score += 30*time.Second - since
+		}
+	}
+	return score
+}
+
+func (m *sessionManager) releaseSession(session tunnelSession) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	health := m.sessionStats[session]
+	if health != nil && health.activeStreams > 0 {
+		health.activeStreams--
+	}
+}
+
+func (m *sessionManager) recordSessionSuccess(session tunnelSession, rtt time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	health := m.sessionStats[session]
+	if health == nil {
+		return
+	}
+	health.consecutiveFailures = 0
+	health.lastFailure = time.Time{}
+	if rtt <= 0 {
+		return
+	}
+	if health.ewmaCommandRTT == 0 {
+		health.ewmaCommandRTT = rtt
+		return
+	}
+	health.ewmaCommandRTT = (health.ewmaCommandRTT*7 + rtt) / 8
+}
+
+func (m *sessionManager) recordSessionFailure(session tunnelSession) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	health := m.sessionStats[session]
+	if health == nil {
+		return
+	}
+	health.consecutiveFailures++
+	health.lastFailure = time.Now()
+}
+
+type trackedConn struct {
+	net.Conn
+	once    sync.Once
+	release func()
+}
+
+func (c *trackedConn) Close() error {
+	err := c.Conn.Close()
+	c.once.Do(c.release)
+	return err
 }
 
 func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
