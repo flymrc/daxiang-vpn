@@ -44,15 +44,52 @@ Hub still accepts plain `OK`, so mixed-version rollback remains compatible.
 
 ## Deployment
 
-Not deployed yet. This requires replacing both Hub `linux/amd64` and Android
-`linux/arm64` binaries because Android now reports `target_dial_ms` and Hub
-records it.
+Deployed to production on 2026-06-14. Hub was deployed before Android because
+new Hub accepts old plain `OK`, while old Hub would not accept Android's new
+`OK target_dial_ms=<n>` status.
 
-Suggested smoke after deployment:
+- Hub binary SHA256:
+  `55fc6e8f91ef14b7c9a6490fcfa48f4194e68138f66b2ff2e8ab9bc5fa231267`
+- Hub backup:
+  `/opt/zongheng/zhreverse/zhreverse.bak-20260614-tail-latency`
+- Android binary SHA256:
+  `0cbb1e5ce0a68b07d37ea420ec44e023ac9055cd4ded94b5eff98b641a746fa5`
+- Android backup:
+  `/data/adb/zhreverse/bin/zhreverse.bak-20260614-tail-latency`
+- Hub service after deploy: `zhreverse-hub.service` active, PID `253318`.
+- Android client after deploy: `zhreverse client`, PID `18902`.
+
+Post-deploy health:
+
+- `scripts/check-android-egress-health.ps1` passed.
+- `session_count=2`.
+- Both sessions had `consecutive_failures=0`.
+- v6 egress remained Rakuten `240b:...`; v4 egress remained phone CGNAT.
+- Hub route MTU, TCPMSS rule, and WireGuard handshake were healthy.
+
+Tail latency baseline, `scripts/measure-android-tail-latency.ps1 -Runs 30`:
+
+```text
+api64.ipify.org:                 30/30 ok, total_ms p50=756.88 p95=1083.24 p99=1321.40
+speed.cloudflare.com 1KB:        30/30 ok, total_ms p50=368.09 p95=779.56  p99=854.80
+www.cloudflare.com/cdn-cgi/trace 30/30 ok, total_ms p50=518.88 p95=1132.87 p99=1168.26
+Hub proxy_metrics first_byte_ms:           p50=422    p95=870     p99=1180
+Hub active_proxy_connections_peak=2
+```
+
+`proxy_metrics.failures=8` immediately after deployment; all recent failures
+were `no usable reverse client session` during the Hub restart / Android
+reconnect window. A follow-up health check passed in steady state.
+
+Rollback:
 
 ```powershell
-.\scripts\check-android-egress-health.ps1
-.\scripts\measure-android-tail-latency.ps1 -Runs 30
+# Hub: restore /opt/zongheng/zhreverse/zhreverse.bak-20260614-tail-latency
+# to /opt/zongheng/zhreverse/zhreverse, then restart zhreverse-hub.service.
+
+# Android: restore
+# /data/adb/zhreverse/bin/zhreverse.bak-20260614-tail-latency
+# to /data/adb/zhreverse/bin/zhreverse, chmod 700, then pkill zhreverse.
 ```
 
 Decision rule:

@@ -20,7 +20,7 @@
 | 8 | Hub session 健康观测接口 | ~30min | 7 | ✅ 已部署 2026-06-14 |
 | 9 | reverse tunnel micro-benchmark | ~45min | 8 | ✅ 已部署 2026-06-14 |
 | 10 | opt-in striped CONNECT 原型 | ~2h | 9 | ✅ 已部署 2026-06-14 |
-| 11 | 小请求尾延迟指标与脚本 | ~1h | 8 | ✅ 已实现待部署 |
+| 11 | 小请求尾延迟指标与脚本 | ~1h | 8 | ✅ 已部署 2026-06-14 |
 
 ---
 
@@ -166,7 +166,7 @@ curl --proxy http://10.66.0.1:18081 \
 
 下一步应继续观察真实下载和手机温度。如果连续多轮收益稳定,再考虑按文件大小/域名/内容长度自动启用;若收益不稳定,保留为诊断开关。
 
-## 11. 小请求尾延迟指标与脚本 ✅ 已实现待部署
+## 11. 小请求尾延迟指标与脚本 ✅ 已部署 2026-06-14
 
 **动机**：日常没有大文件下载需求时,优化目标应从 Mbps 切到网页小请求的 p95/p99、首字节和并发峰值。发热也更可能来自浏览器瞬时 CONNECT 并发和长尾重试,而不是单次下载吞吐。
 
@@ -177,7 +177,22 @@ curl --proxy http://10.66.0.1:18081 \
 - Android CONNECT 成功响应从 `OK` 扩展为 `OK target_dial_ms=<n>`,Hub 兼容旧的纯 `OK`。
 - 新增 `scripts/measure-android-tail-latency.ps1`,从 Hub 侧顺序跑 30-100 次小 HTTPS 请求,输出 curl 视角 `appconnect`、`starttransfer`、`total` 的 p50/p95/p99,并拉取 Hub 侧滚动指标对照。
 
-**验收**：`go test ./egress/reverse -run 'ProxyMetrics|PipeBothMeasured|ParseReverseOKStatus|SessionHealth|Striped|TunnelBench|OpenCommand' -count=1`、`go test ./egress/reverse` 与 `go test ./...` 均已通过。
+**验收**：`go test ./egress/reverse -run 'ProxyMetrics|PipeBothMeasured|ParseReverseOKStatus|SessionHealth|Striped|TunnelBench|OpenCommand' -count=1`、`go test ./egress/reverse` 与 `go test ./...` 均已通过。Hub 与 Android 均已部署：
+
+- Hub SHA256 `55fc6e8f91ef14b7c9a6490fcfa48f4194e68138f66b2ff2e8ab9bc5fa231267`,备份 `/opt/zongheng/zhreverse/zhreverse.bak-20260614-tail-latency`。
+- Android SHA256 `0cbb1e5ce0a68b07d37ea420ec44e023ac9055cd4ded94b5eff98b641a746fa5`,备份 `/data/adb/zhreverse/bin/zhreverse.bak-20260614-tail-latency`。
+
+部署后健康检查 PASS：`session_count=2`,两条 session `consecutive_failures=0`,v6/v4 出口、MTU/TCPMSS、WireGuard handshake 均正常。`measure-android-tail-latency.ps1 -Runs 30` 三个小 HTTPS 目标均 `30/30` 成功：
+
+```text
+api64.ipify.org:                 total_ms p50=756.88 p95=1083.24 p99=1321.40
+speed.cloudflare.com 1KB:        total_ms p50=368.09 p95=779.56  p99=854.80
+www.cloudflare.com/cdn-cgi/trace total_ms p50=518.88 p95=1132.87 p99=1168.26
+Hub proxy_metrics first_byte_ms: p50=422    p95=870     p99=1180
+Hub active_proxy_connections_peak=2
+```
+
+Hub `proxy_metrics` 里部署后有 `8` 个历史失败样本,均发生在 Hub 重启后 Android reverse session 尚未重连的窗口,错误为 `no usable reverse client session`;稳态复查健康检查为 PASS。
 
 **部署后判读**：
 
