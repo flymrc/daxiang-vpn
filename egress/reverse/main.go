@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -55,6 +56,11 @@ const (
 	maxStripedPendingBytes    = 8 * 1024 * 1024
 	stripedLaneAttachTimeout  = 10 * time.Second
 	stripedTargetReadyTimeout = 10 * time.Second
+)
+
+const (
+	proxyMetricSampleLimit        = 512
+	proxyMetricRecentFailureLimit = 16
 )
 
 func main() {
@@ -480,19 +486,23 @@ func (s *quicSession) RemoteAddr() net.Addr {
 }
 
 type sessionManager struct {
-	mu                sync.RWMutex
-	sessions          []tunnelSession
-	sessionStats      map[tunnelSession]*sessionHealth
-	next              int
-	resolve           string
-	fetch             bool
-	allowedProxyNets  []*net.IPNet
-	maxProxyConns     int
-	maxProxyConnsPeer int
-	proxyIdleTimeout  time.Duration
-	activeProxyMu     sync.Mutex
-	activeProxyConns  int
-	activeProxyByPeer map[string]int
+	mu                    sync.RWMutex
+	sessions              []tunnelSession
+	sessionStats          map[tunnelSession]*sessionHealth
+	next                  int
+	resolve               string
+	fetch                 bool
+	allowedProxyNets      []*net.IPNet
+	maxProxyConns         int
+	maxProxyConnsPeer     int
+	proxyIdleTimeout      time.Duration
+	activeProxyMu         sync.Mutex
+	activeProxyConns      int
+	activeProxyByPeer     map[string]int
+	activeProxyPeak       int
+	activeProxyPeakByPeer map[string]int
+	proxyMetricsMu        sync.Mutex
+	proxyMetrics          proxyMetricStore
 }
 
 type sessionHealth struct {
@@ -508,6 +518,12 @@ type sessionHealthReport struct {
 	Sessions                     []sessionHealthEntry `json:"sessions"`
 	ActiveProxyConnections       int                  `json:"active_proxy_connections"`
 	ActiveProxyConnectionsByPeer map[string]int       `json:"active_proxy_connections_by_peer,omitempty"`
+	ActiveProxyConnectionsPeak   int                  `json:"active_proxy_connections_peak,omitempty"`
+	ActiveProxyPeakByPeer        map[string]int       `json:"active_proxy_connections_peak_by_peer,omitempty"`
+	MaxProxyConnections          int                  `json:"max_proxy_connections,omitempty"`
+	MaxProxyConnectionsPerClient int                  `json:"max_proxy_connections_per_client,omitempty"`
+	ProxyIdleTimeoutMillis       int64                `json:"proxy_idle_timeout_ms,omitempty"`
+	ProxyMetrics                 proxyMetricReport    `json:"proxy_metrics"`
 }
 
 type sessionHealthEntry struct {
@@ -542,6 +558,74 @@ type tunnelBenchStreamEntry struct {
 	Mbps             float64 `json:"mbps"`
 	CommandRTTMillis int64   `json:"command_rtt_ms"`
 	Error            string  `json:"error,omitempty"`
+}
+
+type proxyMetricStore struct {
+	TotalConnects  int64
+	Successes      int64
+	Failures       int64
+	Samples        []proxyMetricSample
+	RecentFailures []proxyMetricFailure
+}
+
+type proxyMetricSample struct {
+	StartedAt           time.Time
+	Peer                string
+	Target              string
+	Striped             bool
+	Success             bool
+	Status              string
+	Error               string
+	SetupLatency        time.Duration
+	TargetDialLatency   time.Duration
+	FirstByteLatency    time.Duration
+	TotalDuration       time.Duration
+	ClientToTargetBytes int64
+	TargetToClientBytes int64
+}
+
+type proxyMetricFailure struct {
+	At                 time.Time `json:"at"`
+	Peer               string    `json:"peer,omitempty"`
+	Target             string    `json:"target,omitempty"`
+	Striped            bool      `json:"striped,omitempty"`
+	Status             string    `json:"status,omitempty"`
+	Error              string    `json:"error,omitempty"`
+	SetupLatencyMillis int64     `json:"setup_latency_ms,omitempty"`
+	TotalMillis        int64     `json:"total_ms,omitempty"`
+}
+
+type proxyMetricReport struct {
+	WindowSize              int                  `json:"window_size"`
+	SampleCount             int                  `json:"sample_count"`
+	TotalConnects           int64                `json:"total_connects"`
+	Successes               int64                `json:"successes"`
+	Failures                int64                `json:"failures"`
+	SetupLatencyMillis      latencySummary       `json:"setup_latency_ms"`
+	TargetDialLatencyMillis latencySummary       `json:"target_dial_latency_ms"`
+	FirstByteLatencyMillis  latencySummary       `json:"first_byte_latency_ms"`
+	TotalDurationMillis     latencySummary       `json:"total_duration_ms"`
+	TargetToClientBytes     byteSummary          `json:"target_to_client_bytes"`
+	ClientToTargetBytes     byteSummary          `json:"client_to_target_bytes"`
+	RecentFailures          []proxyMetricFailure `json:"recent_failures,omitempty"`
+}
+
+type latencySummary struct {
+	Count int   `json:"count"`
+	P50   int64 `json:"p50,omitempty"`
+	P95   int64 `json:"p95,omitempty"`
+	P99   int64 `json:"p99,omitempty"`
+	Max   int64 `json:"max,omitempty"`
+}
+
+type byteSummary struct {
+	Count int   `json:"count"`
+	Avg   int64 `json:"avg,omitempty"`
+	Max   int64 `json:"max,omitempty"`
+}
+
+type reverseOKStatus struct {
+	TargetDialLatency time.Duration
 }
 
 func (m *sessionManager) set(session tunnelSession) {
@@ -830,13 +914,25 @@ func (m *sessionManager) sessionHealthSnapshot() sessionHealthReport {
 
 	m.activeProxyMu.Lock()
 	report.ActiveProxyConnections = m.activeProxyConns
+	report.ActiveProxyConnectionsPeak = m.activeProxyPeak
+	report.MaxProxyConnections = m.maxProxyConns
+	report.MaxProxyConnectionsPerClient = m.maxProxyConnsPeer
+	report.ProxyIdleTimeoutMillis = m.proxyIdleTimeout.Milliseconds()
 	if len(m.activeProxyByPeer) > 0 {
 		report.ActiveProxyConnectionsByPeer = make(map[string]int, len(m.activeProxyByPeer))
 		for peer, count := range m.activeProxyByPeer {
 			report.ActiveProxyConnectionsByPeer[peer] = count
 		}
 	}
+	if len(m.activeProxyPeakByPeer) > 0 {
+		report.ActiveProxyPeakByPeer = make(map[string]int, len(m.activeProxyPeakByPeer))
+		for peer, count := range m.activeProxyPeakByPeer {
+			report.ActiveProxyPeakByPeer[peer] = count
+		}
+	}
 	m.activeProxyMu.Unlock()
+
+	report.ProxyMetrics = m.proxyMetricsSnapshot()
 
 	return report
 }
@@ -917,8 +1013,16 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "CONNECT only", http.StatusMethodNotAllowed)
 		return
 	}
+	metric := proxyMetricSample{
+		StartedAt: time.Now(),
+		Peer:      proxyPeer(req.RemoteAddr),
+		Target:    req.Host,
+	}
 	release, ok, reason := m.acquireProxySlot(req.RemoteAddr)
 	if !ok {
+		metric.Status = "rejected"
+		metric.Error = reason
+		m.recordProxyMetric(metric)
 		http.Error(w, reason, http.StatusTooManyRequests)
 		return
 	}
@@ -928,6 +1032,9 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 	if m.resolve == "server" {
 		resolvedTarget, err := resolveTarget(req.Host)
 		if err != nil {
+			metric.Status = "resolve_failed"
+			metric.Error = err.Error()
+			m.recordProxyMetric(metric)
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
@@ -935,39 +1042,72 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 	}
 	stripedStreams, striped, err := parseStripedConnectRequest(req)
 	if err != nil {
+		metric.Status = "bad_request"
+		metric.Error = err.Error()
+		m.recordProxyMetric(metric)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if striped {
-		m.handleStripedConnect(w, target, stripedStreams)
+		metric.Striped = true
+		m.handleStripedConnect(w, target, stripedStreams, metric)
 		return
 	}
 
+	setupStarted := time.Now()
 	stream, streamReader, status, err := m.openCommand("CONNECT " + target)
+	metric.SetupLatency = time.Since(setupStarted)
 	if err != nil {
+		metric.Status = "open_command_failed"
+		metric.Error = err.Error()
+		m.recordProxyMetric(metric)
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 	defer stream.Close()
-	if strings.TrimSpace(status) != "OK" {
+	okStatus, ok := parseReverseOKStatus(status)
+	if !ok {
+		metric.Status = "target_failed"
+		metric.Error = strings.TrimSpace(status)
+		m.recordProxyMetric(metric)
 		http.Error(w, strings.TrimSpace(status), http.StatusBadGateway)
 		return
 	}
+	metric.TargetDialLatency = okStatus.TargetDialLatency
 
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
+		metric.Status = "hijack_unsupported"
+		metric.Error = "hijacking not supported"
+		m.recordProxyMetric(metric)
 		http.Error(w, "hijacking not supported", http.StatusInternalServerError)
 		return
 	}
 	clientConn, _, err := hijacker.Hijack()
 	if err != nil {
+		metric.Status = "hijack_failed"
+		metric.Error = err.Error()
+		m.recordProxyMetric(metric)
 		return
 	}
 	defer clientConn.Close()
 	if _, err := io.WriteString(clientConn, "HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
+		metric.Status = "write_connect_response_failed"
+		metric.Error = err.Error()
+		m.recordProxyMetric(metric)
 		return
 	}
-	pipeBoth(clientConn, &bufferedConn{Conn: stream, reader: streamReader}, m.proxyIdleTimeout)
+	pipeStarted := time.Now()
+	transfer := pipeBothMeasured(clientConn, &bufferedConn{Conn: stream, reader: streamReader}, m.proxyIdleTimeout)
+	if transfer.FirstTargetByteAfter > 0 {
+		metric.FirstByteLatency = pipeStarted.Sub(metric.StartedAt) + transfer.FirstTargetByteAfter
+	}
+	metric.ClientToTargetBytes = transfer.ClientToTargetBytes
+	metric.TargetToClientBytes = transfer.TargetToClientBytes
+	metric.Success = true
+	metric.Status = "ok"
+	metric.TotalDuration = time.Since(metric.StartedAt)
+	m.recordProxyMetric(metric)
 }
 
 func parseStripedConnectRequest(req *http.Request) (int, bool, error) {
@@ -993,9 +1133,15 @@ type stripedHubLane struct {
 	reader *bufio.Reader
 }
 
-func (m *sessionManager) handleStripedConnect(w http.ResponseWriter, target string, streams int) {
-	lanes, err := m.openStripedConnect(target, streams)
+func (m *sessionManager) handleStripedConnect(w http.ResponseWriter, target string, streams int, metric proxyMetricSample) {
+	setupStarted := time.Now()
+	lanes, okStatus, err := m.openStripedConnect(target, streams)
+	metric.SetupLatency = time.Since(setupStarted)
+	metric.TargetDialLatency = okStatus.TargetDialLatency
 	if err != nil {
+		metric.Status = "open_striped_failed"
+		metric.Error = err.Error()
+		m.recordProxyMetric(metric)
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
@@ -1003,38 +1149,62 @@ func (m *sessionManager) handleStripedConnect(w http.ResponseWriter, target stri
 
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
+		metric.Status = "hijack_unsupported"
+		metric.Error = "hijacking not supported"
+		m.recordProxyMetric(metric)
 		http.Error(w, "hijacking not supported", http.StatusInternalServerError)
 		return
 	}
 	clientConn, _, err := hijacker.Hijack()
 	if err != nil {
+		metric.Status = "hijack_failed"
+		metric.Error = err.Error()
+		m.recordProxyMetric(metric)
 		return
 	}
 	defer clientConn.Close()
 	if _, err := io.WriteString(clientConn, "HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
+		metric.Status = "write_connect_response_failed"
+		metric.Error = err.Error()
+		m.recordProxyMetric(metric)
 		return
 	}
-	relayStripedConnect(clientConn, lanes)
+	pipeStarted := time.Now()
+	transfer := relayStripedConnect(clientConn, lanes)
+	if transfer.FirstTargetByteAfter > 0 {
+		metric.FirstByteLatency = pipeStarted.Sub(metric.StartedAt) + transfer.FirstTargetByteAfter
+	}
+	metric.ClientToTargetBytes = transfer.ClientToTargetBytes
+	metric.TargetToClientBytes = transfer.TargetToClientBytes
+	metric.Success = true
+	metric.Status = "ok"
+	metric.TotalDuration = time.Since(metric.StartedAt)
+	m.recordProxyMetric(metric)
 }
 
-func (m *sessionManager) openStripedConnect(target string, streams int) ([]stripedHubLane, error) {
+func (m *sessionManager) openStripedConnect(target string, streams int) ([]stripedHubLane, reverseOKStatus, error) {
 	id := newStripedConnectID()
 	lanes := make([]stripedHubLane, 0, streams)
+	var okStatus reverseOKStatus
 	for i := 0; i < streams; i++ {
 		command := fmt.Sprintf("STRIPED_CONNECT %s %d %d %s", id, i, streams, target)
 		conn, reader, status, err := m.openCommand(command)
 		if err != nil {
 			closeStripedHubLanes(lanes)
-			return nil, err
+			return nil, okStatus, err
 		}
-		if status != "OK" {
+		parsedStatus, ok := parseReverseOKStatus(status)
+		if !ok {
 			_ = conn.Close()
 			closeStripedHubLanes(lanes)
-			return nil, fmt.Errorf("striped connect lane %d: %s", i, status)
+			return nil, okStatus, fmt.Errorf("striped connect lane %d: %s", i, status)
+		}
+		if parsedStatus.TargetDialLatency > okStatus.TargetDialLatency {
+			okStatus.TargetDialLatency = parsedStatus.TargetDialLatency
 		}
 		lanes = append(lanes, stripedHubLane{conn: conn, reader: reader})
 	}
-	return lanes, nil
+	return lanes, okStatus, nil
 }
 
 func newStripedConnectID() string {
@@ -1061,10 +1231,18 @@ type stripedFrameResult struct {
 	err  error
 }
 
-func relayStripedConnect(client net.Conn, lanes []stripedHubLane) {
+type proxyTransferStats struct {
+	ClientToTargetBytes  int64
+	TargetToClientBytes  int64
+	FirstTargetByteAfter time.Duration
+}
+
+func relayStripedConnect(client net.Conn, lanes []stripedHubLane) proxyTransferStats {
+	var stats proxyTransferStats
 	if len(lanes) == 0 {
-		return
+		return stats
 	}
+	started := time.Now()
 	done := make(chan struct{})
 	var closeOnce sync.Once
 	closeAll := func() {
@@ -1076,8 +1254,12 @@ func relayStripedConnect(client net.Conn, lanes []stripedHubLane) {
 	}
 	defer closeAll()
 
+	var uploadWG sync.WaitGroup
+	uploadWG.Add(1)
 	go func() {
-		_, _ = io.Copy(lanes[0].conn, client)
+		defer uploadWG.Done()
+		copied, _ := io.Copy(lanes[0].conn, client)
+		stats.ClientToTargetBytes = copied
 		closeAll()
 	}()
 
@@ -1085,9 +1267,15 @@ func relayStripedConnect(client net.Conn, lanes []stripedHubLane) {
 	for i := range lanes {
 		go readStripedFrames(done, i, lanes[i].reader, frames)
 	}
-	if err := writeOrderedStripedFrames(client, frames, len(lanes)); err != nil {
+	downloadStats, err := writeOrderedStripedFramesMeasured(client, frames, len(lanes), started)
+	stats.TargetToClientBytes = downloadStats.TargetToClientBytes
+	stats.FirstTargetByteAfter = downloadStats.FirstTargetByteAfter
+	if err != nil {
 		log.Printf("striped connect relay failed: %v", err)
 	}
+	closeAll()
+	uploadWG.Wait()
+	return stats
 }
 
 func readStripedFrames(done <-chan struct{}, lane int, reader *bufio.Reader, out chan<- stripedFrameResult) {
@@ -1106,6 +1294,12 @@ func readStripedFrames(done <-chan struct{}, lane int, reader *bufio.Reader, out
 }
 
 func writeOrderedStripedFrames(client io.Writer, frames <-chan stripedFrameResult, laneCount int) error {
+	_, err := writeOrderedStripedFramesMeasured(client, frames, laneCount, time.Now())
+	return err
+}
+
+func writeOrderedStripedFramesMeasured(client io.Writer, frames <-chan stripedFrameResult, laneCount int, started time.Time) (proxyTransferStats, error) {
+	var stats proxyTransferStats
 	nextSeq := uint64(0)
 	activeReaders := laneCount
 	pending := map[uint64][]byte{}
@@ -1119,7 +1313,7 @@ func writeOrderedStripedFrames(client io.Writer, frames <-chan stripedFrameResul
 				activeReaders--
 				continue
 			}
-			return result.err
+			return stats, result.err
 		}
 		if result.eof {
 			seq := result.seq
@@ -1128,20 +1322,25 @@ func writeOrderedStripedFrames(client io.Writer, frames <-chan stripedFrameResul
 			pending[result.seq] = result.data
 			pendingBytes += len(result.data)
 			if pendingBytes > maxStripedPendingBytes {
-				return errors.New("striped pending window exceeded")
+				return stats, errors.New("striped pending window exceeded")
 			}
 		}
 
 		for {
 			if eofSeq != nil && nextSeq == *eofSeq {
-				return nil
+				return stats, nil
 			}
 			data, ok := pending[nextSeq]
 			if !ok {
 				break
 			}
-			if _, err := client.Write(data); err != nil {
-				return err
+			if stats.TargetToClientBytes == 0 {
+				stats.FirstTargetByteAfter = time.Since(started)
+			}
+			n, err := client.Write(data)
+			stats.TargetToClientBytes += int64(n)
+			if err != nil {
+				return stats, err
 			}
 			delete(pending, nextSeq)
 			pendingBytes -= len(data)
@@ -1149,9 +1348,9 @@ func writeOrderedStripedFrames(client io.Writer, frames <-chan stripedFrameResul
 		}
 	}
 	if eofSeq != nil && nextSeq == *eofSeq {
-		return nil
+		return stats, nil
 	}
-	return io.ErrUnexpectedEOF
+	return stats, io.ErrUnexpectedEOF
 }
 
 func writeStripedFrame(writer io.Writer, seq uint64, data []byte) error {
@@ -1339,6 +1538,164 @@ func bytesPerSecondToMbps(bytesPerSecond float64) float64 {
 	return bytesPerSecond * 8 / 1_000_000
 }
 
+func parseReverseOKStatus(status string) (reverseOKStatus, bool) {
+	fields := strings.Fields(strings.TrimSpace(status))
+	if len(fields) == 0 || fields[0] != "OK" {
+		return reverseOKStatus{}, false
+	}
+	parsed := reverseOKStatus{}
+	for _, field := range fields[1:] {
+		key, value, ok := strings.Cut(field, "=")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "target_dial_ms":
+			ms, err := strconv.ParseInt(value, 10, 64)
+			if err == nil && ms >= 0 {
+				parsed.TargetDialLatency = time.Duration(ms) * time.Millisecond
+			}
+		}
+	}
+	return parsed, true
+}
+
+func (m *sessionManager) recordProxyMetric(sample proxyMetricSample) {
+	if sample.StartedAt.IsZero() {
+		sample.StartedAt = time.Now()
+	}
+	if sample.TotalDuration <= 0 {
+		sample.TotalDuration = time.Since(sample.StartedAt)
+	}
+	m.proxyMetricsMu.Lock()
+	defer m.proxyMetricsMu.Unlock()
+
+	m.proxyMetrics.TotalConnects++
+	if sample.Success {
+		m.proxyMetrics.Successes++
+	} else {
+		m.proxyMetrics.Failures++
+		failure := proxyMetricFailure{
+			At:                 time.Now(),
+			Peer:               sample.Peer,
+			Target:             sample.Target,
+			Striped:            sample.Striped,
+			Status:             sample.Status,
+			Error:              sample.Error,
+			SetupLatencyMillis: sample.SetupLatency.Milliseconds(),
+			TotalMillis:        sample.TotalDuration.Milliseconds(),
+		}
+		m.proxyMetrics.RecentFailures = append(m.proxyMetrics.RecentFailures, failure)
+		if len(m.proxyMetrics.RecentFailures) > proxyMetricRecentFailureLimit {
+			copy(m.proxyMetrics.RecentFailures, m.proxyMetrics.RecentFailures[1:])
+			m.proxyMetrics.RecentFailures = m.proxyMetrics.RecentFailures[:proxyMetricRecentFailureLimit]
+		}
+	}
+
+	m.proxyMetrics.Samples = append(m.proxyMetrics.Samples, sample)
+	if len(m.proxyMetrics.Samples) > proxyMetricSampleLimit {
+		copy(m.proxyMetrics.Samples, m.proxyMetrics.Samples[1:])
+		m.proxyMetrics.Samples = m.proxyMetrics.Samples[:proxyMetricSampleLimit]
+	}
+}
+
+func (m *sessionManager) proxyMetricsSnapshot() proxyMetricReport {
+	m.proxyMetricsMu.Lock()
+	defer m.proxyMetricsMu.Unlock()
+
+	samples := append([]proxyMetricSample(nil), m.proxyMetrics.Samples...)
+	failures := append([]proxyMetricFailure(nil), m.proxyMetrics.RecentFailures...)
+	report := proxyMetricReport{
+		WindowSize:     proxyMetricSampleLimit,
+		SampleCount:    len(samples),
+		TotalConnects:  m.proxyMetrics.TotalConnects,
+		Successes:      m.proxyMetrics.Successes,
+		Failures:       m.proxyMetrics.Failures,
+		RecentFailures: failures,
+	}
+	report.SetupLatencyMillis = summarizeLatency(samples, func(sample proxyMetricSample) time.Duration {
+		return sample.SetupLatency
+	})
+	report.TargetDialLatencyMillis = summarizeLatency(samples, func(sample proxyMetricSample) time.Duration {
+		return sample.TargetDialLatency
+	})
+	report.FirstByteLatencyMillis = summarizeLatency(samples, func(sample proxyMetricSample) time.Duration {
+		return sample.FirstByteLatency
+	})
+	report.TotalDurationMillis = summarizeLatency(samples, func(sample proxyMetricSample) time.Duration {
+		return sample.TotalDuration
+	})
+	report.TargetToClientBytes = summarizeBytes(samples, func(sample proxyMetricSample) int64 {
+		return sample.TargetToClientBytes
+	})
+	report.ClientToTargetBytes = summarizeBytes(samples, func(sample proxyMetricSample) int64 {
+		return sample.ClientToTargetBytes
+	})
+	return report
+}
+
+func summarizeLatency(samples []proxyMetricSample, pick func(proxyMetricSample) time.Duration) latencySummary {
+	values := make([]int64, 0, len(samples))
+	for _, sample := range samples {
+		if !sample.Success {
+			continue
+		}
+		value := pick(sample)
+		if value <= 0 {
+			continue
+		}
+		values = append(values, value.Milliseconds())
+	}
+	if len(values) == 0 {
+		return latencySummary{}
+	}
+	sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
+	return latencySummary{
+		Count: len(values),
+		P50:   percentileMillis(values, 0.50),
+		P95:   percentileMillis(values, 0.95),
+		P99:   percentileMillis(values, 0.99),
+		Max:   values[len(values)-1],
+	}
+}
+
+func percentileMillis(sortedValues []int64, percentile float64) int64 {
+	if len(sortedValues) == 0 {
+		return 0
+	}
+	index := int(float64(len(sortedValues))*percentile+0.999999) - 1
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(sortedValues) {
+		index = len(sortedValues) - 1
+	}
+	return sortedValues[index]
+}
+
+func summarizeBytes(samples []proxyMetricSample, pick func(proxyMetricSample) int64) byteSummary {
+	var summary byteSummary
+	var total int64
+	for _, sample := range samples {
+		if !sample.Success {
+			continue
+		}
+		value := pick(sample)
+		if value <= 0 {
+			continue
+		}
+		summary.Count++
+		total += value
+		if value > summary.Max {
+			summary.Max = value
+		}
+	}
+	if summary.Count > 0 {
+		summary.Avg = total / int64(summary.Count)
+	}
+	return summary
+}
+
 func (m *sessionManager) acquireProxySlot(remoteAddr string) (func(), bool, string) {
 	peer := proxyPeer(remoteAddr)
 
@@ -1355,8 +1712,17 @@ func (m *sessionManager) acquireProxySlot(remoteAddr string) (func(), bool, stri
 	if m.activeProxyByPeer == nil {
 		m.activeProxyByPeer = map[string]int{}
 	}
+	if m.activeProxyPeakByPeer == nil {
+		m.activeProxyPeakByPeer = map[string]int{}
+	}
 	m.activeProxyConns++
 	m.activeProxyByPeer[peer]++
+	if m.activeProxyConns > m.activeProxyPeak {
+		m.activeProxyPeak = m.activeProxyConns
+	}
+	if m.activeProxyByPeer[peer] > m.activeProxyPeakByPeer[peer] {
+		m.activeProxyPeakByPeer[peer] = m.activeProxyByPeer[peer]
+	}
 
 	var once sync.Once
 	return func() {
@@ -1713,12 +2079,14 @@ func handleConnectStream(stream net.Conn, reader *bufio.Reader, target string, o
 		_, _ = io.WriteString(stream, "ERR invalid command\n")
 		return
 	}
+	dialStarted := time.Now()
 	targetConn, err := dialTarget(target, opts.AddressFamily)
+	targetDialLatency := time.Since(dialStarted)
 	if err != nil {
 		_, _ = fmt.Fprintf(stream, "ERR %v\n", err)
 		return
 	}
-	if _, err := io.WriteString(stream, "OK\n"); err != nil {
+	if _, err := fmt.Fprintf(stream, "OK target_dial_ms=%d\n", targetDialLatency.Milliseconds()); err != nil {
 		_ = targetConn.Close()
 		return
 	}
@@ -1904,14 +2272,16 @@ func handleStripedConnectStream(stream net.Conn, args string, opts clientOptions
 
 func handleStripedPrimaryLane(stream net.Conn, group *stripedClientGroup, target string, opts clientOptions) {
 	defer stripedClientGroups.Delete(group.id)
+	dialStarted := time.Now()
 	targetConn, err := dialTarget(target, opts.AddressFamily)
+	targetDialLatency := time.Since(dialStarted)
 	if err != nil {
 		_, _ = fmt.Fprintf(stream, "ERR %v\n", err)
 		group.fail(err)
 		return
 	}
 	group.setTarget(targetConn)
-	if _, err := io.WriteString(stream, "OK\n"); err != nil {
+	if _, err := fmt.Fprintf(stream, "OK target_dial_ms=%d\n", targetDialLatency.Milliseconds()); err != nil {
 		group.fail(err)
 		return
 	}
@@ -2474,6 +2844,12 @@ func (c *bufferedConn) Read(p []byte) (int, error) {
 }
 
 func pipeBoth(a net.Conn, b net.Conn, idleTimeout time.Duration) {
+	_ = pipeBothMeasured(a, b, idleTimeout)
+}
+
+func pipeBothMeasured(a net.Conn, b net.Conn, idleTimeout time.Duration) proxyTransferStats {
+	var stats proxyTransferStats
+	started := time.Now()
 	var wg sync.WaitGroup
 	var closeOnce sync.Once
 	closeBoth := func() {
@@ -2492,30 +2868,40 @@ func pipeBoth(a net.Conn, b net.Conn, idleTimeout time.Duration) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		copyWithActivity(a, b, activity)
+		stats.TargetToClientBytes = copyWithActivity(a, b, activity, func() {
+			if stats.FirstTargetByteAfter == 0 {
+				stats.FirstTargetByteAfter = time.Since(started)
+			}
+		})
 		closeBoth()
 	}()
 	go func() {
 		defer wg.Done()
-		copyWithActivity(b, a, activity)
+		stats.ClientToTargetBytes = copyWithActivity(b, a, activity, nil)
 		closeBoth()
 	}()
 	wg.Wait()
 	close(done)
+	return stats
 }
 
-func copyWithActivity(dst net.Conn, src net.Conn, activity chan<- struct{}) {
+func copyWithActivity(dst net.Conn, src net.Conn, activity chan<- struct{}, onFirstBytes func()) int64 {
 	buffer := make([]byte, 32*1024)
+	var copied int64
 	for {
 		n, readErr := src.Read(buffer)
 		if n > 0 {
-			if _, writeErr := dst.Write(buffer[:n]); writeErr != nil {
-				return
+			if copied == 0 && onFirstBytes != nil {
+				onFirstBytes()
 			}
+			if _, writeErr := dst.Write(buffer[:n]); writeErr != nil {
+				return copied
+			}
+			copied += int64(n)
 			noteActivity(activity)
 		}
 		if readErr != nil {
-			return
+			return copied
 		}
 	}
 }

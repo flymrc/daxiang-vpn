@@ -204,6 +204,7 @@ cat /usr/local/sbin/zhvpn-sing-box-run.sh
 ```bash
 scripts/check-android-reverse-egress.sh
 curl -s http://10.66.0.1:18081/debug/session-health
+./scripts/measure-android-tail-latency.ps1 -Runs 50
 curl -s 'http://10.66.0.1:18081/debug/tunnel-bench?bytes=20000000&streams=1'
 curl -s 'http://10.66.0.1:18081/debug/tunnel-bench?bytes=20000000&streams=2'
 curl --proxy http://10.66.0.1:18081 \
@@ -233,7 +234,8 @@ iptables -L ufw-user-input -n -v --line-numbers | grep 18081
 判断：
 
 - 返回公网 IP 代表代理可用。
-- `/debug/session-health` 返回 `session_count`、每条 session 的 `active_streams`、`consecutive_failures`、`ewma_command_rtt_ms` 和 `scheduler_score_ms`；两条 Android 反连都在线时 `session_count` 应为 2。
+- `/debug/session-health` 返回 `session_count`、每条 session 的 `active_streams`、`consecutive_failures`、`ewma_command_rtt_ms` 和 `scheduler_score_ms`；两条 Android 反连都在线时 `session_count` 应为 2。新版本还返回 `active_proxy_connections_peak`、`active_proxy_connections_peak_by_peer` 和 `proxy_metrics`,用于观察最近 CONNECT 的 setup、Android target dial、首字节、总时长 p50/p95/p99、失败数和上下行字节。
+- `measure-android-tail-latency.ps1` 从 Hub 侧走 Android proxy 多轮请求小 HTTPS 目标,输出 curl 视角的 `appconnect`、`starttransfer`、`total` p50/p95/p99,并拉取 `/debug/session-health` 的 Hub 侧滚动指标;适合排查网页小请求尾延迟和发热前的并发峰值。
 - `/debug/tunnel-bench` 只测 Android 到 Hub 的 reverse tunnel 回传吞吐,不访问公网目标;用 `streams=1` vs `streams=2` 判断多 session 并行是否真的提高隧道腿容量。
 - `X-ZH-Striped-Streams: 2` 是实验性 per-request 开关,只用于验证大下载是否能吃到双 reverse stream 回传收益;默认代理请求不会启用。
 - 手机卡场景速度主要受手机上行到 Hub 限制。
@@ -271,7 +273,17 @@ iptables -L ufw-user-input -n -v --line-numbers | grep 18081
 脚本会从 Hub 侧走 `10.66.0.1:18081` 连续测速，并输出平均、最小、最大 Mbps。
 该脚本不依赖 ADB，适合手机不在身边但 Android 出口仍在线时使用。
 
-### 3.4 不用 ADB 远程控制 Android
+### 3.4 Windows 一键尾延迟测速
+
+在仓库根目录运行：
+
+```powershell
+.\scripts\measure-android-tail-latency.ps1 -Runs 50
+```
+
+脚本默认测试 `api64.ipify.org`、Cloudflare 1KB 下载和 `cdn-cgi/trace`,每个目标顺序跑 50 次,输出 `appconnect_ms`、`starttransfer_ms`、`total_ms` 的 p50/p95/p99/max。它还会读取 Hub `proxy_metrics`,用于对照 Hub 看到的 `first_byte_latency_ms`、失败数和并发峰值。若要对比实验性 striped CONNECT,可加 `-Striped`,但日常网页体验默认看普通 CONNECT。
+
+### 3.5 不用 ADB 远程控制 Android
 
 目标方案见 [egress/android-control](../../../egress/android-control/README.md)：手机端由 Magisk `service.d` 拉起 watchdog，watchdog 保证 Go SSH 控制面 `zhandroid-control` 只监听 WireGuard 内网 `10.66.0.101:2022`，并且只允许密钥登录。
 

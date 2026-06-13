@@ -20,6 +20,7 @@
 | 8 | Hub session 健康观测接口 | ~30min | 7 | ✅ 已部署 2026-06-14 |
 | 9 | reverse tunnel micro-benchmark | ~45min | 8 | ✅ 已部署 2026-06-14 |
 | 10 | opt-in striped CONNECT 原型 | ~2h | 9 | ✅ 已部署 2026-06-14 |
+| 11 | 小请求尾延迟指标与脚本 | ~1h | 8 | ✅ 已实现待部署 |
 
 ---
 
@@ -164,6 +165,26 @@ curl --proxy http://10.66.0.1:18081 \
 ```
 
 下一步应继续观察真实下载和手机温度。如果连续多轮收益稳定,再考虑按文件大小/域名/内容长度自动启用;若收益不稳定,保留为诊断开关。
+
+## 11. 小请求尾延迟指标与脚本 ✅ 已实现待部署
+
+**动机**：日常没有大文件下载需求时,优化目标应从 Mbps 切到网页小请求的 p95/p99、首字节和并发峰值。发热也更可能来自浏览器瞬时 CONNECT 并发和长尾重试,而不是单次下载吞吐。
+
+**实现**：
+
+- Hub `/debug/session-health` 增加 `active_proxy_connections_peak`、`active_proxy_connections_peak_by_peer` 和 `proxy_metrics`。
+- `proxy_metrics` 是进程内滚动窗口,统计最近 CONNECT 的 setup、Android target dial、first byte、total duration p50/p95/p99/max、失败数、最近失败和上下行字节。
+- Android CONNECT 成功响应从 `OK` 扩展为 `OK target_dial_ms=<n>`,Hub 兼容旧的纯 `OK`。
+- 新增 `scripts/measure-android-tail-latency.ps1`,从 Hub 侧顺序跑 30-100 次小 HTTPS 请求,输出 curl 视角 `appconnect`、`starttransfer`、`total` 的 p50/p95/p99,并拉取 Hub 侧滚动指标对照。
+
+**验收**：`go test ./egress/reverse -run 'ProxyMetrics|PipeBothMeasured|ParseReverseOKStatus|SessionHealth|Striped|TunnelBench|OpenCommand' -count=1`、`go test ./egress/reverse` 与 `go test ./...` 均已通过。
+
+**部署后判读**：
+
+- `setup_latency_ms` 高：Hub 打开 reverse stream / Android DNS+拨号慢,优先看 session RTT、失败和手机网络。
+- `target_dial_latency_ms` 高：Android 解析/拨目标慢,优先看 DNS 缓存命中和目标站。
+- `first_byte_latency_ms` 高但 setup 不高：目标 TLS/首包或 v4 首飞黑洞重试影响。
+- `active_proxy_connections_peak_by_peer` 高：客户端浏览器并发太猛,优先调 per-client 护栏或客户端策略。
 
 ## 5. WireGuard 控制面迁移到 Pixel
 

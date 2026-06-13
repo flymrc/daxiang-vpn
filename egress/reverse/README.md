@@ -142,6 +142,11 @@ Hub-side diagnostics are exposed at `GET /debug/session-health` on the same
 proxy listener. The endpoint is protected by `allowed_proxy_cidrs` and returns
 the current reverse session count, per-session active stream count, consecutive
 failure count, command RTT EWMA, scheduler score, and active proxy concurrency.
+It also includes a rolling in-memory CONNECT experience window with setup,
+Android target dial, first target byte, total duration, byte counts, recent
+failures, and active proxy concurrency peaks. This is meant for small-request
+tail-latency diagnosis and thermal/concurrency tuning; it does not persist
+request paths or response bodies.
 `GET /debug/tunnel-bench?bytes=<total>&streams=<n>` measures only Android ->
 Hub reverse tunnel throughput. It splits the requested byte count across up to
 8 reverse streams, asks Android to send synthetic bytes with the `BENCH`
@@ -165,6 +170,7 @@ Hub-side probe:
 ```sh
 scripts/check-android-reverse-egress.sh
 curl -s http://10.66.0.1:18081/debug/session-health
+./scripts/measure-android-tail-latency.ps1 -Runs 50
 curl -s 'http://10.66.0.1:18081/debug/tunnel-bench?bytes=20000000&streams=1'
 curl -s 'http://10.66.0.1:18081/debug/tunnel-bench?bytes=20000000&streams=2'
 curl --proxy http://10.66.0.1:18081 \

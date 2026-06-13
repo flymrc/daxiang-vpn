@@ -196,6 +196,109 @@ func TestPipeBothReapsIdleConnections(t *testing.T) {
 	}
 }
 
+func TestPipeBothMeasuredRecordsBytesAndFirstByte(t *testing.T) {
+	clientConn, proxyClient := net.Pipe()
+	reverseClient, reverseServer := net.Pipe()
+	defer clientConn.Close()
+	defer reverseServer.Close()
+
+	statsCh := make(chan proxyTransferStats, 1)
+	go func() {
+		statsCh <- pipeBothMeasured(proxyClient, reverseClient, 0)
+	}()
+
+	go func() {
+		_, _ = clientConn.Write([]byte("hello"))
+	}()
+	buf := make([]byte, 5)
+	if _, err := io.ReadFull(reverseServer, buf); err != nil {
+		t.Fatalf("read upload: %v", err)
+	}
+	if string(buf) != "hello" {
+		t.Fatalf("upload = %q", string(buf))
+	}
+
+	go func() {
+		time.Sleep(5 * time.Millisecond)
+		_, _ = reverseServer.Write([]byte("world"))
+		_ = reverseServer.Close()
+	}()
+	if _, err := io.ReadFull(clientConn, buf); err != nil {
+		t.Fatalf("read download: %v", err)
+	}
+	if string(buf) != "world" {
+		t.Fatalf("download = %q", string(buf))
+	}
+	_ = clientConn.Close()
+
+	select {
+	case stats := <-statsCh:
+		if stats.ClientToTargetBytes != 5 || stats.TargetToClientBytes != 5 {
+			t.Fatalf("stats bytes = %#v", stats)
+		}
+		if stats.FirstTargetByteAfter <= 0 {
+			t.Fatalf("missing first target byte latency: %#v", stats)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("pipe did not finish")
+	}
+}
+
+func TestParseReverseOKStatus(t *testing.T) {
+	status, ok := parseReverseOKStatus("OK target_dial_ms=123")
+	if !ok {
+		t.Fatal("status not recognized")
+	}
+	if status.TargetDialLatency != 123*time.Millisecond {
+		t.Fatalf("target dial = %s", status.TargetDialLatency)
+	}
+	if _, ok := parseReverseOKStatus("ERR dial failed"); ok {
+		t.Fatal("ERR status recognized as OK")
+	}
+	if _, ok := parseReverseOKStatus("OK"); !ok {
+		t.Fatal("plain OK should remain compatible")
+	}
+}
+
+func TestProxyMetricsSnapshotSummarizesLatency(t *testing.T) {
+	manager := &sessionManager{}
+	for i := 1; i <= 100; i++ {
+		manager.recordProxyMetric(proxyMetricSample{
+			StartedAt:           time.Now(),
+			Peer:                "10.66.0.20",
+			Target:              "example.com:443",
+			Success:             true,
+			Status:              "ok",
+			SetupLatency:        time.Duration(i) * time.Millisecond,
+			TargetDialLatency:   time.Duration(i*2) * time.Millisecond,
+			FirstByteLatency:    time.Duration(i*3) * time.Millisecond,
+			TotalDuration:       time.Duration(i*4) * time.Millisecond,
+			TargetToClientBytes: int64(i),
+		})
+	}
+	manager.recordProxyMetric(proxyMetricSample{
+		StartedAt: time.Now(),
+		Peer:      "10.66.0.20",
+		Target:    "bad.example:443",
+		Status:    "target_failed",
+		Error:     "dial failed",
+	})
+
+	report := manager.proxyMetricsSnapshot()
+	if report.TotalConnects != 101 || report.Successes != 100 || report.Failures != 1 {
+		t.Fatalf("counters = %#v", report)
+	}
+	if report.SetupLatencyMillis.P50 != 50 || report.SetupLatencyMillis.P95 != 95 || report.SetupLatencyMillis.P99 != 99 {
+		t.Fatalf("setup percentiles = %#v", report.SetupLatencyMillis)
+	}
+	if report.FirstByteLatencyMillis.P95 != 285 {
+		t.Fatalf("first byte p95 = %d", report.FirstByteLatencyMillis.P95)
+	}
+	if len(report.RecentFailures) != 1 || report.RecentFailures[0].Target != "bad.example:443" {
+		t.Fatalf("recent failures = %#v", report.RecentFailures)
+	}
+}
+
 func resetDNSCache() {
 	dnsCacheMu.Lock()
 	defer dnsCacheMu.Unlock()
@@ -780,7 +883,7 @@ func TestStripedConnectRelaysDownloadInOrder(t *testing.T) {
 			stripedTunnelSession("lane1"),
 		},
 	}
-	lanes, err := manager.openStripedConnect(ln.Addr().String(), 2)
+	lanes, _, err := manager.openStripedConnect(ln.Addr().String(), 2)
 	if err != nil {
 		t.Fatalf("open striped connect: %v", err)
 	}
