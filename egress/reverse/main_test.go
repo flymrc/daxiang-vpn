@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -643,6 +644,75 @@ func TestSessionHealthEndpointReportsSchedulerState(t *testing.T) {
 	}
 }
 
+func TestSplitTunnelBenchBytes(t *testing.T) {
+	got := splitTunnelBenchBytes(10, 3)
+	want := []int64{4, 3, 3}
+	if len(got) != len(want) {
+		t.Fatalf("len = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("split[%d] = %d, want %d", i, got[i], want[i])
+		}
+	}
+}
+
+func TestTunnelBenchEndpointAggregatesStreams(t *testing.T) {
+	left := benchTunnelSession("left")
+	right := benchTunnelSession("right")
+	manager := &sessionManager{
+		sessions: []tunnelSession{left, right},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "http://10.66.0.1:18081/debug/tunnel-bench?bytes=10000&streams=2", nil)
+	recorder := httptest.NewRecorder()
+	manager.handleProxy(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", recorder.Code, recorder.Body.String())
+	}
+	var report tunnelBenchReport
+	if err := json.NewDecoder(recorder.Body).Decode(&report); err != nil {
+		t.Fatalf("decode tunnel bench: %v", err)
+	}
+	if !report.OK {
+		t.Fatalf("bench failed: %#v", report)
+	}
+	if report.RequestedBytes != 10000 || report.BytesRead != 10000 || report.Streams != 2 {
+		t.Fatalf("report totals = %#v", report)
+	}
+	if len(report.PerStream) != 2 {
+		t.Fatalf("per_stream len = %d", len(report.PerStream))
+	}
+	for _, stream := range report.PerStream {
+		if stream.RequestedBytes != 5000 || stream.BytesRead != 5000 || stream.Error != "" {
+			t.Fatalf("stream result = %#v", stream)
+		}
+	}
+	if left.opens+right.opens != 2 {
+		t.Fatalf("opens left=%d right=%d, want total=2", left.opens, right.opens)
+	}
+}
+
+func TestTunnelBenchEndpointRejectsBadParams(t *testing.T) {
+	manager := &sessionManager{}
+	tests := map[string]string{
+		"bad bytes":  "http://10.66.0.1:18081/debug/tunnel-bench?bytes=abc",
+		"too many":   fmt.Sprintf("http://10.66.0.1:18081/debug/tunnel-bench?bytes=%d", maxTunnelBenchBytes+1),
+		"bad stream": "http://10.66.0.1:18081/debug/tunnel-bench?bytes=10&streams=0",
+	}
+	for name, target := range tests {
+		t.Run(name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, target, nil)
+			recorder := httptest.NewRecorder()
+			manager.handleProxy(recorder, req)
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, body = %q", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+}
+
 func okTunnelSession(name string) *fakeTunnelSession {
 	return &fakeTunnelSession{
 		remote: dummyAddr(name),
@@ -650,6 +720,25 @@ func okTunnelSession(name string) *fakeTunnelSession {
 			defer conn.Close()
 			_, _ = bufio.NewReader(conn).ReadString('\n')
 			_, _ = io.WriteString(conn, "OK\n")
+		},
+	}
+}
+
+func benchTunnelSession(name string) *fakeTunnelSession {
+	return &fakeTunnelSession{
+		remote: dummyAddr(name),
+		handler: func(conn net.Conn) {
+			defer conn.Close()
+			line, err := bufio.NewReader(conn).ReadString('\n')
+			if err != nil {
+				return
+			}
+			rawBytes, ok := strings.CutPrefix(strings.TrimSpace(line), "BENCH ")
+			if !ok {
+				_, _ = io.WriteString(conn, "ERR invalid command\n")
+				return
+			}
+			handleBenchStream(conn, rawBytes)
 		},
 	}
 }

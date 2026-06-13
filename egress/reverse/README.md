@@ -142,6 +142,12 @@ Hub-side diagnostics are exposed at `GET /debug/session-health` on the same
 proxy listener. The endpoint is protected by `allowed_proxy_cidrs` and returns
 the current reverse session count, per-session active stream count, consecutive
 failure count, command RTT EWMA, scheduler score, and active proxy concurrency.
+`GET /debug/tunnel-bench?bytes=<total>&streams=<n>` measures only Android ->
+Hub reverse tunnel throughput. It splits the requested byte count across up to
+8 reverse streams, asks Android to send synthetic bytes with the `BENCH`
+command, and returns per-stream plus aggregate Mbps. This avoids DNS, target
+TLS, CDN, and public-site variability; it is not a replacement for real egress
+download tests.
 The Hub server can also cap concurrent `CONNECT` sessions with
 `max_proxy_connections` and `max_proxy_connections_per_client`; production uses
 these as a fast-fail guard so browser burst concurrency does not pile up inside
@@ -152,6 +158,8 @@ Hub-side probe:
 ```sh
 scripts/check-android-reverse-egress.sh
 curl -s http://10.66.0.1:18081/debug/session-health
+curl -s 'http://10.66.0.1:18081/debug/tunnel-bench?bytes=20000000&streams=1'
+curl -s 'http://10.66.0.1:18081/debug/tunnel-bench?bytes=20000000&streams=2'
 curl --proxy http://10.66.0.1:18081 https://api.ipify.org
 curl -L --proxy http://10.66.0.1:18081 -o /dev/null \
   'https://speed.cloudflare.com/__down?bytes=20000000'

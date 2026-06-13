@@ -18,6 +18,7 @@
 | 6 | Hub VPS 启用 IPv6 | 待运维操作 | 机房需先分配 IPv6 | 🔜 2026-06-12 运维执行 |
 | 7 | Hub session 健康优先调度 | ~1h | `connections: 2` | ✅ 已部署 2026-06-14 |
 | 8 | Hub session 健康观测接口 | ~30min | 7 | ✅ 已部署 2026-06-14 |
+| 9 | reverse tunnel micro-benchmark | ~45min | 8 | ✅ 已部署 2026-06-14 |
 
 ---
 
@@ -99,6 +100,33 @@
 - `check-android-reverse-egress.sh` 和 `check-android-egress-health.ps1` 接入该接口;旧二进制不支持时只 WARN,不影响基础健康检查。
 
 **验收**：`go test ./egress/reverse` 与 `go test ./...` 通过。Hub 已部署新二进制（SHA256 `cb17ae63321f578d24f81c36f2ce6eaf7f1bd422ecf034245f9123a50bfde0f6`）,备份 `/opt/zongheng/zhreverse/zhreverse.bak-20260614-session-health-debug`;部署后 `zhreverse-hub.service` active,Android 双 session 重连,`/debug/session-health` 返回 `session_count=2` 且两条 session `consecutive_failures=0`。
+
+## 9. reverse tunnel micro-benchmark ✅ 已部署 2026-06-14
+
+**动机**：真实网页/下载测速会混入 DNS、目标站 TLS、CDN、Rakuten v4/F5 等变量。要判断是否值得做更底层的 Go 多流分片,必须先单独测 Android -> Hub reverse tunnel 回传能力。
+
+**实现**（`egress/reverse/main.go`）：
+
+- Hub 新增 `GET /debug/tunnel-bench?bytes=<total>&streams=<n>`,复用 `10.66.0.1:18081` proxy listener 并受 `allowed_proxy_cidrs` 保护。
+- Hub 按 `streams` 把总字节数平均拆分,并发向 Android 打开 reverse stream,发送 `BENCH <bytes>` 命令。
+- Android 收到 `BENCH` 后只写回合成字节流,不访问公网目标。
+- JSON 返回总 `bytes_read`、总 Mbps、每条 stream 的请求字节数、实际读取字节数、命令 RTT 和 Mbps。
+- 参数上限:总字节数最大 `100000000`,streams 最大 `8`,避免诊断接口被误用成持续压测器。
+
+**验收**：`go test ./egress/reverse` 与 `go test ./...` 通过。Hub 和 Android 均已部署新二进制：
+
+- Hub SHA256 `6d395a4fd2522b8fb56692e066198595c8df99e6430359eae5c18e41976a0f19`,备份 `/opt/zongheng/zhreverse/zhreverse.bak-20260614-tunnel-bench`。
+- Android SHA256 `77f6bc6a7a5da3968a3480653513ff31e753a620bb253635e308abec2c25acb4`,备份 `/data/adb/zhreverse/bin/zhreverse.bak-20260614-tunnel-bench`。
+
+部署后实测:
+
+```bash
+20MB streams=1: 22.74 Mbps
+20MB streams=2: 46.57 Mbps
+20MB streams=4: 48.84 Mbps
+```
+
+`streams=2` 相对单流几乎翻倍,说明当前 Android -> Hub 隧道腿存在明显并行收益;`streams=4` 只小幅高于双流,说明收益主要来自两条 reverse session,继续堆流开始接近总链路上限。下一步可评估 striped CONNECT / 多流分片,但应优先设计为按需启用,避免给普通小请求增加复杂度。
 
 ## 5. WireGuard 控制面迁移到 Pixel
 

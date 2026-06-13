@@ -39,6 +39,13 @@ const quicALPN = "zhreverse/1"
 
 var reverseCommandTimeout = 20 * time.Second
 
+const (
+	defaultTunnelBenchBytes = 20_000_000
+	maxTunnelBenchBytes     = 100_000_000
+	maxTunnelBenchStreams   = 8
+	tunnelBenchTimeout      = 2 * time.Minute
+)
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		log.Fatal(err)
@@ -502,6 +509,30 @@ type sessionHealthEntry struct {
 	SchedulerScoreMillis int64  `json:"scheduler_score_ms"`
 }
 
+type tunnelBenchReport struct {
+	GeneratedAt    time.Time                `json:"generated_at"`
+	RequestedBytes int64                    `json:"requested_bytes"`
+	Streams        int                      `json:"streams"`
+	BytesRead      int64                    `json:"bytes_read"`
+	DurationMillis int64                    `json:"duration_ms"`
+	BytesPerSecond float64                  `json:"bytes_per_second"`
+	Mbps           float64                  `json:"mbps"`
+	OK             bool                     `json:"ok"`
+	Error          string                   `json:"error,omitempty"`
+	PerStream      []tunnelBenchStreamEntry `json:"per_stream"`
+}
+
+type tunnelBenchStreamEntry struct {
+	Index            int     `json:"index"`
+	RequestedBytes   int64   `json:"requested_bytes"`
+	BytesRead        int64   `json:"bytes_read"`
+	DurationMillis   int64   `json:"duration_ms"`
+	BytesPerSecond   float64 `json:"bytes_per_second"`
+	Mbps             float64 `json:"mbps"`
+	CommandRTTMillis int64   `json:"command_rtt_ms"`
+	Error            string  `json:"error,omitempty"`
+}
+
 func (m *sessionManager) set(session tunnelSession) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -867,6 +898,10 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 		m.handleSessionHealth(w, req)
 		return
 	}
+	if req.Method == http.MethodGet && req.URL.Path == "/debug/tunnel-bench" {
+		m.handleTunnelBench(w, req)
+		return
+	}
 	if req.Method != http.MethodConnect {
 		http.Error(w, "CONNECT only", http.StatusMethodNotAllowed)
 		return
@@ -921,6 +956,148 @@ func (m *sessionManager) handleSessionHealth(w http.ResponseWriter, _ *http.Requ
 	if err := encoder.Encode(m.sessionHealthSnapshot()); err != nil {
 		log.Printf("encode session health failed: %v", err)
 	}
+}
+
+func (m *sessionManager) handleTunnelBench(w http.ResponseWriter, req *http.Request) {
+	totalBytes, streams, err := parseTunnelBenchParams(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	report := m.runTunnelBench(totalBytes, streams)
+	w.Header().Set("Content-Type", "application/json")
+	if !report.OK {
+		w.WriteHeader(http.StatusBadGateway)
+	}
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(report); err != nil {
+		log.Printf("encode tunnel bench failed: %v", err)
+	}
+}
+
+func parseTunnelBenchParams(req *http.Request) (int64, int, error) {
+	query := req.URL.Query()
+	totalBytes := int64(defaultTunnelBenchBytes)
+	if raw := strings.TrimSpace(query.Get("bytes")); raw != "" {
+		parsed, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || parsed <= 0 {
+			return 0, 0, errors.New("bytes must be a positive integer")
+		}
+		totalBytes = parsed
+	}
+	if totalBytes > maxTunnelBenchBytes {
+		return 0, 0, fmt.Errorf("bytes must be <= %d", maxTunnelBenchBytes)
+	}
+
+	streams := 1
+	if raw := strings.TrimSpace(query.Get("streams")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			return 0, 0, errors.New("streams must be a positive integer")
+		}
+		streams = parsed
+	}
+	if streams > maxTunnelBenchStreams {
+		return 0, 0, fmt.Errorf("streams must be <= %d", maxTunnelBenchStreams)
+	}
+	if int64(streams) > totalBytes {
+		return 0, 0, errors.New("streams must be <= bytes")
+	}
+	return totalBytes, streams, nil
+}
+
+func splitTunnelBenchBytes(totalBytes int64, streams int) []int64 {
+	sizes := make([]int64, streams)
+	base := totalBytes / int64(streams)
+	remainder := totalBytes % int64(streams)
+	for i := range sizes {
+		sizes[i] = base
+		if remainder > 0 {
+			sizes[i]++
+			remainder--
+		}
+	}
+	return sizes
+}
+
+func (m *sessionManager) runTunnelBench(totalBytes int64, streams int) tunnelBenchReport {
+	report := tunnelBenchReport{
+		GeneratedAt:    time.Now(),
+		RequestedBytes: totalBytes,
+		Streams:        streams,
+		OK:             true,
+		PerStream:      make([]tunnelBenchStreamEntry, streams),
+	}
+
+	sizes := splitTunnelBenchBytes(totalBytes, streams)
+	started := time.Now()
+	var wg sync.WaitGroup
+	for i, size := range sizes {
+		wg.Add(1)
+		go func(index int, requestedBytes int64) {
+			defer wg.Done()
+			report.PerStream[index] = m.runTunnelBenchStream(index, requestedBytes)
+		}(i, size)
+	}
+	wg.Wait()
+
+	report.DurationMillis = time.Since(started).Milliseconds()
+	for _, stream := range report.PerStream {
+		report.BytesRead += stream.BytesRead
+		if stream.Error != "" {
+			report.OK = false
+			if report.Error == "" {
+				report.Error = stream.Error
+			}
+		}
+	}
+	report.BytesPerSecond = rateBytesPerSecond(report.BytesRead, time.Since(started))
+	report.Mbps = bytesPerSecondToMbps(report.BytesPerSecond)
+	return report
+}
+
+func (m *sessionManager) runTunnelBenchStream(index int, requestedBytes int64) tunnelBenchStreamEntry {
+	result := tunnelBenchStreamEntry{Index: index, RequestedBytes: requestedBytes}
+	started := time.Now()
+	stream, reader, status, err := m.openCommand(fmt.Sprintf("BENCH %d", requestedBytes))
+	result.CommandRTTMillis = time.Since(started).Milliseconds()
+	if err != nil {
+		result.Error = err.Error()
+		return result
+	}
+	defer stream.Close()
+	if status != "OK" {
+		result.Error = status
+		return result
+	}
+
+	if err := stream.SetReadDeadline(time.Now().Add(tunnelBenchTimeout)); err != nil {
+		result.Error = err.Error()
+		return result
+	}
+	copied, err := io.CopyN(io.Discard, reader, requestedBytes)
+	result.BytesRead = copied
+	result.DurationMillis = time.Since(started).Milliseconds()
+	result.BytesPerSecond = rateBytesPerSecond(copied, time.Since(started))
+	result.Mbps = bytesPerSecondToMbps(result.BytesPerSecond)
+	_ = stream.SetReadDeadline(time.Time{})
+	if err != nil {
+		result.Error = err.Error()
+	}
+	return result
+}
+
+func rateBytesPerSecond(bytes int64, elapsed time.Duration) float64 {
+	if bytes <= 0 || elapsed <= 0 {
+		return 0
+	}
+	return float64(bytes) / elapsed.Seconds()
+}
+
+func bytesPerSecondToMbps(bytesPerSecond float64) float64 {
+	return bytesPerSecond * 8 / 1_000_000
 }
 
 func (m *sessionManager) acquireProxySlot(remoteAddr string) (func(), bool, string) {
@@ -1279,6 +1456,11 @@ func handleClientStream(stream net.Conn, opts clientOptions) {
 		handleFetchStream(stream, fetchURL, opts)
 		return
 	}
+	benchBytes, ok := strings.CutPrefix(strings.TrimSpace(line), "BENCH ")
+	if ok {
+		handleBenchStream(stream, benchBytes)
+		return
+	}
 	_, _ = io.WriteString(stream, "ERR invalid command\n")
 }
 
@@ -1536,6 +1718,37 @@ func handleFetchStream(stream net.Conn, encodedURL string, opts clientOptions) {
 		return
 	}
 	_, _ = io.Copy(stream, resp.Body)
+}
+
+func handleBenchStream(stream net.Conn, rawBytes string) {
+	totalBytes, err := strconv.ParseInt(strings.TrimSpace(rawBytes), 10, 64)
+	if err != nil || totalBytes <= 0 {
+		_, _ = io.WriteString(stream, "ERR invalid bench bytes\n")
+		return
+	}
+	if totalBytes > maxTunnelBenchBytes {
+		_, _ = fmt.Fprintf(stream, "ERR bench bytes must be <= %d\n", maxTunnelBenchBytes)
+		return
+	}
+	if _, err := io.WriteString(stream, "OK\n"); err != nil {
+		return
+	}
+
+	buf := make([]byte, 32*1024)
+	for i := range buf {
+		buf[i] = byte(i)
+	}
+	remaining := totalBytes
+	for remaining > 0 {
+		chunk := int64(len(buf))
+		if remaining < chunk {
+			chunk = remaining
+		}
+		if _, err := stream.Write(buf[:chunk]); err != nil {
+			return
+		}
+		remaining -= chunk
+	}
 }
 
 func fetchRootCAs() *x509.CertPool {
