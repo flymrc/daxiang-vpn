@@ -26,28 +26,40 @@ tightening rather than new features:
 
 ## Validation
 
-Pending before deployment:
-
-```powershell
-go test ./egress/reverse
-go test ./...
-```
+- `go test ./egress/reverse -run 'DebugAllowed|WriteOrderedStripedFrames|StripedConnect|LoadReverseConfig' -count=1`
+  passed.
+- `go test ./egress/reverse` passed.
+- `go test ./...` passed.
 
 ## Deployment
 
-Not deployed yet. Deployment should update the Hub binary and add this to
-`/etc/zongheng/zhreverse/server.yaml`:
+Deployed to the Hub on 2026-06-14. Android did not need a binary replacement
+for this hardening.
+
+- Hub binary SHA256:
+  `91dbae431dece50d8e034b369cd936a388e1a19a8b716097832773fe23b24ef9`
+- Previous Hub binary backup:
+  `/opt/zongheng/zhreverse/zhreverse.bak-20260614-audit-hardening`
+- Hub config backup:
+  `/etc/zongheng/zhreverse/server.yaml.bak-20260614-audit-hardening`
+
+The production Hub config now includes:
 
 ```yaml
 debug_allowed_cidrs:
   - 10.66.0.1/32
 ```
 
-Android binary changes are not required for this hardening, but deploying the
-same code to Android is harmless.
+Post-deploy checks:
+
+- `zhreverse-hub.service` active.
+- Hub-local `/debug/session-health` succeeded.
+- Hub-local `/debug/tunnel-bench?bytes=1024&streams=1` succeeded.
+- `scripts/check-android-egress-health.ps1` passed.
+- Android reverse sessions: 2, both `consecutive_failures=0`.
 
 Rollback:
 
 - Restore the previous Hub binary backup.
-- Remove `debug_allowed_cidrs` or set it back to the broader proxy CIDR if
+- Restore the config backup, or set `debug_allowed_cidrs` back to the broader proxy CIDR if
   diagnostics are accidentally blocked.
