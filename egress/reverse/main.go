@@ -12,6 +12,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -483,6 +484,24 @@ type sessionHealth struct {
 	lastFailure         time.Time
 }
 
+type sessionHealthReport struct {
+	GeneratedAt                  time.Time            `json:"generated_at"`
+	SessionCount                 int                  `json:"session_count"`
+	Sessions                     []sessionHealthEntry `json:"sessions"`
+	ActiveProxyConnections       int                  `json:"active_proxy_connections"`
+	ActiveProxyConnectionsByPeer map[string]int       `json:"active_proxy_connections_by_peer,omitempty"`
+}
+
+type sessionHealthEntry struct {
+	Index                int    `json:"index"`
+	RemoteAddr           string `json:"remote_addr"`
+	ActiveStreams        int    `json:"active_streams"`
+	ConsecutiveFailures  int    `json:"consecutive_failures"`
+	EWMACommandRTTMillis int64  `json:"ewma_command_rtt_ms"`
+	LastFailureAgoMillis int64  `json:"last_failure_ago_ms,omitempty"`
+	SchedulerScoreMillis int64  `json:"scheduler_score_ms"`
+}
+
 func (m *sessionManager) set(session tunnelSession) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -694,6 +713,10 @@ func (m *sessionManager) reserveSession() (tunnelSession, func()) {
 }
 
 func (m *sessionManager) sessionScoreLocked(session tunnelSession) time.Duration {
+	return m.sessionScoreAtLocked(session, time.Now())
+}
+
+func (m *sessionManager) sessionScoreAtLocked(session tunnelSession, now time.Time) time.Duration {
 	health := m.sessionStats[session]
 	if health == nil {
 		health = &sessionHealth{}
@@ -706,11 +729,74 @@ func (m *sessionManager) sessionScoreLocked(session tunnelSession) time.Duration
 		score += health.ewmaCommandRTT
 	}
 	if !health.lastFailure.IsZero() {
-		if since := time.Since(health.lastFailure); since < 30*time.Second {
+		if since := now.Sub(health.lastFailure); since < 30*time.Second {
 			score += 30*time.Second - since
 		}
 	}
 	return score
+}
+
+func (m *sessionManager) sessionHealthSnapshot() sessionHealthReport {
+	now := time.Now()
+	report := sessionHealthReport{GeneratedAt: now}
+
+	m.mu.Lock()
+	if m.sessionStats == nil {
+		m.sessionStats = map[tunnelSession]*sessionHealth{}
+	}
+	filtered := m.sessions[:0]
+	for _, session := range m.sessions {
+		if session.IsClosed() {
+			delete(m.sessionStats, session)
+			continue
+		}
+		filtered = append(filtered, session)
+	}
+	m.sessions = filtered
+	if len(m.sessions) == 0 {
+		m.next = 0
+	} else if m.next >= len(m.sessions) {
+		m.next %= len(m.sessions)
+	}
+
+	report.SessionCount = len(m.sessions)
+	report.Sessions = make([]sessionHealthEntry, 0, len(m.sessions))
+	for i, session := range m.sessions {
+		health := m.sessionStats[session]
+		if health == nil {
+			health = &sessionHealth{}
+			m.sessionStats[session] = health
+		}
+		lastFailureAgo := int64(0)
+		if !health.lastFailure.IsZero() {
+			lastFailureAgo = now.Sub(health.lastFailure).Milliseconds()
+			if lastFailureAgo < 0 {
+				lastFailureAgo = 0
+			}
+		}
+		report.Sessions = append(report.Sessions, sessionHealthEntry{
+			Index:                i,
+			RemoteAddr:           session.RemoteAddr().String(),
+			ActiveStreams:        health.activeStreams,
+			ConsecutiveFailures:  health.consecutiveFailures,
+			EWMACommandRTTMillis: health.ewmaCommandRTT.Milliseconds(),
+			LastFailureAgoMillis: lastFailureAgo,
+			SchedulerScoreMillis: m.sessionScoreAtLocked(session, now).Milliseconds(),
+		})
+	}
+	m.mu.Unlock()
+
+	m.activeProxyMu.Lock()
+	report.ActiveProxyConnections = m.activeProxyConns
+	if len(m.activeProxyByPeer) > 0 {
+		report.ActiveProxyConnectionsByPeer = make(map[string]int, len(m.activeProxyByPeer))
+		for peer, count := range m.activeProxyByPeer {
+			report.ActiveProxyConnectionsByPeer[peer] = count
+		}
+	}
+	m.activeProxyMu.Unlock()
+
+	return report
 }
 
 func (m *sessionManager) releaseSession(session tunnelSession) {
@@ -777,6 +863,10 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 		m.handleFetch(w, req)
 		return
 	}
+	if req.Method == http.MethodGet && req.URL.Path == "/debug/session-health" {
+		m.handleSessionHealth(w, req)
+		return
+	}
 	if req.Method != http.MethodConnect {
 		http.Error(w, "CONNECT only", http.StatusMethodNotAllowed)
 		return
@@ -822,6 +912,15 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	pipeBoth(clientConn, &bufferedConn{Conn: stream, reader: streamReader}, m.proxyIdleTimeout)
+}
+
+func (m *sessionManager) handleSessionHealth(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(m.sessionHealthSnapshot()); err != nil {
+		log.Printf("encode session health failed: %v", err)
+	}
 }
 
 func (m *sessionManager) acquireProxySlot(remoteAddr string) (func(), bool, string) {

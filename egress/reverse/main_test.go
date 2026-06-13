@@ -4,10 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -581,6 +584,62 @@ func TestOpenCommandPrefersIdleSessionOverLowerRTTBusySession(t *testing.T) {
 	}
 	if idle.opens != 1 || busy.opens != 0 {
 		t.Fatalf("opens idle=%d busy=%d, want idle=1 busy=0", idle.opens, busy.opens)
+	}
+}
+
+func TestSessionHealthEndpointReportsSchedulerState(t *testing.T) {
+	left := okTunnelSession("left")
+	right := okTunnelSession("right")
+	manager := &sessionManager{
+		sessions: []tunnelSession{left, right},
+		sessionStats: map[tunnelSession]*sessionHealth{
+			left: {
+				activeStreams:       2,
+				consecutiveFailures: 1,
+				ewmaCommandRTT:      125 * time.Millisecond,
+				lastFailure:         time.Now().Add(-5 * time.Second),
+			},
+			right: {
+				ewmaCommandRTT: 25 * time.Millisecond,
+			},
+		},
+		activeProxyConns: 3,
+		activeProxyByPeer: map[string]int{
+			"10.66.0.20": 3,
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "http://10.66.0.1:18081/debug/session-health", nil)
+	recorder := httptest.NewRecorder()
+	manager.handleProxy(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", recorder.Code, recorder.Body.String())
+	}
+	var report sessionHealthReport
+	if err := json.NewDecoder(recorder.Body).Decode(&report); err != nil {
+		t.Fatalf("decode session health: %v", err)
+	}
+	if report.GeneratedAt.IsZero() {
+		t.Fatal("missing generated_at")
+	}
+	if report.SessionCount != 2 || len(report.Sessions) != 2 {
+		t.Fatalf("sessions count=%d len=%d", report.SessionCount, len(report.Sessions))
+	}
+	if report.ActiveProxyConnections != 3 || report.ActiveProxyConnectionsByPeer["10.66.0.20"] != 3 {
+		t.Fatalf("active proxy snapshot = %#v", report)
+	}
+	if report.Sessions[0].RemoteAddr != "left" || report.Sessions[0].ActiveStreams != 2 || report.Sessions[0].ConsecutiveFailures != 1 {
+		t.Fatalf("left session snapshot = %#v", report.Sessions[0])
+	}
+	if report.Sessions[0].EWMACommandRTTMillis != 125 {
+		t.Fatalf("left ewma rtt = %d", report.Sessions[0].EWMACommandRTTMillis)
+	}
+	if report.Sessions[0].LastFailureAgoMillis <= 0 {
+		t.Fatalf("left last failure age = %d", report.Sessions[0].LastFailureAgoMillis)
+	}
+	if report.Sessions[1].RemoteAddr != "right" || report.Sessions[1].SchedulerScoreMillis >= report.Sessions[0].SchedulerScoreMillis {
+		t.Fatalf("scheduler scores not ordered as expected: %#v", report.Sessions)
 	}
 }
 

@@ -138,6 +138,10 @@ instead of letting the HTTP proxy request hang behind a stale tunnel. Successful
 commands update a per-session RTT estimate and active stream count, so new
 CONNECT requests avoid busy or slower tunnel sessions when another session is
 healthier.
+Hub-side diagnostics are exposed at `GET /debug/session-health` on the same
+proxy listener. The endpoint is protected by `allowed_proxy_cidrs` and returns
+the current reverse session count, per-session active stream count, consecutive
+failure count, command RTT EWMA, scheduler score, and active proxy concurrency.
 The Hub server can also cap concurrent `CONNECT` sessions with
 `max_proxy_connections` and `max_proxy_connections_per_client`; production uses
 these as a fast-fail guard so browser burst concurrency does not pile up inside
@@ -147,6 +151,7 @@ Hub-side probe:
 
 ```sh
 scripts/check-android-reverse-egress.sh
+curl -s http://10.66.0.1:18081/debug/session-health
 curl --proxy http://10.66.0.1:18081 https://api.ipify.org
 curl -L --proxy http://10.66.0.1:18081 -o /dev/null \
   'https://speed.cloudflare.com/__down?bytes=20000000'

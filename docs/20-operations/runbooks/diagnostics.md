@@ -203,6 +203,7 @@ cat /usr/local/sbin/zhvpn-sing-box-run.sh
 
 ```bash
 scripts/check-android-reverse-egress.sh
+curl -s http://10.66.0.1:18081/debug/session-health
 curl -x http://10.66.0.1:18081 -s https://api64.ipify.org; echo
 curl -L --max-time 30 -x http://10.66.0.1:18081 -o /dev/null \
   -w "code=%{http_code} bytes=%{size_download} bps=%{speed_download} seconds=%{time_total}\n" \
@@ -225,6 +226,7 @@ iptables -L ufw-user-input -n -v --line-numbers | grep 18081
 判断：
 
 - 返回公网 IP 代表代理可用。
+- `/debug/session-health` 返回 `session_count`、每条 session 的 `active_streams`、`consecutive_failures`、`ewma_command_rtt_ms` 和 `scheduler_score_ms`；两条 Android 反连都在线时 `session_count` 应为 2。
 - 手机卡场景速度主要受手机上行到 Hub 限制。
 - WiFi 场景速度通常明显高于手机卡场景，但仍可能受 Android WireGuard 发包波动影响。
 
@@ -241,6 +243,7 @@ iptables -L ufw-user-input -n -v --line-numbers | grep 18081
 - 当前公网出口 IP。
 - 1MB 下载探针速度。
 - reverse proxy 是否能经 Android 出公网。
+- Hub `zhreverse` 的 session 健康摘要（新二进制支持；旧版本只 WARN）。
 
 需要顺手测速时：
 

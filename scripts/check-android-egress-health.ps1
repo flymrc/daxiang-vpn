@@ -2,6 +2,7 @@ param(
     [string]$Hub = "root@36.50.84.68",
     [string]$HubIdentityFile = "",
     [string]$Proxy = "http://10.66.0.1:18081",
+    [string]$SessionHealthUrl = "http://10.66.0.1:18081/debug/session-health",
     [string]$AndroidIP = "10.66.0.101",
     # 主路径探针:必须返回 IPv6(生产 address_family: ipv6)。
     [string[]]$EgressIPv6Urls = @(
@@ -52,6 +53,22 @@ function Set-Failed {
 Write-Host ("hub={0}" -f $Hub)
 Write-Host ("android_ip={0}" -f $AndroidIP)
 Write-Host ("proxy={0}" -f $Proxy)
+Write-Host ("session_health_url={0}" -f $SessionHealthUrl)
+
+$sessionHealthBody = Join-Output (Invoke-Hub "curl -sS -m '5' '$SessionHealthUrl' 2>/dev/null || true")
+if ($sessionHealthBody.Length -gt 0) {
+    try {
+        $sessionHealth = $sessionHealthBody | ConvertFrom-Json
+        Write-Check "PASS" ("reverse sessions={0}, active_proxy_connections={1}" -f $sessionHealth.session_count, $sessionHealth.active_proxy_connections)
+        foreach ($session in @($sessionHealth.sessions)) {
+            Write-Check "INFO" ("session[{0}] remote={1} active={2} failures={3} ewma_rtt_ms={4} score_ms={5}" -f $session.index, $session.remote_addr, $session.active_streams, $session.consecutive_failures, $session.ewma_command_rtt_ms, $session.scheduler_score_ms)
+        }
+    } catch {
+        Write-Check "WARN" ("session health unavailable or invalid (older zhreverse binary or proxy ACL): {0}" -f ($sessionHealthBody -replace "`r?`n", " | "))
+    }
+} else {
+    Write-Check "WARN" "session health unavailable (older zhreverse binary or proxy ACL)"
+}
 
 # 主路径:v6。拿不到 v6 出口 = FAIL(api64 双栈兜底,但只认 v6 形态结果)。
 $egressIPv6 = ""

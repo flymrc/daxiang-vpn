@@ -9,14 +9,25 @@
 set -eu
 
 PROXY=${PROXY:-http://10.66.0.1:18081}
+SESSION_HEALTH_URL=${SESSION_HEALTH_URL:-http://10.66.0.1:18081/debug/session-health}
 V6_URL=${V6_URL:-https://api6.ipify.org}
 V4_URL=${V4_URL:-https://api.ipify.org}
 HUB_IP=${HUB_IP:-36.50.84.68}
 TIMEOUT=${TIMEOUT:-20}
 
 echo "proxy=$PROXY"
+echo "session_health_url=$SESSION_HEALTH_URL"
 
 fail=0
+
+session_health=$(curl -sS -L --connect-timeout 3 --max-time 5 "$SESSION_HEALTH_URL" || true)
+if printf '%s' "$session_health" | grep -q '"session_count"'; then
+    session_count=$(printf '%s\n' "$session_health" | sed -n 's/.*"session_count": \([0-9][0-9]*\).*/\1/p' | head -n 1)
+    active_proxy=$(printf '%s\n' "$session_health" | sed -n 's/.*"active_proxy_connections": \([0-9][0-9]*\).*/\1/p' | head -n 1)
+    echo "PASS session_health session_count=${session_count:-?} active_proxy_connections=${active_proxy:-?}"
+else
+    echo "WARN session health unavailable (older zhreverse binary or proxy ACL): '$session_health'"
+fi
 
 ip6=$(curl -sS -L --connect-timeout 8 --max-time "$TIMEOUT" --proxy "$PROXY" "$V6_URL" || true)
 case "$ip6" in

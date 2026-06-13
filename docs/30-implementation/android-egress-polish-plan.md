@@ -17,6 +17,7 @@
 | 5 | WireGuard 控制面迁移到 Pixel | ~半天 | 无（运维兜底，越早越安心） | ✅ 已完成 |
 | 6 | Hub VPS 启用 IPv6 | 待运维操作 | 机房需先分配 IPv6 | 🔜 2026-06-12 运维执行 |
 | 7 | Hub session 健康优先调度 | ~1h | `connections: 2` | ✅ 已部署 2026-06-14 |
+| 8 | Hub session 健康观测接口 | ~30min | 7 | ✅ 已部署 2026-06-14 |
 
 ---
 
@@ -85,6 +86,19 @@
 - 单测覆盖低 RTT 优先、空闲 session 优先和 stale session 剔除。
 
 **验收**：`go test ./egress/reverse` 与 `go test ./...` 通过。Hub 已部署新二进制,备份 `/opt/zongheng/zhreverse/zhreverse.bak-20260614-health-picker`;部署后 Android 双 session 重连、健康检查 PASS、20MB x2 平均约 `24.98 Mbps`。后续继续观察 Hub 日志中 stale session 剔除频率、客户端测速和浏览器并发打开时的尾延迟。
+
+## 8. Hub session 健康观测接口 ✅ 已部署 2026-06-14
+
+**动机**：健康优先调度上线后,需要能直接看到 Hub 当前如何评价每条 Android reverse session,否则下一步调 `connections`、超时或弱网重试只能靠日志和测速反推。
+
+**实现**（`egress/reverse/main.go` Hub 侧）：
+
+- 新增 `GET /debug/session-health`,复用 Hub 侧 `10.66.0.1:18081` proxy listener,仍受 `allowed_proxy_cidrs` 保护。
+- JSON 返回 `session_count`、每条 session 的 `remote_addr`、`active_streams`、`consecutive_failures`、`ewma_command_rtt_ms`、`last_failure_ago_ms` 和 `scheduler_score_ms`。
+- 同时返回 `active_proxy_connections` 和按客户端 IP 统计的并发数,便于判断浏览器爆发并发是否压满护栏。
+- `check-android-reverse-egress.sh` 和 `check-android-egress-health.ps1` 接入该接口;旧二进制不支持时只 WARN,不影响基础健康检查。
+
+**验收**：`go test ./egress/reverse` 与 `go test ./...` 通过。Hub 已部署新二进制（SHA256 `cb17ae63321f578d24f81c36f2ce6eaf7f1bd422ecf034245f9123a50bfde0f6`）,备份 `/opt/zongheng/zhreverse/zhreverse.bak-20260614-session-health-debug`;部署后 `zhreverse-hub.service` active,Android 双 session 重连,`/debug/session-health` 返回 `session_count=2` 且两条 session `consecutive_failures=0`。
 
 ## 5. WireGuard 控制面迁移到 Pixel
 
