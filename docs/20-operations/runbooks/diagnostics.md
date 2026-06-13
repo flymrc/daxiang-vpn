@@ -317,7 +317,7 @@ $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 
 - `ip route get 36.50.84.68` 是走 `rmnet_data*` 还是 `wlan0`。
 - 日志中是否有 `connected to reverse tcp server`。
-- 当前 `connections` 是否为预期值（Pixel 当前生产为 1）。
+- 当前 `connections` 是否为预期值（Pixel 当前生产为 2，两条反向隧道会话）。
 - Hub `zhreverse-hub.service` 启动日志是否显示 `max_proxy_connections=96 max_proxy_connections_per_client=48`。
 - WireGuard App 是否创建了 `tun0 / 10.66.0.101`。
 - 若 `tun0` 缺失,watchdog 会最多每 120s 发一次 WireGuard App `SET_TUNNEL_UP` intent;若 `tun0` 存在但 Hub 内网 ping 失败,watchdog 会 `SET_TUNNEL_DOWN`,等待 `10.66.0.101` 地址消失,再 `SET_TUNNEL_UP` 强制重拨。可看 `/data/local/tmp/zhandroid-control.log` 中的 `wireguard unhealthy` 记录。
@@ -326,7 +326,7 @@ $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 
 - 手机 App 测到的高速下载不等于出口可用下载速度。
 - 作为出口时，电脑下载需要手机把数据上传回 Hub，因此手机上行是关键瓶颈。
-- 若仍看到 `zhandroid-egress` 进程,说明旧服务残留被误启动;当前默认应只有 `99-zhreverse-egress.sh` 和 `zhreverse client`。
+- 若仍看到 `zhandroid-egress`、`dxreverse` 或 `99-dxreverse-egress.sh.disabled` 进程,说明旧服务残留被误启动;当前默认应只有 `99-zhreverse-egress.sh` 和 `zhreverse client`。
 
 ---
 

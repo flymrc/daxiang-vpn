@@ -1,5 +1,5 @@
 server:
-  # Public UDP listener for Android reverse clients.
+  # Public listener for Android reverse clients. Current production transport is TCP/yamux.
   listen: 0.0.0.0:39093
   # Hub-side HTTP CONNECT proxy exposed on the WireGuard address for clients.
   proxy: 10.66.0.1:18081
