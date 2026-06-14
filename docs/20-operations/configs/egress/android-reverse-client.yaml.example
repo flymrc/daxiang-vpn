@@ -12,6 +12,12 @@ client:
   # resets flows, while the IPv6 side is healthy. See the 2026-06-10 speed
   # audit worklog. auto/ipv4 keep the historical IPv4-first behavior.
   address_family: ipv6
+  # Optional root/Linux dual-network POC: keep the reverse tunnel on WiFi while
+  # forcing target website TCP/DNS dials over the cellular interface. Leave
+  # empty in normal production unless actively testing WiFi IPv4 + cellular
+  # IPv6 split egress.
+  # tunnel_bind_interface: wlan0
+  # target_bind_interface: rmnet1
   # 2+ independent tunnel sessions: the reverse tunnel runs over the phone's
   # IPv4/CGNAT leg (port 39093), which periodically freezes or gets reset. With
   # a single session every in-flight proxied connection dies together; a second

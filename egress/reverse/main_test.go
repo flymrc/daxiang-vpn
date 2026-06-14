@@ -135,6 +135,23 @@ func TestQUICClientRequiresServerCertPin(t *testing.T) {
 	}
 }
 
+func TestQUICClientRejectsTunnelBindInterface(t *testing.T) {
+	err := run([]string{
+		"client",
+		"--server", "127.0.0.1:1",
+		"--token", "test-token",
+		"--transport", "quic",
+		"--server-cert-sha256", strings.Repeat("a", 64),
+		"--tunnel-bind-interface", "wlan0",
+	})
+	if err == nil {
+		t.Fatal("expected tunnel bind interface error")
+	}
+	if err.Error() != "--tunnel-bind-interface currently supports tcp transport only" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestNormalizeFingerprint(t *testing.T) {
 	got := normalizeFingerprint("SHA256:AA:bb cc")
 	if got != "aabbcc" {

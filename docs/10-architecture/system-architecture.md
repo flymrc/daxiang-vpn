@@ -61,13 +61,16 @@ Hub egress router/client
 Hub/WireGuard zhreverse proxy 10.66.0.1:18081
     |
     | TCP/yamux reverse tunnel, Android actively dials Hub TCP :39093
+    | current POC: tunnel socket bound to wlan0 / residential WiFi
     v
 Android zhreverse client
     |
-    | cellular / Wi-Fi public network
+    | current POC: target TCP/DNS sockets bound to rmnet1 / cellular
     v
 public target
 ```
+
+2026-06-14 当前生产 POC 使用 root/Linux `SO_BINDTODEVICE` 做 socket 级分流:`tunnel_bind_interface: wlan0` 让 Android -> Hub 隧道腿走住宅 WiFi IPv4,`target_bind_interface: rmnet1` 让 Android -> 目标网站仍走手机蜂窝出口。该方案不是自动 fallback 策略;若 WiFi/家宽断开,隧道会重连失败,需要移除 `tunnel_bind_interface` 或恢复 Android `client.yaml` 备份后重启 `zhreverse`。
 
 WireGuard App 仍负责内网控制面,例如 `10.66.0.101:2022` SSH 运维、`10.66.0.101:5555` WG-only TCP ADB 和 watchdog 自愈。Android 客户端 token 的 `egress.proxy_addr` 应指向 Hub 的 WireGuard 地址 `10.66.0.1:18081`,不要再指向手机旧入站代理。旧 `zhandroid-egress` / `10.66.0.101:1080` Android 数据面已从生产入口拆除。
 

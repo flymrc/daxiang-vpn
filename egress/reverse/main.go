@@ -107,15 +107,17 @@ type serverOptions struct {
 }
 
 type clientOptions struct {
-	Server             string        `json:"server" yaml:"server"`
-	Token              string        `json:"token,omitempty" yaml:"token,omitempty"`
-	TokenFile          string        `json:"token_file,omitempty" yaml:"token_file,omitempty"`
-	Reconnect          time.Duration `json:"reconnect" yaml:"reconnect"`
-	Transport          string        `json:"transport" yaml:"transport"`
-	Connections        int           `json:"connections" yaml:"connections"`
-	AddressFamily      string        `json:"address_family,omitempty" yaml:"address_family,omitempty"`
-	ServerCertSHA256   string        `json:"server_cert_sha256,omitempty" yaml:"server_cert_sha256,omitempty"`
-	InsecureSkipVerify bool          `json:"insecure_skip_verify,omitempty" yaml:"insecure_skip_verify,omitempty"`
+	Server              string        `json:"server" yaml:"server"`
+	Token               string        `json:"token,omitempty" yaml:"token,omitempty"`
+	TokenFile           string        `json:"token_file,omitempty" yaml:"token_file,omitempty"`
+	Reconnect           time.Duration `json:"reconnect" yaml:"reconnect"`
+	Transport           string        `json:"transport" yaml:"transport"`
+	Connections         int           `json:"connections" yaml:"connections"`
+	AddressFamily       string        `json:"address_family,omitempty" yaml:"address_family,omitempty"`
+	TunnelBindInterface string        `json:"tunnel_bind_interface,omitempty" yaml:"tunnel_bind_interface,omitempty"`
+	TargetBindInterface string        `json:"target_bind_interface,omitempty" yaml:"target_bind_interface,omitempty"`
+	ServerCertSHA256    string        `json:"server_cert_sha256,omitempty" yaml:"server_cert_sha256,omitempty"`
+	InsecureSkipVerify  bool          `json:"insecure_skip_verify,omitempty" yaml:"insecure_skip_verify,omitempty"`
 }
 
 func defaultServerOptions() serverOptions {
@@ -1934,6 +1936,8 @@ func runClient(args []string) error {
 	transport := fs.String("transport", defaults.Transport, "reverse transport: tcp or quic")
 	connections := fs.Int("connections", defaults.Connections, "number of parallel reverse connections")
 	addressFamily := fs.String("address-family", defaults.AddressFamily, "target dial address family: auto, ipv4, or ipv6")
+	tunnelBindInterface := fs.String("tunnel-bind-interface", defaults.TunnelBindInterface, "Linux interface for reverse tunnel TCP dials; empty uses system routing")
+	targetBindInterface := fs.String("target-bind-interface", defaults.TargetBindInterface, "Linux interface for target TCP/DNS dials; empty uses system routing")
 	serverCertSHA256 := fs.String("server-cert-sha256", defaults.ServerCertSHA256, "expected SHA-256 fingerprint of QUIC server certificate")
 	insecureSkipVerify := fs.Bool("insecure-skip-verify", defaults.InsecureSkipVerify, "allow QUIC without certificate pinning; unsafe")
 	if err := fs.Parse(args); err != nil {
@@ -1969,6 +1973,12 @@ func runClient(args []string) error {
 	if explicit["address-family"] {
 		opts.AddressFamily = *addressFamily
 	}
+	if explicit["tunnel-bind-interface"] {
+		opts.TunnelBindInterface = *tunnelBindInterface
+	}
+	if explicit["target-bind-interface"] {
+		opts.TargetBindInterface = *targetBindInterface
+	}
 	if explicit["server-cert-sha256"] {
 		opts.ServerCertSHA256 = *serverCertSHA256
 	}
@@ -1987,6 +1997,11 @@ func runClient(args []string) error {
 	}
 	if opts.AddressFamily != "auto" && opts.AddressFamily != "ipv4" && opts.AddressFamily != "ipv6" {
 		return errors.New("--address-family must be auto, ipv4, or ipv6")
+	}
+	opts.TunnelBindInterface = strings.TrimSpace(opts.TunnelBindInterface)
+	opts.TargetBindInterface = strings.TrimSpace(opts.TargetBindInterface)
+	if opts.Transport == "quic" && opts.TunnelBindInterface != "" {
+		return errors.New("--tunnel-bind-interface currently supports tcp transport only")
 	}
 	if opts.Transport == "quic" && !opts.InsecureSkipVerify && normalizeFingerprint(opts.ServerCertSHA256) == "" {
 		return errors.New("--server-cert-sha256 is required for quic transport")
@@ -2025,7 +2040,7 @@ func clientOnce(transport string, serverAddr string, token string, opts clientOp
 }
 
 func tcpClientOnce(serverAddr string, token string, opts clientOptions) error {
-	conn, err := net.DialTimeout("tcp", serverAddr, 15*time.Second)
+	conn, err := dialTCP(serverAddr, 15*time.Second, opts.TunnelBindInterface)
 	if err != nil {
 		return err
 	}
@@ -2121,7 +2136,7 @@ func handleConnectStream(stream net.Conn, reader *bufio.Reader, target string, o
 		return
 	}
 	dialStarted := time.Now()
-	targetConn, err := dialTarget(target, opts.AddressFamily)
+	targetConn, err := dialTarget(target, opts.AddressFamily, opts.TargetBindInterface)
 	targetDialLatency := time.Since(dialStarted)
 	if err != nil {
 		_, _ = fmt.Fprintf(stream, "ERR %v\n", err)
@@ -2132,7 +2147,7 @@ func handleConnectStream(stream net.Conn, reader *bufio.Reader, target string, o
 		return
 	}
 	relayWithHandshakeRetry(&bufferedConn{Conn: stream, reader: reader}, targetConn, target, func() (net.Conn, error) {
-		return dialTarget(target, opts.AddressFamily)
+		return dialTarget(target, opts.AddressFamily, opts.TargetBindInterface)
 	})
 }
 
@@ -2314,7 +2329,7 @@ func handleStripedConnectStream(stream net.Conn, args string, opts clientOptions
 func handleStripedPrimaryLane(stream net.Conn, group *stripedClientGroup, target string, opts clientOptions) {
 	defer stripedClientGroups.Delete(group.id)
 	dialStarted := time.Now()
-	targetConn, err := dialTarget(target, opts.AddressFamily)
+	targetConn, err := dialTarget(target, opts.AddressFamily, opts.TargetBindInterface)
 	targetDialLatency := time.Since(dialStarted)
 	if err != nil {
 		_, _ = fmt.Fprintf(stream, "ERR %v\n", err)
@@ -2670,7 +2685,7 @@ func handleFetchStream(stream net.Conn, encodedURL string, opts clientOptions) {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{RootCAs: fetchRootCAs()},
 		DialContext: func(_ context.Context, _, addr string) (net.Conn, error) {
-			return dialTarget(addr, opts.AddressFamily)
+			return dialTarget(addr, opts.AddressFamily, opts.TargetBindInterface)
 		},
 	}
 	client := &http.Client{Transport: transport, Timeout: 90 * time.Second}
@@ -2790,20 +2805,21 @@ func dnsCachePut(host string, ips []net.IPAddr, now time.Time) {
 	dnsCache[host] = dnsCacheEntry{ips: ips, expires: now.Add(dnsCacheTTL)}
 }
 
-func dialTarget(target string, addressFamily string) (net.Conn, error) {
+func dialTarget(target string, addressFamily string, bindInterface string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(target)
 	if err != nil {
 		return nil, err
 	}
+	bindInterface = strings.TrimSpace(bindInterface)
 	if net.ParseIP(host) != nil {
-		return net.DialTimeout("tcp", target, 15*time.Second)
+		return dialTCP(target, 15*time.Second, bindInterface)
 	}
 	ips, cached := dnsCacheGet(host, time.Now())
 	if !cached {
 		// Hub-side openCommand gives the whole CONNECT 20s, so keep DNS and the
 		// dial attempts on separate budgets instead of sharing one context.
 		dnsCtx, dnsCancel := context.WithTimeout(context.Background(), 6*time.Second)
-		resolver := publicResolver()
+		resolver := publicResolver(bindInterface)
 		resolved, err := resolver.LookupIPAddr(dnsCtx, host)
 		dnsCancel()
 		if err != nil {
@@ -2818,7 +2834,7 @@ func dialTarget(target string, addressFamily string) (net.Conn, error) {
 		if attempt >= 2 {
 			break
 		}
-		conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip.IP.String(), port), 6*time.Second)
+		conn, err := dialTCP(net.JoinHostPort(ip.IP.String(), port), 6*time.Second, bindInterface)
 		if err == nil {
 			return conn, nil
 		}
@@ -2830,11 +2846,22 @@ func dialTarget(target string, addressFamily string) (net.Conn, error) {
 	return nil, fmt.Errorf("no addresses for %s", host)
 }
 
-func publicResolver() *net.Resolver {
+func dialTCP(address string, timeout time.Duration, bindInterface string) (net.Conn, error) {
+	dialer, err := netDialer(timeout, bindInterface)
+	if err != nil {
+		return nil, err
+	}
+	return dialer.DialContext(context.Background(), "tcp", address)
+}
+
+func publicResolver(bindInterface string) *net.Resolver {
 	return &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, network string, address string) (net.Conn, error) {
-			dialer := net.Dialer{Timeout: 5 * time.Second}
+			dialer, err := netDialer(5*time.Second, bindInterface)
+			if err != nil {
+				return nil, err
+			}
 			// Rakuten 蜂窝网上 IPv4 UDP/53 经 CGNAT 间歇丢包,IPv6 路径实测
 			// 健康得多,因此 v6 解析器优先。
 			var lastErr error

@@ -60,6 +60,15 @@ zhvpn.exe login <授权码>
 -> 日本住宅出口
 ```
 
+### Android 出口当前 POC
+
+2026-06-14 起,Android `zhreverse` 正在跑双网络 POC:
+
+- Android -> Hub reverse tunnel:绑定 `wlan0`,走住宅 WiFi/家宽 IPv4。
+- Android -> 目标网站 TCP/DNS:绑定 `rmnet1`,继续走手机蜂窝 IPv6/IPv4。
+- Hub 入口仍是 `10.66.0.1:18081`,Hub reverse TCP 仍是 `36.50.84.68:39093`。
+- 这是显式绑定 POC,不是自动策略;家宽/WiFi 断开时不会自动 fallback 到蜂窝隧道,需移除 `tunnel_bind_interface` 或恢复备份配置后重启 `zhreverse`。
+
 ## 客户端命令
 
 ```powershell
