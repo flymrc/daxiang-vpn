@@ -18,6 +18,8 @@ go build -tags with_gvisor -o ..\..\dist\zhvpn.exe .
 .\zhvpn.exe stop
 ```
 
+`login` / `start` 会写入本地状态缓存，供 `status` 和桌面 GUI 高频轮询读取；`status` 不会重复请求 Hub bootstrap。`start` 仍会重新 bootstrap 获取最新运行配置。状态缓存不持久化 WireGuard 私钥。
+
 ## Android 出口换 IP
 
 CLI 可以让当前手机卡出口重注册并尝试更换公网出口 IP：

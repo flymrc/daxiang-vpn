@@ -12,7 +12,7 @@
   let errMsg = $state("");
   let info = $state("");
   let status = $state<Status | null>(null);
-  let appVersion = $state("0.4.8");
+  let appVersion = $state("0.4.9");
   let lastIPv4 = $state("");
   let lastIPv6 = $state("");
   let ipChecked = $state(false);

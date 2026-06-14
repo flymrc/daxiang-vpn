@@ -269,9 +269,7 @@ func doLogin(ctx paths.Context, token string) (config.Config, error) {
 	if err != nil {
 		return config.Config{}, err
 	}
-	if err := config.Save(ctx.ConfigPath, config.Config{
-		License: config.LicenseConfig{Token: token},
-	}); err != nil {
+	if err := saveClientConfigCache(ctx, cfg); err != nil {
 		return config.Config{}, err
 	}
 	return cfg, nil
@@ -317,7 +315,7 @@ func importConfig(ctx paths.Context, source string) error {
 	return nil
 }
 
-func loadInstalledConfig(ctx paths.Context) (config.Config, error) {
+func loadLocalInstalledConfig(ctx paths.Context) (config.Config, error) {
 	cfg, err := config.Load(ctx.ConfigPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -325,13 +323,62 @@ func loadInstalledConfig(ctx paths.Context) (config.Config, error) {
 		}
 		return config.Config{}, err
 	}
-	if cfg.License.Token != "" {
-		cfg, err = bootstrap.Fetch(cfg.License.Token)
-		if err != nil {
-			return config.Config{}, err
-		}
+	return cfg, nil
+}
+
+func loadInstalledConfig(ctx paths.Context) (config.Config, error) {
+	cfg, err := loadLocalInstalledConfig(ctx)
+	if err != nil {
+		return config.Config{}, err
+	}
+	if clientConfigCacheNeedsBootstrap(cfg) {
+		return refreshInstalledConfig(ctx, cfg)
 	}
 	return cfg, cfg.Validate()
+}
+
+func refreshInstalledConfig(ctx paths.Context, cached config.Config) (config.Config, error) {
+	if strings.TrimSpace(cached.License.Token) == "" {
+		return cached, cached.Validate()
+	}
+	cfg, err := bootstrap.Fetch(cached.License.Token)
+	if err != nil {
+		return config.Config{}, err
+	}
+	if err := saveClientConfigCache(ctx, cfg); err != nil {
+		return config.Config{}, err
+	}
+	return cfg, cfg.Validate()
+}
+
+func clientConfigCacheNeedsBootstrap(cfg config.Config) bool {
+	if strings.TrimSpace(cfg.License.Token) == "" {
+		return false
+	}
+	required := []string{
+		cfg.Client.Name,
+		cfg.Hub.Endpoint,
+		cfg.Egress.Name,
+		cfg.Egress.ManagementAddr,
+		cfg.Egress.ProxyAddr,
+	}
+	for _, value := range required {
+		if strings.TrimSpace(value) == "" {
+			return true
+		}
+	}
+	return false
+}
+
+func saveClientConfigCache(ctx paths.Context, cfg config.Config) error {
+	if err := os.MkdirAll(filepath.Dir(ctx.ConfigPath), 0700); err != nil {
+		return err
+	}
+	cache := cfg
+	// The local status cache only needs routing metadata. Keep the WireGuard
+	// private key in memory for the current start/login command, not on disk.
+	cache.WireGuard.PrivateKey = ""
+	return config.Save(ctx.ConfigPath, cache)
 }
 
 func start(ctx paths.Context, args []string) error {
@@ -340,7 +387,11 @@ func start(ctx paths.Context, args []string) error {
 		return err
 	}
 
-	cfg, err := loadInstalledConfig(ctx)
+	cached, err := loadLocalInstalledConfig(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := refreshInstalledConfig(ctx, cached)
 	if err != nil {
 		return err
 	}
