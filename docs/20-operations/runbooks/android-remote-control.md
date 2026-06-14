@@ -70,7 +70,7 @@ ssh -i /root/.ssh/zhandroid_control_hub \
 
 这条路径用于应急修复 watchdog / WireGuard,不作为客户侧入口。
 
-常规手机卡出口应关闭 Android Wi-Fi,避免 zhreverse 误走现场 Wi-Fi/住宅出口。2026-06-14 双网络 POC 例外:当前 `zhreverse` 显式配置 `tunnel_bind_interface: wlan0`、`target_bind_interface: rmnet1`,用 WiFi 承载 Android -> Hub 隧道腿,目标网站仍走蜂窝。该 POC 不会在家宽断开时自动 fallback 到蜂窝隧道;需恢复 Android `client.yaml` 备份或移除绑定字段后重启 `zhreverse`。检查:
+常规手机卡出口应关闭 Android Wi-Fi,避免 zhreverse 误走现场 Wi-Fi/住宅出口。2026-06-14 双网络 POC 例外:当前 `zhreverse` 显式配置 `tunnel_bind_interface: wlan0`、`tunnel_fallback_interface: rmnet1`、`target_bind_interface: rmnet1`,用 WiFi 优先承载 Android -> Hub 隧道腿,WiFi/家宽失败时临时 fallback 到蜂窝隧道;目标网站始终走蜂窝。检查:
 
 ```bash
 cmd wifi status

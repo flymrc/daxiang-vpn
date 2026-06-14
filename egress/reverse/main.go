@@ -107,17 +107,20 @@ type serverOptions struct {
 }
 
 type clientOptions struct {
-	Server              string        `json:"server" yaml:"server"`
-	Token               string        `json:"token,omitempty" yaml:"token,omitempty"`
-	TokenFile           string        `json:"token_file,omitempty" yaml:"token_file,omitempty"`
-	Reconnect           time.Duration `json:"reconnect" yaml:"reconnect"`
-	Transport           string        `json:"transport" yaml:"transport"`
-	Connections         int           `json:"connections" yaml:"connections"`
-	AddressFamily       string        `json:"address_family,omitempty" yaml:"address_family,omitempty"`
-	TunnelBindInterface string        `json:"tunnel_bind_interface,omitempty" yaml:"tunnel_bind_interface,omitempty"`
-	TargetBindInterface string        `json:"target_bind_interface,omitempty" yaml:"target_bind_interface,omitempty"`
-	ServerCertSHA256    string        `json:"server_cert_sha256,omitempty" yaml:"server_cert_sha256,omitempty"`
-	InsecureSkipVerify  bool          `json:"insecure_skip_verify,omitempty" yaml:"insecure_skip_verify,omitempty"`
+	Server                      string        `json:"server" yaml:"server"`
+	Token                       string        `json:"token,omitempty" yaml:"token,omitempty"`
+	TokenFile                   string        `json:"token_file,omitempty" yaml:"token_file,omitempty"`
+	Reconnect                   time.Duration `json:"reconnect" yaml:"reconnect"`
+	Transport                   string        `json:"transport" yaml:"transport"`
+	Connections                 int           `json:"connections" yaml:"connections"`
+	AddressFamily               string        `json:"address_family,omitempty" yaml:"address_family,omitempty"`
+	TunnelBindInterface         string        `json:"tunnel_bind_interface,omitempty" yaml:"tunnel_bind_interface,omitempty"`
+	TunnelFallbackInterface     string        `json:"tunnel_fallback_interface,omitempty" yaml:"tunnel_fallback_interface,omitempty"`
+	TunnelFallbackAfterFailures int           `json:"tunnel_fallback_after_failures,omitempty" yaml:"tunnel_fallback_after_failures,omitempty"`
+	TunnelPrimaryRetryInterval  time.Duration `json:"tunnel_primary_retry_interval,omitempty" yaml:"tunnel_primary_retry_interval,omitempty"`
+	TargetBindInterface         string        `json:"target_bind_interface,omitempty" yaml:"target_bind_interface,omitempty"`
+	ServerCertSHA256            string        `json:"server_cert_sha256,omitempty" yaml:"server_cert_sha256,omitempty"`
+	InsecureSkipVerify          bool          `json:"insecure_skip_verify,omitempty" yaml:"insecure_skip_verify,omitempty"`
 }
 
 func defaultServerOptions() serverOptions {
@@ -132,10 +135,11 @@ func defaultServerOptions() serverOptions {
 
 func defaultClientOptions() clientOptions {
 	return clientOptions{
-		Reconnect:     3 * time.Second,
-		Transport:     "quic",
-		Connections:   4,
-		AddressFamily: "auto",
+		Reconnect:                  3 * time.Second,
+		Transport:                  "quic",
+		Connections:                4,
+		AddressFamily:              "auto",
+		TunnelPrimaryRetryInterval: time.Minute,
 	}
 }
 
@@ -176,6 +180,9 @@ func (o clientOptions) withDefaults(defaults clientOptions) clientOptions {
 	}
 	if o.AddressFamily == "" {
 		o.AddressFamily = defaults.AddressFamily
+	}
+	if o.TunnelPrimaryRetryInterval == 0 {
+		o.TunnelPrimaryRetryInterval = defaults.TunnelPrimaryRetryInterval
 	}
 	return o
 }
@@ -1937,6 +1944,9 @@ func runClient(args []string) error {
 	connections := fs.Int("connections", defaults.Connections, "number of parallel reverse connections")
 	addressFamily := fs.String("address-family", defaults.AddressFamily, "target dial address family: auto, ipv4, or ipv6")
 	tunnelBindInterface := fs.String("tunnel-bind-interface", defaults.TunnelBindInterface, "Linux interface for reverse tunnel TCP dials; empty uses system routing")
+	tunnelFallbackInterface := fs.String("tunnel-fallback-interface", defaults.TunnelFallbackInterface, "Linux fallback interface for reverse tunnel TCP dials; empty uses system routing")
+	tunnelFallbackAfterFailures := fs.Int("tunnel-fallback-after-failures", defaults.TunnelFallbackAfterFailures, "consecutive tunnel dial failures before using fallback; 0 disables fallback")
+	tunnelPrimaryRetryInterval := fs.Duration("tunnel-primary-retry-interval", defaults.TunnelPrimaryRetryInterval, "how often to probe the primary tunnel interface while fallback is active")
 	targetBindInterface := fs.String("target-bind-interface", defaults.TargetBindInterface, "Linux interface for target TCP/DNS dials; empty uses system routing")
 	serverCertSHA256 := fs.String("server-cert-sha256", defaults.ServerCertSHA256, "expected SHA-256 fingerprint of QUIC server certificate")
 	insecureSkipVerify := fs.Bool("insecure-skip-verify", defaults.InsecureSkipVerify, "allow QUIC without certificate pinning; unsafe")
@@ -1976,6 +1986,15 @@ func runClient(args []string) error {
 	if explicit["tunnel-bind-interface"] {
 		opts.TunnelBindInterface = *tunnelBindInterface
 	}
+	if explicit["tunnel-fallback-interface"] {
+		opts.TunnelFallbackInterface = *tunnelFallbackInterface
+	}
+	if explicit["tunnel-fallback-after-failures"] {
+		opts.TunnelFallbackAfterFailures = *tunnelFallbackAfterFailures
+	}
+	if explicit["tunnel-primary-retry-interval"] {
+		opts.TunnelPrimaryRetryInterval = *tunnelPrimaryRetryInterval
+	}
 	if explicit["target-bind-interface"] {
 		opts.TargetBindInterface = *targetBindInterface
 	}
@@ -1999,9 +2018,25 @@ func runClient(args []string) error {
 		return errors.New("--address-family must be auto, ipv4, or ipv6")
 	}
 	opts.TunnelBindInterface = strings.TrimSpace(opts.TunnelBindInterface)
+	opts.TunnelFallbackInterface = strings.TrimSpace(opts.TunnelFallbackInterface)
 	opts.TargetBindInterface = strings.TrimSpace(opts.TargetBindInterface)
 	if opts.Transport == "quic" && opts.TunnelBindInterface != "" {
 		return errors.New("--tunnel-bind-interface currently supports tcp transport only")
+	}
+	if opts.Transport == "quic" && (opts.TunnelFallbackInterface != "" || opts.TunnelFallbackAfterFailures > 0) {
+		return errors.New("--tunnel-fallback-* currently supports tcp transport only")
+	}
+	if opts.TunnelFallbackAfterFailures < 0 {
+		return errors.New("--tunnel-fallback-after-failures must be >= 0")
+	}
+	if opts.TunnelPrimaryRetryInterval < 0 {
+		return errors.New("--tunnel-primary-retry-interval must be >= 0")
+	}
+	if opts.TunnelFallbackAfterFailures > 0 && opts.TunnelBindInterface == "" {
+		return errors.New("--tunnel-fallback-after-failures requires --tunnel-bind-interface")
+	}
+	if opts.TunnelFallbackAfterFailures > 0 && opts.TunnelPrimaryRetryInterval == 0 {
+		return errors.New("--tunnel-primary-retry-interval must be > 0 when tunnel fallback is enabled")
 	}
 	if opts.Transport == "quic" && !opts.InsecureSkipVerify && normalizeFingerprint(opts.ServerCertSHA256) == "" {
 		return errors.New("--server-cert-sha256 is required for quic transport")
@@ -2010,6 +2045,7 @@ func runClient(args []string) error {
 		return errors.New("--server-cert-sha256 must be a 64-character SHA-256 hex fingerprint")
 	}
 
+	tunnelBind := newTunnelBindController(opts)
 	var wg sync.WaitGroup
 	for i := 0; i < opts.Connections; i++ {
 		connID := i + 1
@@ -2017,7 +2053,7 @@ func runClient(args []string) error {
 		go func() {
 			defer wg.Done()
 			for {
-				if err := clientOnce(opts.Transport, opts.Server, resolvedToken, opts); err != nil {
+				if err := clientOnce(opts.Transport, opts.Server, resolvedToken, opts, tunnelBind); err != nil {
 					log.Printf("client connection %d/%d disconnected: %v", connID, opts.Connections, err)
 				}
 				time.Sleep(opts.Reconnect)
@@ -2028,10 +2064,103 @@ func runClient(args []string) error {
 	return nil
 }
 
-func clientOnce(transport string, serverAddr string, token string, opts clientOptions) error {
+type tunnelBindController struct {
+	primary           string
+	fallback          string
+	fallbackAfter     int
+	primaryRetryEvery time.Duration
+	now               func() time.Time
+
+	mu               sync.Mutex
+	primaryFailures  int
+	fallbackActive   bool
+	lastPrimaryProbe time.Time
+}
+
+func newTunnelBindController(opts clientOptions) *tunnelBindController {
+	return &tunnelBindController{
+		primary:           strings.TrimSpace(opts.TunnelBindInterface),
+		fallback:          strings.TrimSpace(opts.TunnelFallbackInterface),
+		fallbackAfter:     opts.TunnelFallbackAfterFailures,
+		primaryRetryEvery: opts.TunnelPrimaryRetryInterval,
+		now:               time.Now,
+	}
+}
+
+func (c *tunnelBindController) interfaceForDial() string {
+	if c == nil || !c.enabled() {
+		if c == nil {
+			return ""
+		}
+		return c.primary
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := c.now()
+	if !c.fallbackActive {
+		return c.primary
+	}
+	if c.lastPrimaryProbe.IsZero() || now.Sub(c.lastPrimaryProbe) >= c.primaryRetryEvery {
+		c.lastPrimaryProbe = now
+		log.Printf("probing primary tunnel interface %s while fallback %s is active", interfaceLabel(c.primary), interfaceLabel(c.fallback))
+		return c.primary
+	}
+	return c.fallback
+}
+
+func (c *tunnelBindController) recordSuccess(iface string) {
+	if c == nil || !c.enabled() {
+		return
+	}
+	iface = strings.TrimSpace(iface)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if iface == c.primary {
+		if c.fallbackActive {
+			log.Printf("primary tunnel interface %s recovered; leaving fallback %s", interfaceLabel(c.primary), interfaceLabel(c.fallback))
+		}
+		c.primaryFailures = 0
+		c.fallbackActive = false
+		return
+	}
+	if c.fallbackActive && iface == c.fallback {
+		log.Printf("connected to reverse server via fallback tunnel interface %s", interfaceLabel(c.fallback))
+	}
+}
+
+func (c *tunnelBindController) recordFailure(iface string, err error) {
+	if c == nil || !c.enabled() {
+		return
+	}
+	iface = strings.TrimSpace(iface)
+	if iface != c.primary {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.primaryFailures++
+	if c.primaryFailures >= c.fallbackAfter && !c.fallbackActive {
+		c.fallbackActive = true
+		c.lastPrimaryProbe = c.now()
+		log.Printf("primary tunnel interface %s failed %d times; falling back to %s: %v", interfaceLabel(c.primary), c.primaryFailures, interfaceLabel(c.fallback), err)
+	}
+}
+
+func (c *tunnelBindController) enabled() bool {
+	return c.primary != "" && c.fallbackAfter > 0
+}
+
+func interfaceLabel(iface string) string {
+	if strings.TrimSpace(iface) == "" {
+		return "system-routing"
+	}
+	return iface
+}
+
+func clientOnce(transport string, serverAddr string, token string, opts clientOptions, tunnelBind *tunnelBindController) error {
 	switch transport {
 	case "tcp":
-		return tcpClientOnce(serverAddr, token, opts)
+		return tcpClientOnce(serverAddr, token, opts, tunnelBind)
 	case "quic":
 		return quicClientOnce(serverAddr, token, opts)
 	default:
@@ -2039,13 +2168,23 @@ func clientOnce(transport string, serverAddr string, token string, opts clientOp
 	}
 }
 
-func tcpClientOnce(serverAddr string, token string, opts clientOptions) error {
-	conn, err := dialTCP(serverAddr, 15*time.Second, opts.TunnelBindInterface)
+func tcpClientOnce(serverAddr string, token string, opts clientOptions, tunnelBind *tunnelBindController) error {
+	bindInterface := opts.TunnelBindInterface
+	if tunnelBind != nil {
+		bindInterface = tunnelBind.interfaceForDial()
+	}
+	conn, err := dialTCP(serverAddr, 15*time.Second, bindInterface)
 	if err != nil {
+		if tunnelBind != nil {
+			tunnelBind.recordFailure(bindInterface, err)
+		}
 		return err
 	}
 	defer conn.Close()
 	if _, err := fmt.Fprintf(conn, "%s %s\n", protocolHello, token); err != nil {
+		if tunnelBind != nil {
+			tunnelBind.recordFailure(bindInterface, err)
+		}
 		return err
 	}
 
@@ -2056,10 +2195,16 @@ func tcpClientOnce(serverAddr string, token string, opts clientOptions) error {
 	cfg.ConnectionWriteTimeout = 30 * time.Second
 	session, err := yamux.Client(conn, cfg)
 	if err != nil {
+		if tunnelBind != nil {
+			tunnelBind.recordFailure(bindInterface, err)
+		}
 		return err
 	}
 	defer session.Close()
-	log.Printf("connected to reverse tcp server %s", serverAddr)
+	if tunnelBind != nil {
+		tunnelBind.recordSuccess(bindInterface)
+	}
+	log.Printf("connected to reverse tcp server %s via tunnel interface %s", serverAddr, interfaceLabel(bindInterface))
 
 	for {
 		stream, err := session.Accept()

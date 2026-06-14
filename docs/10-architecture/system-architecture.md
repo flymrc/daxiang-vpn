@@ -70,7 +70,7 @@ Android zhreverse client
 public target
 ```
 
-2026-06-14 当前生产 POC 使用 root/Linux `SO_BINDTODEVICE` 做 socket 级分流:`tunnel_bind_interface: wlan0` 让 Android -> Hub 隧道腿走住宅 WiFi IPv4,`target_bind_interface: rmnet1` 让 Android -> 目标网站仍走手机蜂窝出口。该方案不是自动 fallback 策略;若 WiFi/家宽断开,隧道会重连失败,需要移除 `tunnel_bind_interface` 或恢复 Android `client.yaml` 备份后重启 `zhreverse`。
+2026-06-14 当前生产 POC 使用 root/Linux `SO_BINDTODEVICE` 做 socket 级分流:`tunnel_bind_interface: wlan0` 让 Android -> Hub 隧道腿优先走住宅 WiFi IPv4,`target_bind_interface: rmnet1` 让 Android -> 目标网站仍走手机蜂窝出口。隧道腿启用 fallback:`wlan0` 连续失败后临时改走 `rmnet1`,并定期探测 `wlan0` 是否恢复;目标网站拨号不参与 fallback,始终绑定蜂窝。
 
 WireGuard App 仍负责内网控制面,例如 `10.66.0.101:2022` SSH 运维、`10.66.0.101:5555` WG-only TCP ADB 和 watchdog 自愈。Android 客户端 token 的 `egress.proxy_addr` 应指向 Hub 的 WireGuard 地址 `10.66.0.1:18081`,不要再指向手机旧入站代理。旧 `zhandroid-egress` / `10.66.0.101:1080` Android 数据面已从生产入口拆除。
 

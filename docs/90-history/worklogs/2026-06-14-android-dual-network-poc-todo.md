@@ -159,16 +159,32 @@ Cloudflare requests.
 
 ## Fallback Behavior
 
-There is no automatic fallback in this POC. Because the tunnel socket is
-explicitly bound to `wlan0`, WiFi/home broadband loss makes the reverse tunnel
-fail and reconnect attempts keep targeting `wlan0`.
+Initial POC had no automatic fallback. The follow-up implementation adds
+tunnel-leg fallback without changing target egress binding:
 
-Manual rollback:
+- Primary tunnel interface: `wlan0`
+- Fallback tunnel interface: `rmnet1`
+- Fallback trigger: 3 consecutive primary tunnel dial/auth failures
+- Primary retry interval while fallback is active: 1 minute
+- Target website TCP/DNS remains bound to `rmnet1`
+
+This means WiFi/home broadband loss should only move Android -> Hub tunnel
+traffic to cellular; it should not make target websites use WiFi or Hub egress.
+
+Manual rollback after fallback deploy:
 
 ```sh
-cp /data/adb/zhreverse/client.yaml.bak-20260614-bind-iface-poc /data/adb/zhreverse/client.yaml
-cp /data/adb/zhreverse/bin/zhreverse.bak-20260614-bind-iface-poc /data/adb/zhreverse/bin/zhreverse.staged
+cp /data/adb/zhreverse/client.yaml.bak-20260614-tunnel-fallback /data/adb/zhreverse/client.yaml
+cp /data/adb/zhreverse/bin/zhreverse.bak-20260614-tunnel-fallback /data/adb/zhreverse/bin/zhreverse.staged
 chmod 700 /data/adb/zhreverse/bin/zhreverse.staged
 mv /data/adb/zhreverse/bin/zhreverse.staged /data/adb/zhreverse/bin/zhreverse
 pkill zhreverse
 ```
+
+Fallback validation plan:
+
+1. Confirm normal state uses `wlan0` tunnel and `rmnet1` target.
+2. Temporarily disable WiFi.
+3. Confirm reverse sessions recover from cellular `rmnet1`.
+4. Confirm `api6.ipify.org` still returns cellular `240b:c010:...`.
+5. Re-enable WiFi and wait for primary probe to reconnect on `wlan0`.

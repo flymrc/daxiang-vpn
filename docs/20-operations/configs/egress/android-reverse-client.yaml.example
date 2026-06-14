@@ -17,6 +17,9 @@ client:
   # empty in normal production unless actively testing WiFi IPv4 + cellular
   # IPv6 split egress.
   # tunnel_bind_interface: wlan0
+  # tunnel_fallback_interface: rmnet1
+  # tunnel_fallback_after_failures: 3
+  # tunnel_primary_retry_interval: 1m
   # target_bind_interface: rmnet1
   # 2+ independent tunnel sessions: the reverse tunnel runs over the phone's
   # IPv4/CGNAT leg (port 39093), which periodically freezes or gets reset. With

@@ -152,6 +152,71 @@ func TestQUICClientRejectsTunnelBindInterface(t *testing.T) {
 	}
 }
 
+func TestQUICClientRejectsTunnelFallback(t *testing.T) {
+	err := run([]string{
+		"client",
+		"--server", "127.0.0.1:1",
+		"--token", "test-token",
+		"--transport", "quic",
+		"--server-cert-sha256", strings.Repeat("a", 64),
+		"--tunnel-fallback-after-failures", "3",
+	})
+	if err == nil {
+		t.Fatal("expected tunnel fallback error")
+	}
+	if err.Error() != "--tunnel-fallback-* currently supports tcp transport only" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestTunnelBindControllerFallbackAndRecovery(t *testing.T) {
+	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
+	controller := newTunnelBindController(clientOptions{
+		TunnelBindInterface:         "wlan0",
+		TunnelFallbackInterface:     "rmnet1",
+		TunnelFallbackAfterFailures: 2,
+		TunnelPrimaryRetryInterval:  time.Minute,
+	})
+	controller.now = func() time.Time { return now }
+
+	if got := controller.interfaceForDial(); got != "wlan0" {
+		t.Fatalf("initial interface = %q", got)
+	}
+	controller.recordFailure("wlan0", errors.New("dial failed"))
+	if got := controller.interfaceForDial(); got != "wlan0" {
+		t.Fatalf("interface after first failure = %q", got)
+	}
+	controller.recordFailure("wlan0", errors.New("dial failed"))
+	if got := controller.interfaceForDial(); got != "rmnet1" {
+		t.Fatalf("fallback interface = %q", got)
+	}
+
+	now = now.Add(30 * time.Second)
+	if got := controller.interfaceForDial(); got != "rmnet1" {
+		t.Fatalf("interface before retry interval = %q", got)
+	}
+	now = now.Add(31 * time.Second)
+	if got := controller.interfaceForDial(); got != "wlan0" {
+		t.Fatalf("primary probe interface = %q", got)
+	}
+	controller.recordSuccess("wlan0")
+	if got := controller.interfaceForDial(); got != "wlan0" {
+		t.Fatalf("interface after primary recovery = %q", got)
+	}
+}
+
+func TestTunnelBindControllerFallbackToSystemRouting(t *testing.T) {
+	controller := newTunnelBindController(clientOptions{
+		TunnelBindInterface:         "wlan0",
+		TunnelFallbackAfterFailures: 1,
+		TunnelPrimaryRetryInterval:  time.Minute,
+	})
+	controller.recordFailure("wlan0", errors.New("dial failed"))
+	if got := controller.interfaceForDial(); got != "" {
+		t.Fatalf("fallback interface = %q, want system routing", got)
+	}
+}
+
 func TestNormalizeFingerprint(t *testing.T) {
 	got := normalizeFingerprint("SHA256:AA:bb cc")
 	if got != "aabbcc" {

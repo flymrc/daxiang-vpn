@@ -246,7 +246,7 @@ zhreverse target socket -> rmnet_data* / cellular IPv6 -> target website
 - POC 成功:Hub `/debug/session-health` 看到 `60.124.42.38:*` 家宽 IPv4 reverse session;Android `ss` 显示隧道为 `192.168.3.3%wlan0 -> 36.50.84.68:39093`;代理访问 `api6.ipify.org` 返回蜂窝 IPv6 `240b:c010:420:43fc:0:22:6ab2:8701`,目标连接显示 `%rmnet1`。
 - `check-android-egress-health.ps1` PASS;v4 也仍为手机侧 `133.106.32.25`,不是家宽或 Hub。
 - 30 次小请求尾延迟:三组目标均 `30/30` 成功,Cloudflare trace `total_ms p50=306.29 p95=636.27 p99=785.95`,优于蜂窝隧道基线。
-- **无自动 fallback**:隧道 socket 显式绑 `wlan0`,家宽/WiFi 断开时不会自动切蜂窝隧道。回滚方式是恢复上面的 `client.yaml` 备份或移除绑定字段,再 `pkill zhreverse`。
+- 自动 fallback:隧道 socket 优先绑 `wlan0`;连续失败 3 次后改用 `rmnet1`,每 1 分钟探测一次 `wlan0` 恢复情况。目标网站 socket/DNS 仍固定绑 `rmnet1`,不会因为隧道 fallback 改出口。
 
 **明天 POC 步骤**：
 
