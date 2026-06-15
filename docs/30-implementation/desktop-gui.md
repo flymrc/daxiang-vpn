@@ -175,6 +175,7 @@ clients/desktop-gui/
   - **不出 MSI**：WiX `light.exe` 在 unicode 产品名「纵横 VPN」上会失败；NSIS 处理 UTF-8 正常，且是面向消费者的首选安装器（MSI 偏企业 GPO）。
 - WebView2 走 `downloadBootstrapper`（Win11 自带，旧系统自动拉起安装）。
 - `zhvpn.exe` 作为 `externalBin` sidecar 随包，构建前由 `build.ps1` 用 `go build -tags with_gvisor` 产出并按 target-triple 命名拷入 `src-tauri/binaries/`；Tauri 打包时去 triple 后缀复制为主程序旁的 `zhvpn.exe`。
+- 日常构建可从仓库根目录运行 `scripts/build-desktop-gui.ps1 -Target x64|arm64|both`。该脚本只是包装 `clients/desktop-gui/build.ps1`,并额外打印安装包路径、大小和 SHA256。`x86` 作为 x64/amd64 别名处理,当前不提供 32 位 Windows GUI 包。
 - 产品显示名「纵横 VPN」（`productName`），二进制名 `zhvpn-desktop`（`mainBinaryName`，ASCII 避坑）；`publisher`/`copyright`/描述齐全；图标为自绘品牌图（蓝绿底白色 `ZH` 字标，`tauri icon` 生成全套）。代码签名后续再补。
 
 ## 文档同步（按 AGENTS.md）

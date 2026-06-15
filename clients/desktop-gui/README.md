@@ -46,6 +46,16 @@ npm run tauri dev
 
 产出 Windows x64 / amd64 NSIS 安装包（按用户安装，免管理员）于 `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`，sidecar `zhvpn.exe` 随包。若只想构建当前开发机架构，可用 `./build.ps1 -Target host`。
 
+仓库根目录也提供一个更适合日常使用的包装脚本，会自动打印安装包路径和 SHA256：
+
+```powershell
+.\scripts\build-desktop-gui.ps1 -Target x64
+.\scripts\build-desktop-gui.ps1 -Target arm64
+.\scripts\build-desktop-gui.ps1 -Target both -OpenFolder
+```
+
+其中 `x86`/`x64`/`amd64` 都会构建 Windows Intel/AMD 64 位包；当前不支持真正 32 位 Windows GUI 包。
+
 在 macOS/Linux 上交叉构建 Windows 包时需先装 Rust target、`cargo-xwin`、LLVM/NSIS，脚本会在非 Windows host 默认给 Tauri 加 `--runner cargo-xwin`。amd64 sidecar 构建会强制 `GOAMD64=v1`，保证老 Intel i5 / Win10 兼容。
 WebView2 用 downloadBootstrapper（Win11 自带，旧系统自动拉起安装）。
 
