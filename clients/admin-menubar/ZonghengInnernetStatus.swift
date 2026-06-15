@@ -98,10 +98,10 @@ final class InnernetStatusApp: NSObject, NSApplicationDelegate {
 
         item.button?.title = title
         statusItem.title = status
-        let iface = hasAdmin ? "admin-innernet 10.66.0.40" : (hasMacEgress ? "mac-egress 10.66.0.100" : "no local WG address")
+        let iface = hasAdmin ? "admin-innernet 10.66.0.40" : (hasMacEgress ? "deprecated mac peer 10.66.0.100" : "no local WG address")
         endpointItem.title = iface
         connectItem.isEnabled = !hasMacEgress
-        connectItem.title = hasMacEgress ? "Connect disabled: mac-egress active" : "Connect admin-innernet"
+        connectItem.title = hasMacEgress ? "Connect disabled: deprecated Mac peer active" : "Connect admin-innernet"
     }
 
     @objc private func connect() {

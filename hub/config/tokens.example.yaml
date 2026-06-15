@@ -4,12 +4,12 @@ tokens:
     client_name: cn-client-01
     expires_at: 2026-07-01
     egress:
-      name: mac-mini
-      display_name: 日本住宅出口
+      name: jp-android-01
+      display_name: 日本手机出口
       region: 日本
-      type: 住宅 IP
-      management_addr: 100.80.36.89
-      proxy_addr: 10.66.0.100:1080
+      type: 手机 IP
+      management_addr: 10.66.0.101:2022
+      proxy_addr: 10.66.0.1:18081
     local_proxy:
       listen_addr: 127.0.0.1
       listen_port: 7890

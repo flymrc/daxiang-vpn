@@ -1,6 +1,6 @@
 # 纵横 VPN
 
-纵横 VPN 是一个 Hub + 日本住宅出口 + Windows 客户端的代理网络项目。
+纵横 VPN 是一个 Hub + Android 手机出口 + Windows 客户端的代理网络项目。
 
 ## 目录
 
@@ -17,7 +17,7 @@ hub/                  Hub 服务端（授权 API，原 backend/zhhub）
 
 egress/               出口节点(基础设施侧，非终端客户端)
   reverse/            Android 反向 TCP/yamux 出口数据面（zhreverse，当前生产路径）
-  proxy/              旧跨平台 Go 出口代理（基于 sing-box；Android 上仅保留回滚）
+  proxy/              弃用的 Mac/PC 出口代理封装（旧 sing-box 路线，仅保留历史参考）
   android-status/     安卓出口监控 App（原 android/zhandroid-status）
   android-control/    安卓出口远程控制+自愈（Go SSH 服务绑隧道 IP + 看门狗）
 
@@ -60,10 +60,12 @@ zhvpn.exe login <授权码>
 -> Hub 返回运行配置
 -> zhvpn.exe start
 -> 本地代理 127.0.0.1:7890
--> 日本住宅出口
+-> Android 手机运营商出口
 ```
 
 `zhvpn.exe` 是本机唯一控制面。桌面 GUI 和后续 Python SDK 都通过 CLI 的机器接口（`--json` 等）完成登录、连接、状态、换 IP、断开；SDK 不直接调用 GUI，也不重新实现 WireGuard / sing-box / Hub bootstrap 逻辑。
+
+> 2026-06-15 决策：Mac mini `10.66.0.100:1080` 出口路线已弃用，不再作为新客户端、自动调度或 easyJet/Wraith 验证出口。Mac 上的 WireGuard/sing-box 只保留为历史/管理诊断对象；新流量默认应走 Android `zhreverse` Hub 入口 `10.66.0.1:18081`。
 
 ### Android 出口当前 POC
 

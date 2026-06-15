@@ -35,7 +35,6 @@ zhvpn egress list
 
 ```text
 名称          地区    类型      当前 IP          状态
-jp-mac-01    日本    住宅IP    123.xxx.xxx.xxx   在线
 jp-phone-01  日本    手机IP    106.xxx.xxx.xxx   在线
 ```
 
@@ -44,7 +43,7 @@ jp-phone-01  日本    手机IP    106.xxx.xxx.xxx   在线
 最简单模式：
 
 ```bash
-zhvpn proxy start --egress jp-mac-01
+zhvpn proxy start --egress jp-phone-01
 ```
 
 默认监听：
@@ -69,8 +68,8 @@ zhvpn ip
 示例输出：
 
 ```text
-当前出口：jp-mac-01
-出口类型：日本住宅 IP
+当前出口：jp-phone-01
+出口类型：日本手机 IP
 公网 IP：123.xxx.xxx.xxx
 ```
 
@@ -155,7 +154,7 @@ Hub
 后续再做。
 
 ```bash
-zhvpn tun start --egress jp-mac-01
+zhvpn tun start --egress jp-phone-01
 ```
 
 优点：
@@ -271,12 +270,12 @@ proxy:
   socks5_listen: 127.0.0.1:7891
 
 egress:
-  default: jp-mac-01
+  default: jp-phone-01
 ```
 
 ## 第一版验收标准
 
-- 中国客户端执行 `zhvpn proxy start --egress jp-mac-01` 后，本地出现 `127.0.0.1:7890`。
+- 中国客户端执行 `zhvpn proxy start --egress jp-phone-01` 后，本地出现 `127.0.0.1:7890`。
 - 使用 `curl -x http://127.0.0.1:7890 https://www.yahoo.co.jp` 可以访问日本网站。
 - `zhvpn ip` 显示的是日本出口节点的公网 IP，不是 Hub 的公网 IP。
 - `zhvpn proxy switch jp-phone-01` 可以切换到另一个日本出口。

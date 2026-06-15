@@ -1,7 +1,7 @@
 # 运维诊断命令手册
 
 面向日常排查：**客户连不上 / 网速慢 / 出口 IP 不对 / 想确认流量是否在走**。
-命令分 **Hub**、**Mac 出口** 和 **Android 出口** 三块，每条都标注「看什么、怎么判断」。
+命令分 **Hub**、**Deprecated Mac 出口** 和 **Android 出口** 三块，每条都标注「看什么、怎么判断」。
 
 > 登录凭据（IP / 用户 / 密码）见 [服务器访问文档](server-access.md)，本文不重复抄密码。
 >
@@ -14,12 +14,12 @@
 ```text
 客户端  --WireGuard-->  Hub(36.50.84.68, wg0/10.66.0.1)
    --WireGuard Peer 间转发 / Hub 本地 reverse proxy
-   -->  出口节点(Mac 10.66.0.100 或 Android zhreverse)
-   --> NAT / 手机网络 --> 出口公网
+   -->  出口节点(Android zhreverse; Mac 10.66.0.100 已弃用)
+   --> 手机网络 --> 出口公网
 ```
 
 - 客户端的 WG IP 由 Hub 按授权码分配（例如当前客户是 `10.66.0.20`）。
-- Mac 出口固定是 `10.66.0.100`，对外住宅 IP 当前是 `118.158.252.9`。
+- Mac 出口 `10.66.0.100:1080` 已弃用,只保留历史/管理诊断;不要再作为新流量默认出口。
 - Android 出口数据面是 Hub WireGuard 地址 `10.66.0.1:18081` 的 `zhreverse` proxy，公网 IP 随手机卡或 WiFi 网络变化。
 
 ---
@@ -43,8 +43,7 @@ wg show
 | `transfer` | 累计收 / 发字节 | 持续增长＝真的在过流量；只有几 KiB＝只握手没流量 |
 
 **判断客户流量是否真的在走（关键技巧）**：
-客户 peer 和 Mac peer 的收发应该**对称镜像** ——
-客户「发」≈ Mac「收」，客户「收」≈ Mac「发」。对得上就说明流量在贯通整条链路。
+当前生产数据面看 Android `zhreverse` 的 `/debug/session-health`、`active_proxy_connections_by_peer` 和 Hub 上客户 peer 的 WireGuard transfer。早期“客户 peer 与 Mac peer 收发镜像”的判断只适用于已弃用的 Mac 出口路径。
 
 机器可读版（适合脚本/快速看）：
 
@@ -72,19 +71,19 @@ ip route show 10.66.0.101/32
 sysctl net.ipv4.ip_forward      # 必须 = 1，否则 Hub 不转发流量
 ```
 
-### 1.3 端到端验证：Hub 经 Mac 代理出公网
+### 1.3 端到端验证：Hub 经 Android 出口出公网
+
+```bash
+curl -x http://10.66.0.1:18081 -s https://api64.ipify.org; echo
+```
+
+- 返回手机运营商 IP,且不是 Hub VPS `36.50.84.68` = Android 出口链路通、出口 IP 正确。
+- 卡住/超时 = `zhreverse` Hub 服务、Android reverse session 或手机目标拨号路径异常。
+
+Deprecated Mac 出口只在排查历史路径时使用：
 
 ```bash
 curl -x http://10.66.0.100:1080 -s https://api.ipify.org; echo
-```
-
-- 返回 `118.158.252.9`（日本住宅 IP）＝整条出口链路通、出口 IP 正确。
-- 卡住/超时＝Hub 到 Mac 这段，或 Mac 上的 sing-box 有问题。
-
-SOCKS5 方式同理：
-
-```bash
-curl --socks5-hostname 10.66.0.100:1080 -s https://api.ipify.org; echo
 ```
 
 ### 1.4 看 WireGuard 服务和端口
@@ -116,10 +115,12 @@ cat /etc/wireguard/wg0.conf                # 运行时配置
 
 ---
 
-## 2. 日本 Mac 出口节点
+## 2. Deprecated 日本 Mac 出口节点
 
 > 系统 macOS（Apple Silicon），`maruichao` 登录：`ssh maruichao@100.80.36.89`
 > 地址是 **Tailscale 地址**，本机要在同一 Tailnet 才连得上。
+
+> 2026-06-15 起,Mac `10.66.0.100:1080` 已弃用。以下命令仅用于确认历史服务状态或管理内网连通性,不要把它作为新客户端、自动调度或专项验证出口。
 
 ### 2.1 看 WireGuard 隧道（最常用 ⭐）
 
@@ -359,15 +360,15 @@ $adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
 按这个顺序走，能快速定位问题在哪一段：
 
 ```bash
-# ① 在 Hub 上：客户和 Mac 都有近 2 分钟握手吗？流量在涨吗？
+# ① 在 Hub 上：客户和 Android 控制面/zhreverse 是否在线？流量在涨吗？
 wg show
+curl -s http://10.66.0.1:18081/debug/session-health
 
 # ② 在 Hub 上：转发开着吗？端到端出口通吗？
 sysctl net.ipv4.ip_forward
-curl -x http://10.66.0.100:1080 -s https://api.ipify.org; echo
 curl -x http://10.66.0.1:18081 -s https://api64.ipify.org; echo
 
-# ③ 若 ② 不通，再上 Mac 看 sing-box 和日志
+# ③ 只有历史 Mac 路径要查时，再上 Mac 看 sing-box 和日志
 sudo /opt/homebrew/bin/wg show
 pgrep -fl sing-box
 tail -n 50 /usr/local/var/log/zhvpn/*.log
@@ -377,8 +378,8 @@ tail -n 50 /usr/local/var/log/zhvpn/*.log
 | --- | --- |
 | Hub 上客户 peer 无握手 / 握手很久前 | 客户端没启动、网络不通、或客户端配置/密钥不对 |
 | 客户有握手但 `transfer` 不涨 | 客户连上了但没真正走流量（浏览器没设代理？） |
-| Hub `curl -x ...1080` 超时 | Hub→Mac 这段断，或 Mac 上 sing-box 挂了 |
-| 出口 IP 不是 `118.158.252.9` | Mac 的 WAN/住宅网络变了，或走了别的出口 |
+| Hub `curl -x 10.66.0.1:18081` 超时 | Hub `zhreverse` 服务、Android reverse session 或手机目标拨号路径异常 |
+| 仍有新 token 指向 `10.66.0.100:1080` | 配置落在已弃用 Mac 出口;应改为 Android `10.66.0.1:18081` |
 | Android 手机卡直连快但代理慢 | 多半是手机上行到 Hub 慢，不是手机下行慢 |
 | Android 日志大量 `message too long` | Android WireGuard/sing-box 发包路径仍需优化 |
 | v4-only 站点经代理卡 15s 后 TLS 失败 | Rakuten IPv4/CGNAT/F5 侧故障;这是手机 IPv4 出口真实异常,不要改由 Hub 直拨 |
@@ -413,7 +414,7 @@ wg show wg0 endpoints
 
 ---
 
-## 5. 正常基线（2026-06-03 实测）
+## 5. 历史基线（2026-06-03 实测,Mac 出口已弃用）
 
 留作对照，知道「正常」长什么样：
 

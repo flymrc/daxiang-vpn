@@ -5,7 +5,7 @@
 - 只访问 `10.66.0.0/24` WireGuard 内网。
 - 不接管默认路由。
 - 不把普通公网流量导入 Hub。
-- 用于访问 Hub、Mac 出口、Android 出口控制面等管理地址。
+- 用于访问 Hub、deprecated Mac peer、Android 出口控制面等管理地址。
 
 ## 当前分配
 
@@ -21,7 +21,7 @@
 
 ## 常驻与状态栏
 
-当前这台 Mac mini 已经是出口节点,有 `mac-mini` WireGuard 常驻隧道 `10.66.0.100/24`。因此它访问管理内网不需要再启动第二条 `admin-innernet` 隧道;状态栏会把这个现有内网连通状态显示为在线。
+当前这台 Mac mini 仍有历史 `mac-mini` WireGuard 常驻隧道 `10.66.0.100/24`。Mac 出口数据面已弃用,但该隧道仍可作为管理内网连通性来源。因此它访问管理内网不需要再启动第二条 `admin-innernet` 隧道;状态栏会把这个现有内网连通状态显示为在线。
 
 已安装的状态栏工具:
 
@@ -46,7 +46,7 @@ launchctl bootout "gui/$(id -u)" ~/Library/LaunchAgents/com.zongheng.zhvpn.inner
 - 复制 Android SSH 命令。
 - 打开本机 WireGuard 配置目录。
 
-注意:在这台 Mac mini 出口节点上,不要同时启用 `mac-mini` 和 `admin-innernet` 两条指向同一 Hub/同一 `10.66.0.0/24` 的 WireGuard 隧道,否则路由会重叠。`admin-innernet` 更适合导入到其它管理机。
+注意:在这台 Mac mini 上,不要同时启用历史 `mac-mini` 和 `admin-innernet` 两条指向同一 Hub/同一 `10.66.0.0/24` 的 WireGuard 隧道,否则路由会重叠。`admin-innernet` 更适合导入到其它管理机。
 
 ## 路由原则
 
