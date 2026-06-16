@@ -32,6 +32,8 @@ export type ActionResult = {
 // Mirrors zhvpn `rotate-ip --json`.
 export type RotateResult = {
   ok: boolean;
+  status?: string;
+  message?: string;
   before?: string;
   after?: string;
   egress?: string;

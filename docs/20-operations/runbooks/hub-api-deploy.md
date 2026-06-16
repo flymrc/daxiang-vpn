@@ -116,6 +116,8 @@ POST /api/client/rotate-ip
 
 客户端只提交自己的授权 token 和断网秒数,Hub 校验 token 后通过 Android 控制面 SSH 触发 `/data/adb/zhandroid/rotate-ip.sh`。客户机不需要 Android SSH 私钥,也不需要知道跳板。
 
+Hub 会按出口加一把非阻塞换 IP 锁:第一次请求触发 Android 控制面,保护窗口内的后续请求不会再次执行换 IP,而是返回 `409 {"status":"busy","message":"换 IP 正在进行中，请稍后再试"}`。保护窗口默认是 `down_seconds + 45s`,可通过 `ZHHUB_ROTATE_LOCK_EXTRA_SECONDS` 调整额外秒数。
+
 Hub 侧需要一把无 passphrase 的服务专用 key:
 
 ```bash

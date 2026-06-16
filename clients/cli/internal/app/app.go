@@ -101,6 +101,7 @@ var ErrSilent = errors.New("已输出结果")
 // jsonResult is the machine-readable result for login / rotate-ip (--json).
 type jsonResult struct {
 	OK      bool   `json:"ok"`
+	Status  string `json:"status,omitempty"`
 	Egress  string `json:"egress,omitempty"`
 	Proxy   string `json:"proxy,omitempty"`
 	Before  string `json:"before,omitempty"`
@@ -819,25 +820,43 @@ func rotateIP(ctx paths.Context, args []string) error {
 		return reportErr(jsonOut, err)
 	}
 
-	before, after, err := performRotate(cfg, opts, jsonOut)
+	res, err := performRotate(cfg, opts, jsonOut)
 	if err != nil {
 		return reportErr(jsonOut, err)
 	}
 
 	if jsonOut {
-		return printJSON(jsonResult{OK: true, Egress: cfg.Egress.CustomerName(), Before: before, After: after})
+		return printJSON(jsonResult{
+			OK:      true,
+			Status:  res.status,
+			Egress:  cfg.Egress.CustomerName(),
+			Before:  res.before,
+			After:   res.after,
+			Message: res.message,
+		})
 	}
-	fmt.Printf("换 IP 后出口：%s\n", after)
-	if after == unavailableIP {
+	if res.status == "busy" {
+		fmt.Println(res.message)
+		return nil
+	}
+	fmt.Printf("换 IP 后出口：%s\n", res.after)
+	if res.after == unavailableIP {
 		fmt.Println("提示：出口可能还没恢复，过几秒再执行 zhvpn.exe status，或加大 --wait-seconds。")
 	}
 	return nil
 }
 
+type rotateOutcome struct {
+	before  string
+	after   string
+	status  string
+	message string
+}
+
 // performRotate triggers a rotate (hub-managed or direct ssh) and returns the
 // public egress IP before and after. When quiet is true (--json) it suppresses
 // all progress output so stdout carries only the caller's final JSON.
-func performRotate(cfg config.Config, opts rotateIPOptions, quiet bool) (string, string, error) {
+func performRotate(cfg config.Config, opts rotateIPOptions, quiet bool) (rotateOutcome, error) {
 	before := publicIPOrUnavailable(opts.proxyAddr)
 	if !quiet {
 		fmt.Printf("换 IP 前出口：%s\n", before)
@@ -847,22 +866,37 @@ func performRotate(cfg config.Config, opts rotateIPOptions, quiet bool) (string,
 		if !quiet {
 			fmt.Printf("触发 Android rotate-ip（断网 %ds）...\n", opts.downSeconds)
 		}
-		if err := bootstrap.RotateIP(cfg.License.Token, opts.downSeconds); err != nil {
-			return before, "", err
+		rotate, err := bootstrap.RotateIP(cfg.License.Token, opts.downSeconds)
+		if err != nil {
+			return rotateOutcome{before: before}, err
 		}
-		return before, waitForPublicIP(opts.proxyAddr, opts.downSeconds, opts.waitSeconds, quiet), nil
+		if rotate.Status == "busy" {
+			message := rotate.Message
+			if message == "" {
+				message = "换 IP 正在进行中，请稍后再试"
+			}
+			if rotate.RetryAfterSeconds > 0 {
+				message = fmt.Sprintf("%s（约 %d 秒后可重试）", message, rotate.RetryAfterSeconds)
+			}
+			return rotateOutcome{before: before, after: before, status: "busy", message: message}, nil
+		}
+		return rotateOutcome{
+			before: before,
+			after:  waitForPublicIP(opts.proxyAddr, opts.downSeconds, opts.waitSeconds, quiet),
+			status: "triggered",
+		}, nil
 	}
 
 	if _, err := os.Stat(opts.keyPath); err != nil {
 		if os.IsNotExist(err) {
-			return before, "", fmt.Errorf("Android 控制面 SSH 私钥不存在：%s\n请把当前授权的私钥放到该路径，或使用 --key <路径>。普通用户态 start 还需要 --jump root@36.50.84.68 或改用 start --fast 提供系统路由", opts.keyPath)
+			return rotateOutcome{before: before}, fmt.Errorf("Android 控制面 SSH 私钥不存在：%s\n请把当前授权的私钥放到该路径，或使用 --key <路径>。普通用户态 start 还需要 --jump root@36.50.84.68 或改用 start --fast 提供系统路由", opts.keyPath)
 		}
-		return before, "", fmt.Errorf("无法读取 Android 控制面 SSH 私钥：%w", err)
+		return rotateOutcome{before: before}, fmt.Errorf("无法读取 Android 控制面 SSH 私钥：%w", err)
 	}
 	if opts.jumpHost == "" {
 		controlAddr := net.JoinHostPort(opts.phone, strconv.Itoa(opts.port))
 		if reachable, _ := netcheck.TCP(controlAddr, 3*time.Second); !reachable {
-			return before, "", fmt.Errorf("Android 控制面 %s 不可达。普通 zhvpn.exe start 是用户态代理模式，不会给 Windows 系统添加 10.66.0.0/24 路由；请使用 --jump root@36.50.84.68，或先用 zhvpn.exe start --fast / 管理内网 WireGuard 提供系统路由", controlAddr)
+			return rotateOutcome{before: before}, fmt.Errorf("Android 控制面 %s 不可达。普通 zhvpn.exe start 是用户态代理模式，不会给 Windows 系统添加 10.66.0.0/24 路由；请使用 --jump root@36.50.84.68，或先用 zhvpn.exe start --fast / 管理内网 WireGuard 提供系统路由", controlAddr)
 		}
 	}
 	if !quiet {
@@ -888,10 +922,14 @@ func performRotate(cfg config.Config, opts rotateIPOptions, quiet bool) (string,
 		cmd.Stderr = os.Stderr
 	}
 	if err := cmd.Run(); err != nil {
-		return before, "", fmt.Errorf("触发 rotate-ip 失败：%w", err)
+		return rotateOutcome{before: before}, fmt.Errorf("触发 rotate-ip 失败：%w", err)
 	}
 
-	return before, waitForPublicIP(opts.proxyAddr, opts.downSeconds, opts.waitSeconds, quiet), nil
+	return rotateOutcome{
+		before: before,
+		after:  waitForPublicIP(opts.proxyAddr, opts.downSeconds, opts.waitSeconds, quiet),
+		status: "triggered",
+	}, nil
 }
 
 const unavailableIP = "(暂不可达)"

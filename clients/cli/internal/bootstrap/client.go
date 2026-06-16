@@ -22,6 +22,14 @@ type rotateIPRequest struct {
 	DownSeconds int    `json:"down_seconds"`
 }
 
+type RotateIPResult struct {
+	Status            string `json:"status"`
+	Egress            string `json:"egress"`
+	DownSeconds       int    `json:"down_seconds"`
+	Message           string `json:"message"`
+	RetryAfterSeconds int    `json:"retry_after_seconds"`
+}
+
 func Fetch(token string) (config.Config, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -65,40 +73,67 @@ func Fetch(token string) (config.Config, error) {
 	return cfg, cfg.Validate()
 }
 
-func RotateIP(token string, downSeconds int) error {
+func RotateIP(token string, downSeconds int) (RotateIPResult, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
-		return errors.New("授权码不能为空")
+		return RotateIPResult{}, errors.New("授权码不能为空")
 	}
 	body, err := json.Marshal(rotateIPRequest{Token: token, DownSeconds: downSeconds})
 	if err != nil {
-		return err
+		return RotateIPResult{}, err
 	}
 	req, err := http.NewRequest(http.MethodPost, apiBase()+"/api/client/rotate-ip", bytes.NewReader(body))
 	if err != nil {
-		return err
+		return RotateIPResult{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return errors.New("换 IP 服务连接失败")
+		return RotateIPResult{}, errors.New("换 IP 服务连接失败")
 	}
 	defer resp.Body.Close()
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-		return nil
+		res, err := decodeRotateIPResponse(resp)
+		if err != nil {
+			return RotateIPResult{}, err
+		}
+		if res.Status == "" {
+			res.Status = "triggered"
+		}
+		return res, nil
+	case http.StatusConflict:
+		res, err := decodeRotateIPResponse(resp)
+		if err != nil {
+			return RotateIPResult{}, err
+		}
+		if res.Status == "" {
+			res.Status = "busy"
+		}
+		if res.Message == "" {
+			res.Message = "换 IP 正在进行中，请稍后再试"
+		}
+		return res, nil
 	case http.StatusUnauthorized:
-		return errors.New("授权码无效或已过期")
+		return RotateIPResult{}, errors.New("授权码无效或已过期")
 	case http.StatusBadGateway:
-		return errors.New("Hub 未能触发 Android 控制面换 IP，请联系管理员检查控制面 key 或手机状态")
+		return RotateIPResult{}, errors.New("Hub 未能触发 Android 控制面换 IP，请联系管理员检查控制面 key 或手机状态")
 	case http.StatusBadRequest:
-		return errors.New("当前出口不支持一键换 IP")
+		return RotateIPResult{}, errors.New("当前出口不支持一键换 IP")
 	default:
-		return fmt.Errorf("换 IP 服务异常：%d", resp.StatusCode)
+		return RotateIPResult{}, fmt.Errorf("换 IP 服务异常：%d", resp.StatusCode)
 	}
+}
+
+func decodeRotateIPResponse(resp *http.Response) (RotateIPResult, error) {
+	var res RotateIPResult
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return RotateIPResult{}, errors.New("换 IP 服务响应解析失败")
+	}
+	return res, nil
 }
 
 func apiBase() string {

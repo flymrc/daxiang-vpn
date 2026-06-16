@@ -16,15 +16,24 @@ import (
 )
 
 type Server struct {
-	store         *TokenStore
-	tokenLeases   map[string]tokenLease
-	tokenLeasesMu sync.Mutex
-	tokenLeaseTTL time.Duration
+	store           *TokenStore
+	tokenLeases     map[string]tokenLease
+	tokenLeasesMu   sync.Mutex
+	tokenLeaseTTL   time.Duration
+	rotateLocks     map[string]rotateLock
+	rotateLocksMu   sync.Mutex
+	rotateLockExtra time.Duration
+	triggerRotateIP func(string, int) error
 }
 
 type tokenLease struct {
 	sourceIP string
 	seenAt   time.Time
+}
+
+type rotateLock struct {
+	startedAt time.Time
+	until     time.Time
 }
 
 type bootstrapRequest struct {
@@ -37,9 +46,11 @@ type rotateIPRequest struct {
 }
 
 type rotateIPResponse struct {
-	Status      string `json:"status"`
-	Egress      string `json:"egress"`
-	DownSeconds int    `json:"down_seconds"`
+	Status            string `json:"status"`
+	Egress            string `json:"egress"`
+	DownSeconds       int    `json:"down_seconds"`
+	Message           string `json:"message,omitempty"`
+	RetryAfterSeconds int    `json:"retry_after_seconds,omitempty"`
 }
 
 type bootstrapResponse struct {
@@ -56,9 +67,12 @@ type clientResponse struct {
 
 func NewServer(store *TokenStore) *Server {
 	return &Server{
-		store:         store,
-		tokenLeases:   map[string]tokenLease{},
-		tokenLeaseTTL: tokenLeaseTTLFromEnv(),
+		store:           store,
+		tokenLeases:     map[string]tokenLease{},
+		tokenLeaseTTL:   tokenLeaseTTLFromEnv(),
+		rotateLocks:     map[string]rotateLock{},
+		rotateLockExtra: rotateLockExtraFromEnv(),
+		triggerRotateIP: triggerAndroidRotateIP,
 	}
 }
 
@@ -187,6 +201,19 @@ func tokenLeaseTTLFromEnv() time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
+func rotateLockExtraFromEnv() time.Duration {
+	text := strings.TrimSpace(os.Getenv("ZHHUB_ROTATE_LOCK_EXTRA_SECONDS"))
+	if text == "" {
+		return 45 * time.Second
+	}
+	seconds, err := strconv.Atoi(text)
+	if err != nil || seconds < 0 {
+		log.Printf("ZHHUB_ROTATE_LOCK_EXTRA_SECONDS 无效: %q, 使用默认 45s", text)
+		return 45 * time.Second
+	}
+	return time.Duration(seconds) * time.Second
+}
+
 func (s *Server) RotateIP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method_not_allowed"})
@@ -217,18 +244,86 @@ func (s *Server) RotateIP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported_egress"})
 		return
 	}
-	if err := triggerAndroidRotateIP(record.Egress.ManagementAddr, req.DownSeconds); err != nil {
+
+	lock, retryAfterSeconds, ok := s.tryBeginRotate(record.Egress.Name, req.DownSeconds, time.Now())
+	if !ok {
+		log.Printf("rotate-ip 跳过 src=%s token=%q client=%s egress=%s reason=busy retry_after_seconds=%d", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name, retryAfterSeconds)
+		writeJSON(w, http.StatusConflict, rotateIPResponse{
+			Status:            "busy",
+			Egress:            record.Egress.Name,
+			DownSeconds:       req.DownSeconds,
+			Message:           "换 IP 正在进行中，请稍后再试",
+			RetryAfterSeconds: retryAfterSeconds,
+		})
+		return
+	}
+
+	trigger := s.triggerRotateIP
+	if trigger == nil {
+		trigger = triggerAndroidRotateIP
+	}
+	if err := trigger(record.Egress.ManagementAddr, req.DownSeconds); err != nil {
+		s.releaseRotate(record.Egress.Name, lock)
 		log.Printf("rotate-ip 失败 src=%s token=%q client=%s egress=%s err=%v", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name, err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "control_failed"})
 		return
 	}
 
-	log.Printf("rotate-ip 触发 src=%s token=%q client=%s egress=%s down_seconds=%d", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name, req.DownSeconds)
+	log.Printf("rotate-ip 触发 src=%s token=%q client=%s egress=%s down_seconds=%d lock_until=%s", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name, req.DownSeconds, lock.until.Format(time.RFC3339))
 	writeJSON(w, http.StatusOK, rotateIPResponse{
 		Status:      "triggered",
 		Egress:      record.Egress.Name,
 		DownSeconds: req.DownSeconds,
 	})
+}
+
+func (s *Server) tryBeginRotate(egress string, downSeconds int, now time.Time) (rotateLock, int, bool) {
+	egress = strings.TrimSpace(egress)
+	if egress == "" {
+		egress = "default"
+	}
+	if downSeconds < 1 {
+		downSeconds = 1
+	}
+	extra := s.rotateLockExtra
+	if extra < 0 {
+		extra = 0
+	}
+	hold := time.Duration(downSeconds)*time.Second + extra
+	if hold <= 0 {
+		hold = time.Second
+	}
+
+	s.rotateLocksMu.Lock()
+	defer s.rotateLocksMu.Unlock()
+
+	if s.rotateLocks == nil {
+		s.rotateLocks = map[string]rotateLock{}
+	}
+	if current, ok := s.rotateLocks[egress]; ok && now.Before(current.until) {
+		retryAfter := int(current.until.Sub(now).Round(time.Second) / time.Second)
+		if retryAfter < 1 {
+			retryAfter = 1
+		}
+		return current, retryAfter, false
+	}
+
+	lock := rotateLock{startedAt: now, until: now.Add(hold)}
+	s.rotateLocks[egress] = lock
+	return lock, 0, true
+}
+
+func (s *Server) releaseRotate(egress string, lock rotateLock) {
+	s.rotateLocksMu.Lock()
+	defer s.rotateLocksMu.Unlock()
+
+	current, ok := s.rotateLocks[egress]
+	if !ok {
+		return
+	}
+	if current.startedAt.Equal(lock.startedAt) && current.until.Equal(lock.until) {
+		delete(s.rotateLocks, egress)
+	}
 }
 
 func triggerAndroidRotateIP(managementAddr string, downSeconds int) error {

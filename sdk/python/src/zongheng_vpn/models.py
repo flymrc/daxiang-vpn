@@ -83,6 +83,8 @@ class Status:
 @dataclass(frozen=True)
 class RotateResult:
     ok: bool
+    status: Optional[str] = None
+    message: str = ""
     before: Optional[str] = None
     after: Optional[str] = None
     egress: Optional[str] = None
@@ -93,6 +95,8 @@ class RotateResult:
     def from_dict(cls, data: Dict[str, Any]) -> "RotateResult":
         return cls(
             ok=bool(data.get("ok", False)),
+            status=_string(data, "status"),
+            message=str(data.get("message") or ""),
             before=_string(data, "before"),
             after=_string(data, "after"),
             egress=_string(data, "egress"),

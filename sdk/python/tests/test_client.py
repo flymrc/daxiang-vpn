@@ -39,7 +39,7 @@ if cmd == "status":
         emit({"running": True, "proxy_reachable": True, "proxy": "127.0.0.1:7890", "egress": "Rakuten"})
     emit({"running": True, "proxy_reachable": True, "proxy": "127.0.0.1:7890", "egress": "Rakuten", "egress_ipv6": "240b::1", "egress_ip": "240b::1"})
 if cmd == "rotate-ip":
-    emit({"ok": True, "egress": "Rakuten", "before": "240b::1", "after": "240b::2"})
+    emit({"ok": True, "status": "triggered", "egress": "Rakuten", "before": "240b::1", "after": "240b::2", "message": ""})
 if cmd == "logout":
     emit({"ok": True})
 if cmd == "version":
@@ -79,6 +79,7 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(status_ip.egress_ipv6, "240b::1")
 
         rotated = client.rotate_ip()
+        self.assertEqual(rotated.status, "triggered")
         self.assertEqual(rotated.after, "240b::2")
 
         stopped = client.disconnect()

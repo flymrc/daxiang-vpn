@@ -139,7 +139,8 @@
     info = "";
     try {
       const r = await api.rotateIp();
-      if (r.ok) info = `已换 IP：${r.before ?? "?"} → ${r.after ?? "?"}`;
+      if (r.ok && r.status === "busy") info = r.message || "换 IP 正在进行中，请稍后再试";
+      else if (r.ok) info = `已换 IP：${r.before ?? "?"} → ${r.after ?? "?"}`;
       else errMsg = r.error || "换 IP 失败";
       lastIPRefreshAt = 0;
       await refresh(true);
