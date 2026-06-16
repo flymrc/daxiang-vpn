@@ -1,119 +1,105 @@
 # zongheng-vpn Python SDK
 
-用于在 Python 程序里控制纵横 VPN：登录、连接、断开、查看状态、切换出口 IP，并获取本地代理地址。
+3 分钟版：装好 SDK，拿 token 登录，`connect()` 以后 Python 程序就可以走本机代理访问网络。
 
-- 安装包名：`zongheng-vpn`
-- Python 导入名：`zongheng_vpn`
+## 你需要准备
 
-## 安装
+- Windows 机器
+- Python 3.9+
+- SDK wheel 文件，例如 `zongheng_vpn-0.1.0-py3-none-win_amd64.whl`
+- 一个纵横 VPN token，例如 `ZH-XXXX`
 
-给同事分发时，推荐直接安装构建好的 wheel：
+## 1. 安装
+
+在 wheel 文件所在目录执行：
 
 ```powershell
 python -m pip install .\zongheng_vpn-0.1.0-py3-none-win_amd64.whl
 ```
 
-如果需要 SDK 自带的 `get()` / `request()` 辅助方法：
+如果要使用 `vpn.get()` / `vpn.request()` 这类 HTTP 辅助方法，再安装：
 
 ```powershell
-python -m pip install ".\zongheng_vpn-0.1.0-py3-none-win_amd64.whl[requests]"
+python -m pip install requests
 ```
 
-发布到 PyPI 后，可以改用：
-
-```powershell
-python -m pip install zongheng-vpn
-python -m pip install "zongheng-vpn[requests]"
-```
-
-开发本仓库时，可以从源码安装：
-
-```powershell
-.\sdk\python\build.ps1 -Install
-```
-
-带 `requests` 辅助方法：
-
-```powershell
-.\sdk\python\build.ps1 -Install -WithRequests
-```
-
-## 快速开始
+## 2. 最小示例
 
 ```python
 from zongheng_vpn import Client
 
 vpn = Client()
+
 vpn.login("ZH-XXXX")
 vpn.connect()
 
-status = vpn.status()
-print(status.running, status.proxy, status.egress)
+print(vpn.status())
 
-vpn.rotate_ip()
 vpn.disconnect()
 ```
 
-## 访问网络
+`login()` 会把 token 保存到本机。第一次使用先登录一次，之后通常直接 `connect()` 即可；换 token 或清理登录信息时再调用 `logout()`。
 
-如果安装了 `requests` extra，可以直接用 SDK 发请求：
+## 3. 发请求
+
+方式一：使用 SDK 自带的请求方法，需要先安装 `requests`。
 
 ```python
+from zongheng_vpn import Client
+
+vpn = Client()
+vpn.connect()
+
 response = vpn.get("https://api64.ipify.org", timeout=10)
 print(response.text)
 ```
 
-如果业务代码已经自己管理 HTTP client，可以只取代理配置：
+方式二：给你自己的 HTTP client 使用代理地址。
 
 ```python
+from zongheng_vpn import Client
+
+vpn = Client()
+vpn.connect()
+
 proxies = vpn.proxies()
+print(proxies)
 # {"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"}
 ```
 
-## 常用方法
+## 常用操作
 
-- `login(token)`：保存登录 token。
-- `connect(fast=False, port=None)`：启动本地 VPN。
-- `disconnect()`：停止本地 VPN。
-- `status()`：查看本地运行状态。
-- `status_ip()`：查看状态并检查出口 IP。
-- `rotate_ip()`：切换出口 IP。
-- `logout()`：清除本地登录信息。
-- `proxy_url()` / `proxies()`：获取本地代理地址。
+```python
+vpn.login("ZH-XXXX")     # 登录
+vpn.connect()            # 连接
+vpn.status()             # 查看状态
+vpn.status_ip()          # 查看状态，并检查出口 IP
+vpn.rotate_ip()          # 切换出口 IP
+vpn.disconnect()         # 断开
+vpn.logout()             # 清除本机登录信息
+```
 
-## 升级注意
+## 升级
 
-首次安装 SDK 不会覆盖已经安装的桌面 GUI 或独立 CLI。
-
-升级或重装 SDK 前，如果当前 VPN 是通过 Python SDK 连上的，建议先断开：
+如果 VPN 是通过 Python SDK 连接的，升级前先断开：
 
 ```powershell
 python -c "from zongheng_vpn import Client; Client().disconnect()"
-python -m pip install --upgrade zongheng-vpn
-```
-
-如果还没有发布到 PyPI，把第二行换成新的 wheel 文件：
-
-```powershell
 python -m pip install --upgrade .\zongheng_vpn-0.1.0-py3-none-win_amd64.whl
 ```
 
-如果明确要让 SDK 使用指定的 `zhvpn.exe`，可以设置：
+首次安装不会覆盖已经安装的桌面客户端或命令行客户端。
+
+## 指定 CLI 路径
+
+一般不需要设置。只有在你明确要使用某个指定的 `zhvpn.exe` 时才需要：
 
 ```powershell
 $env:ZHVPN_EXE="C:\Path\To\zhvpn.exe"
 ```
 
-或者在代码里传：
+也可以在代码里传：
 
 ```python
 vpn = Client(exe_path=r"C:\Path\To\zhvpn.exe")
 ```
-
-## 构建 wheel
-
-```powershell
-.\sdk\python\build.ps1 -Wheel
-```
-
-生成的 wheel 位于 `sdk/python/dist/`。
