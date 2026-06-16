@@ -6,6 +6,11 @@ docs/ops/SERVER_ACCESS.md
 docs/ops/TOKENS_*.md
 *.log
 
+# Python local/test artifacts
+__pycache__/
+*.py[cod]
+.venv/
+
 # 远程控制私钥 / 真实授权公钥,绝不入库
 egress/android-control/authorized_keys
 **/zhandroid_control

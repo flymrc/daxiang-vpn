@@ -18,6 +18,19 @@ go build -tags with_gvisor -o ..\..\dist\zhvpn.exe .
 .\zhvpn.exe stop
 ```
 
+机器接口：
+
+```powershell
+.\zhvpn.exe login ZH-DEV-TOKEN --json
+.\zhvpn.exe start --json
+.\zhvpn.exe status --json --no-ip-check
+.\zhvpn.exe status --json
+.\zhvpn.exe rotate-ip --json
+.\zhvpn.exe stop --json
+.\zhvpn.exe logout --json
+.\zhvpn.exe version --json
+```
+
 `login` / `start` 会写入本地状态缓存，供 `status` 和桌面 GUI 高频轮询读取；`status` 不会重复请求 Hub bootstrap。`start` 仍会重新 bootstrap 获取最新运行配置。状态缓存不持久化 WireGuard 私钥。
 
 ## Android 出口换 IP

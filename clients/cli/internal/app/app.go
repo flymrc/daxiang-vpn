@@ -54,13 +54,15 @@ func Run(args []string) error {
 	case "start":
 		return withOperationLock(ctx, func() error { return start(ctx, args[1:]) })
 	case "stop":
-		return withOperationLock(ctx, func() error { return stop(ctx) })
+		return withOperationLock(ctx, func() error { return stop(ctx, args[1:]) })
 	case "status":
 		return status(ctx, args[1:])
 	case "rotate-ip":
 		return rotateIP(ctx, args[1:])
 	case "logout":
 		return withOperationLock(ctx, func() error { return logout(ctx, args[1:]) })
+	case "version":
+		return version(args[1:])
 	case "help", "-h", "--help":
 		printUsage()
 		return nil
@@ -79,6 +81,7 @@ func printUsage() {
   zhvpn.exe rotate-ip [--down-seconds <秒>] [--wait-seconds <秒>]
   zhvpn.exe stop
   zhvpn.exe logout
+  zhvpn.exe version
   zhvpn.exe help
 
 本地代理端口默认 7890，可临时指定其它端口：
@@ -97,12 +100,14 @@ var ErrSilent = errors.New("已输出结果")
 
 // jsonResult is the machine-readable result for login / rotate-ip (--json).
 type jsonResult struct {
-	OK     bool   `json:"ok"`
-	Egress string `json:"egress,omitempty"`
-	Proxy  string `json:"proxy,omitempty"`
-	Before string `json:"before,omitempty"`
-	After  string `json:"after,omitempty"`
-	Error  string `json:"error,omitempty"`
+	OK      bool   `json:"ok"`
+	Egress  string `json:"egress,omitempty"`
+	Proxy   string `json:"proxy,omitempty"`
+	Before  string `json:"before,omitempty"`
+	After   string `json:"after,omitempty"`
+	Message string `json:"message,omitempty"`
+	Version string `json:"version,omitempty"`
+	Error   string `json:"error,omitempty"`
 }
 
 // statusResult is the machine-readable result for status --json.
@@ -177,8 +182,9 @@ func hasFlag(args []string, flag string) bool {
 }
 
 type startOptions struct {
-	port int  // 0 = use Hub/config value
-	fast bool // system TUN (admin)
+	port    int  // 0 = use Hub/config value
+	fast    bool // system TUN (admin)
+	jsonOut bool
 }
 
 // parseStartOptions parses the `start` flags.
@@ -191,6 +197,8 @@ func parseStartOptions(args []string) (startOptions, error) {
 		switch {
 		case arg == "--fast":
 			opts.fast = true
+		case arg == "--json":
+			opts.jsonOut = true
 		case arg == "--port":
 			if i+1 >= len(args) {
 				return opts, errors.New("--port 需要一个端口号")
@@ -293,6 +301,18 @@ func logout(ctx paths.Context, args []string) error {
 	return nil
 }
 
+func version(args []string) error {
+	jsonOut, err := wantJSON(args)
+	if err != nil {
+		return err
+	}
+	if jsonOut {
+		return printJSON(jsonResult{OK: true, Version: Version})
+	}
+	fmt.Println(Version)
+	return nil
+}
+
 func importConfig(ctx paths.Context, source string) error {
 	cfg, err := config.Load(source)
 	if err != nil {
@@ -381,54 +401,62 @@ func saveClientConfigCache(ctx paths.Context, cfg config.Config) error {
 	return config.Save(ctx.ConfigPath, cache)
 }
 
+var Version = "dev"
+
 func start(ctx paths.Context, args []string) error {
+	jsonOut := hasFlag(args, "--json")
 	opts, err := parseStartOptions(args)
 	if err != nil {
-		return err
+		return reportErr(jsonOut, err)
 	}
 
 	cached, err := loadLocalInstalledConfig(ctx)
 	if err != nil {
-		return err
+		return reportErr(opts.jsonOut, err)
 	}
 	cfg, err := refreshInstalledConfig(ctx, cached)
 	if err != nil {
-		return err
+		return reportErr(opts.jsonOut, err)
 	}
 	if opts.port != 0 {
 		cfg.LocalProxy.ListenPort = opts.port
 		if err := cfg.Validate(); err != nil {
-			return err
+			return reportErr(opts.jsonOut, err)
 		}
 	}
 	if err := ctx.EnsureDirs(); err != nil {
-		return err
+		return reportErr(opts.jsonOut, err)
 	}
 
 	running, _ := proxy.IsRunning(ctx)
 	localReachable, _ := netcheck.TCP(cfg.LocalProxy.Addr(), netcheck.ShortTimeout)
 	if running && localReachable && runtimeConfigMatches(ctx, cfg, opts.fast) {
+		if opts.jsonOut {
+			return printJSON(jsonResult{OK: true, Egress: cfg.Egress.CustomerName(), Proxy: cfg.LocalProxy.Addr(), Message: "已在运行"})
+		}
 		fmt.Println("已在运行")
 		printStartSummary(cfg)
 		return nil
 	}
 	if running {
-		fmt.Println("检测到运行配置已变化，正在重启代理")
+		if !opts.jsonOut {
+			fmt.Println("检测到运行配置已变化，正在重启代理")
+		}
 		if _, err := proxy.Stop(ctx); err != nil {
-			return err
+			return reportErr(opts.jsonOut, err)
 		}
 	} else if localReachable {
-		return fmt.Errorf("本地代理端口 %s 已被占用，请先关闭旧进程或换端口", cfg.LocalProxy.Addr())
+		return reportErr(opts.jsonOut, fmt.Errorf("本地代理端口 %s 已被占用，请先关闭旧进程或换端口", cfg.LocalProxy.Addr()))
 	}
 
 	if err := proxy.WriteSingBoxConfig(ctx, cfg, opts.fast); err != nil {
-		return err
+		return reportErr(opts.jsonOut, err)
 	}
 	defer func() {
 		_ = os.Remove(ctx.SingBoxConfig)
 	}()
 	if err := proxy.Start(ctx, cfg, opts.fast); err != nil {
-		return err
+		return reportErr(opts.jsonOut, err)
 	}
 	// System TUN (--fast) takes longer to come up (driver + interface setup).
 	timeout := 8 * time.Second
@@ -436,12 +464,15 @@ func start(ctx paths.Context, args []string) error {
 		timeout = 20 * time.Second
 	}
 	if !waitForTCP(cfg.LocalProxy.Addr(), timeout) {
-		return errors.New("代理启动失败，请重试")
+		return reportErr(opts.jsonOut, errors.New("代理启动失败，请重试"))
 	}
 	if err := writeRuntimeFingerprint(ctx, cfg, opts.fast); err != nil {
-		return err
+		return reportErr(opts.jsonOut, err)
 	}
 
+	if opts.jsonOut {
+		return printJSON(jsonResult{OK: true, Egress: cfg.Egress.CustomerName(), Proxy: cfg.LocalProxy.Addr(), Message: "已启动"})
+	}
 	fmt.Println("已启动")
 	if opts.fast {
 		fmt.Println("模式：高性能（系统网络栈）")
@@ -466,15 +497,25 @@ func printStartSummary(cfg config.Config) {
 	fmt.Printf("出口：%s\n", cfg.Egress.CustomerName())
 }
 
-func stop(ctx paths.Context) error {
-	stopped, err := proxy.Stop(ctx)
+func stop(ctx paths.Context, args []string) error {
+	jsonOut, err := wantJSON(args)
 	if err != nil {
 		return err
 	}
+	stopped, err := proxy.Stop(ctx)
+	if err != nil {
+		return reportErr(jsonOut, err)
+	}
 	_ = os.Remove(runtimeFingerprintPath(ctx))
 	if stopped {
+		if jsonOut {
+			return printJSON(jsonResult{OK: true, Message: "已停止"})
+		}
 		fmt.Println("已停止")
 	} else {
+		if jsonOut {
+			return printJSON(jsonResult{OK: true, Message: "未运行"})
+		}
 		fmt.Println("未运行")
 	}
 	return nil

@@ -12,7 +12,7 @@
 clients/              客户端(终端用户侧)
   cli/                CLI 客户端（原 frontend/zhvpn）
   desktop-gui/        Windows 桌面 GUI 客户端（Tauri，调用 CLI sidecar）
-  python-sdk/         🅿️ 预留：Python SDK（调用 CLI，不重写核心控制面）
+  python-sdk/         Python SDK（调用 CLI，不重写核心控制面）
 
 hub/                  Hub 服务端（授权 API，原 backend/zhhub）
 

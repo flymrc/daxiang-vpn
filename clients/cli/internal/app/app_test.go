@@ -267,6 +267,28 @@ func TestWantJSON(t *testing.T) {
 	}
 }
 
+func TestParseStartOptions(t *testing.T) {
+	opts, err := parseStartOptions([]string{"--fast", "--port", "7891", "--json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !opts.fast {
+		t.Fatal("fast = false")
+	}
+	if opts.port != 7891 {
+		t.Fatalf("port = %d", opts.port)
+	}
+	if !opts.jsonOut {
+		t.Fatal("jsonOut = false")
+	}
+}
+
+func TestVersionRejectsUnknownArgs(t *testing.T) {
+	if err := version([]string{"--bad"}); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 func TestParseStatusOptions(t *testing.T) {
 	opts, err := parseStatusOptions([]string{"--json", "--no-ip-check"})
 	if err != nil {
