@@ -9,6 +9,7 @@ docs/ops/TOKENS_*.md
 # Python local/test artifacts
 __pycache__/
 *.py[cod]
+*.egg-info/
 .venv/
 
 # 远程控制私钥 / 真实授权公钥,绝不入库

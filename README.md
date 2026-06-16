@@ -12,7 +12,6 @@
 clients/              客户端(终端用户侧)
   cli/                CLI 客户端（原 frontend/zhvpn）
   desktop-gui/        Windows 桌面 GUI 客户端（Tauri，调用 CLI sidecar）
-  python-sdk/         Python SDK（调用 CLI，不重写核心控制面）
 
 hub/                  Hub 服务端（授权 API，原 backend/zhhub）
 
@@ -24,6 +23,9 @@ egress/               出口节点(基础设施侧，非终端客户端)
 
 shared/               客户端与出口共用的 Go 包
   config/  paths/  proxy/
+
+sdk/                  面向开发者的语言 SDK（调用 CLI，不重写核心控制面）
+  python/             Python SDK
 
 docs/
   README.md           文档总入口

@@ -13,7 +13,7 @@
 
 ## 文档更新
 
-- README 增加 `clients/python-sdk/` 计划目录说明和“GUI/SDK 都走 CLI”的 MVP 原则。
+- README 增加 SDK 目录说明和“GUI/SDK 都走 CLI”的 MVP 原则。
 - 架构文档增加 Python SDK 角色和客户端控制面原则。
 - 桌面 GUI 方案补充“新增能力优先补 CLI，再由 GUI/SDK 调用”。
 - 新增 Python SDK 实现方案文档。

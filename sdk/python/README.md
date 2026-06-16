@@ -11,14 +11,20 @@ Python SDK -> zhvpn.exe --json -> local proxy 127.0.0.1:7890
 ## Install for development
 
 ```powershell
-cd clients\python-sdk
-python -m pip install -e .
+python -m pip install -e sdk/python
 ```
 
 If you want the convenience `get()` / `request()` helpers:
 
 ```powershell
-python -m pip install -e ".[requests]"
+python -m pip install -e "sdk/python[requests]"
+```
+
+After publishing to PyPI, the target install command is:
+
+```powershell
+python -m pip install zongheng-vpn
+python -m pip install "zongheng-vpn[requests]"
 ```
 
 ## Usage
