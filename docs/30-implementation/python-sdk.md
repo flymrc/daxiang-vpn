@@ -145,12 +145,30 @@ proxies = vpn.proxies()
 
 1. 显式参数：`Client(exe_path=".../zhvpn.exe")`。
 2. 显式命令：`Client(command=[...])`（测试或高级用法）。
-3. Python 包内置：`zongheng_vpn/bin/zhvpn.exe`。
-4. 环境变量：`ZHVPN_EXE`。
+3. 环境变量：`ZHVPN_EXE`。
+4. Python 包内置：`zongheng_vpn/bin/zhvpn.exe`。
 5. `PATH` 中的 `zhvpn.exe` / `zhvpn`。
 6. Windows 常见安装位置（后续按实际 NSIS 安装路径补）。
 
 找不到时给出明确错误：提示安装桌面客户端或单独下载 CLI。
+
+### 已安装 GUI / CLI 时的行为
+
+如果机器上已经装过桌面 GUI 或独立 `zhvpn.exe`，SDK 默认仍使用自己 wheel / editable install 内置的 CLI，保证 SDK 与 CLI JSON 契约版本匹配。
+
+运行态默认共享同一个 `ZHVPN_HOME`（未设置时是 `%LOCALAPPDATA%\ZonghengVPN`），因此 GUI 和 SDK 会看到同一份登录、状态、本地代理、PID 信息。Python 里执行 `disconnect()` 会停止 GUI 当前看到的同一个本地 VPN 引擎；反过来，GUI 断开后 SDK 的 `status()` 也会看到未连接。
+
+如果明确想让 SDK 使用已有 GUI/CLI 的 `zhvpn.exe`，可以设置：
+
+```powershell
+$env:ZHVPN_EXE="C:\Path\To\zhvpn.exe"
+```
+
+或在代码里传：
+
+```python
+vpn = Client(exe_path=r"C:\Path\To\zhvpn.exe")
+```
 
 ## 错误模型
 

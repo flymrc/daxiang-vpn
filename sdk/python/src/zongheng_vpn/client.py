@@ -248,13 +248,13 @@ class Client:
         if exe_path is not None:
             return [os.fspath(exe_path)]
 
-        bundled = self._bundled_cli()
-        if bundled is not None:
-            return [str(bundled)]
-
         env_exe = os.environ.get("ZHVPN_EXE")
         if env_exe:
             return [env_exe]
+
+        bundled = self._bundled_cli()
+        if bundled is not None:
+            return [str(bundled)]
 
         for name in ("zhvpn.exe", "zhvpn"):
             found = shutil.which(name)

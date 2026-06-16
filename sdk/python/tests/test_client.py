@@ -113,9 +113,8 @@ class ClientTests(unittest.TestCase):
         with self.assertRaises(ZHVpnJSONError):
             client._run_json(["version", "--bad-json"])
 
-    def test_cli_discovery_uses_bundled_before_env_when_available(self):
+    def test_env_cli_overrides_bundled_cli(self):
         client = self.make_client()
-        bundled = client._bundled_cli()
 
         with tempfile.TemporaryDirectory() as d:
             fake = Path(d) / "fake_zhvpn.py"
@@ -129,10 +128,7 @@ class ClientTests(unittest.TestCase):
                     os.environ.pop("ZHVPN_EXE", None)
                 else:
                     os.environ["ZHVPN_EXE"] = old
-            if bundled is not None:
-                self.assertEqual(resolved, [str(bundled)])
-            else:
-                self.assertEqual(resolved, [str(fake)])
+            self.assertEqual(resolved, [str(fake)])
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@
 - CLI 补齐 `start --json`、`stop --json`、`version --json`，让 SDK 不解析人读文本。
 - SDK 优先发现包内 `zongheng_vpn/bin/zhvpn.exe`。
 - 新增 `sdk/python/build.ps1`，用于把 Go CLI 编入 Python 包并本地安装 SDK。
+- 若机器已安装 GUI/CLI，SDK 默认用包内 CLI；可通过 `ZHVPN_EXE` 或 `Client(exe_path=...)` 指向已有 CLI。默认运行态仍共享同一 `ZHVPN_HOME`。
 
 ## 命名决策
 
