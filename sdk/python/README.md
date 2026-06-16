@@ -40,6 +40,33 @@ python -m pip install "zongheng-vpn[requests]"
 The PyPI wheel should include the matching `zhvpn.exe`, so users do not need a
 separate CLI install.
 
+## Install and upgrade behavior
+
+Installing the SDK does not overwrite an existing desktop GUI or standalone
+`zhvpn.exe`. The bundled executable is installed inside Python's own
+`site-packages/zongheng_vpn/bin/` directory, and the SDK does not register a
+global `zhvpn` command.
+
+Normal cases:
+
+- First install on a machine that already has the GUI: no conflict.
+- First install on a machine that already has a standalone CLI in `PATH`: no conflict.
+- SDK, GUI, and standalone CLI can share the same runtime state through the default `ZHVPN_HOME`.
+
+The only case that can fail is upgrading or reinstalling the SDK while the
+SDK-packaged `zhvpn.exe` is currently running. On Windows, a running executable
+can lock the old file and make `pip install --upgrade` fail while replacing it.
+Disconnect first, then upgrade:
+
+```powershell
+python -c "from zongheng_vpn import Client; Client().disconnect()"
+python -m pip install --upgrade zongheng-vpn
+```
+
+If the VPN engine was started from the GUI or a separate CLI install, that
+process does not lock the SDK's packaged executable. It still shares runtime
+state, so disconnecting from either side is reflected in the other side.
+
 ## Build a release wheel
 
 ```powershell

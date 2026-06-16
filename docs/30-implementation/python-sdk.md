@@ -107,6 +107,20 @@ python -m pip install "zongheng-vpn[requests]"
 
 PyPI wheel 应内置匹配架构的 `zhvpn.exe`，用户不需要额外安装 CLI。`ZHVPN_EXE` 只作为高级覆盖项保留。
 
+安装 / 升级行为：
+
+- 首次安装 SDK 不会覆盖已经安装的桌面 GUI 或独立 `zhvpn.exe`。
+- wheel 内置的可执行文件位于 Python 自己的 `site-packages/zongheng_vpn/bin/zhvpn.exe`，不会写入 GUI 安装目录，也不会注册全局 `zhvpn` 命令。
+- 如果机器上已有 GUI 或 `PATH` 里的独立 CLI，SDK 默认仍用包内 CLI，避免版本契约不匹配；运行态通过默认 `ZHVPN_HOME` 共享。
+- 唯一需要注意的是升级 / 重装 SDK 时，如果旧 SDK 包内的 `zhvpn.exe` 正在运行，Windows 可能锁住文件，导致 `pip install --upgrade` 替换失败。升级前先执行：
+
+```powershell
+python -c "from zongheng_vpn import Client; Client().disconnect()"
+python -m pip install --upgrade zongheng-vpn
+```
+
+如果 VPN 是由 GUI 或独立 CLI 启动的，它不会锁住 SDK 包内的 exe，但仍会共享同一运行态。
+
 构建发布 wheel：
 
 ```powershell

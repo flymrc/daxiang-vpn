@@ -38,6 +38,9 @@ try {
     }
     $ldflags = "-s -w -X zongheng-vpn/clients/cli/internal/app.Version=$Version"
     go build -tags with_gvisor -trimpath -ldflags $ldflags -o $out .\clients\cli
+    if ($LASTEXITCODE -ne 0) {
+        throw "go build failed with exit code $LASTEXITCODE. If $out is locked, disconnect the SDK-started VPN engine and close Python processes using zongheng_vpn, then retry."
+    }
 } finally {
     Pop-Location
 }

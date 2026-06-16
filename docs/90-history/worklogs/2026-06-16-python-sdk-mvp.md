@@ -25,6 +25,7 @@
 - SDK 优先发现包内 `zongheng_vpn/bin/zhvpn.exe`。
 - 新增 `sdk/python/build.ps1`，用于把 Go CLI 编入 Python 包并本地安装 SDK。
 - 若机器已安装 GUI/CLI，SDK 默认用包内 CLI；可通过 `ZHVPN_EXE` 或 `Client(exe_path=...)` 指向已有 CLI。默认运行态仍共享同一 `ZHVPN_HOME`。
+- 明确安装 / 升级边界：SDK 安装不会覆盖 GUI 或独立 CLI；升级时只有旧 SDK 包内 `zhvpn.exe` 正在运行才可能被 Windows 锁文件，需要先断开再 `pip install --upgrade`。
 
 ## 命名决策
 
