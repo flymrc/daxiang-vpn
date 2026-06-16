@@ -11,6 +11,7 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
+build/
 
 # 远程控制私钥 / 真实授权公钥,绝不入库
 egress/android-control/authorized_keys

@@ -248,6 +248,10 @@ class Client:
         if exe_path is not None:
             return [os.fspath(exe_path)]
 
+        bundled = self._bundled_cli()
+        if bundled is not None:
+            return [str(bundled)]
+
         env_exe = os.environ.get("ZHVPN_EXE")
         if env_exe:
             return [env_exe]
@@ -262,8 +266,18 @@ class Client:
                 return [str(candidate)]
 
         raise ZHVpnExecutableNotFound(
-            "could not find zhvpn; set ZHVPN_EXE or pass Client(exe_path=...)"
+            "could not find bundled zhvpn; run sdk/python/build.ps1, set ZHVPN_EXE, "
+            "or pass Client(exe_path=...)"
         )
+
+    def _bundled_cli(self) -> Optional[Path]:
+        names = ("zhvpn.exe", "zhvpn")
+        base = Path(__file__).resolve().parent / "bin"
+        for name in names:
+            candidate = base / name
+            if candidate.exists():
+                return candidate
+        return None
 
     def _windows_candidates(self) -> Sequence[Path]:
         names = [

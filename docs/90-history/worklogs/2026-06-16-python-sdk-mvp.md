@@ -22,6 +22,8 @@
 - 实现 typed dataclass 结果和 SDK 异常。
 - 异常里的命令、stdout/stderr、payload 会脱敏 `ZH-*` token。
 - CLI 补齐 `start --json`、`stop --json`、`version --json`，让 SDK 不解析人读文本。
+- SDK 优先发现包内 `zongheng_vpn/bin/zhvpn.exe`。
+- 新增 `sdk/python/build.ps1`，用于把 Go CLI 编入 Python 包并本地安装 SDK。
 
 ## 命名决策
 
@@ -40,6 +42,7 @@
 ```powershell
 go test ./clients/cli/...
 python -m unittest discover sdk/python/tests
+.\sdk\python\build.ps1
 ```
 
-两项均通过。
+两项测试和 SDK 打包脚本均通过。

@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import tempfile
 import textwrap
@@ -111,6 +112,27 @@ class ClientTests(unittest.TestCase):
         client = self.make_client()
         with self.assertRaises(ZHVpnJSONError):
             client._run_json(["version", "--bad-json"])
+
+    def test_cli_discovery_uses_bundled_before_env_when_available(self):
+        client = self.make_client()
+        bundled = client._bundled_cli()
+
+        with tempfile.TemporaryDirectory() as d:
+            fake = Path(d) / "fake_zhvpn.py"
+            fake.write_text(textwrap.dedent(FAKE_CLI), encoding="utf-8")
+            old = os.environ.get("ZHVPN_EXE")
+            os.environ["ZHVPN_EXE"] = str(fake)
+            try:
+                resolved = client._resolve_command(None, None)
+            finally:
+                if old is None:
+                    os.environ.pop("ZHVPN_EXE", None)
+                else:
+                    os.environ["ZHVPN_EXE"] = old
+            if bundled is not None:
+                self.assertEqual(resolved, [str(bundled)])
+            else:
+                self.assertEqual(resolved, [str(fake)])
 
 
 if __name__ == "__main__":

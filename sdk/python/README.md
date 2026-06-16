@@ -14,24 +14,41 @@ Naming:
 Python SDK -> zhvpn.exe --json -> local proxy 127.0.0.1:7890
 ```
 
-## Install for development
+## Local install
 
 ```powershell
-python -m pip install -e sdk/python
+.\sdk\python\build.ps1 -Install
 ```
+
+This builds the Go CLI into the Python package as `zongheng_vpn/bin/zhvpn.exe`,
+then installs the SDK in editable mode. After this, `Client()` works without
+manually setting `ZHVPN_EXE`.
 
 If you want the convenience `get()` / `request()` helpers:
 
 ```powershell
-python -m pip install -e "sdk/python[requests]"
+.\sdk\python\build.ps1 -Install -WithRequests
 ```
 
-After publishing to PyPI, the target install command is:
+After publishing Windows wheels to PyPI, the target install command is:
 
 ```powershell
 python -m pip install zongheng-vpn
 python -m pip install "zongheng-vpn[requests]"
 ```
+
+The PyPI wheel should include the matching `zhvpn.exe`, so users do not need a
+separate CLI install.
+
+## Build a release wheel
+
+```powershell
+.\sdk\python\build.ps1 -Wheel
+```
+
+The wheel is written to `sdk/python/dist/` and includes
+`zongheng_vpn/bin/zhvpn.exe`. Windows wheels are platform-specific, for example
+`zongheng_vpn-0.1.0-py3-none-win_amd64.whl`.
 
 ## Usage
 
@@ -65,8 +82,9 @@ The SDK looks for `zhvpn.exe` in this order:
 
 1. `Client(exe_path="...")`
 2. `Client(command=[...])` for advanced/testing use
-3. `ZHVPN_EXE`
-4. `PATH`
-5. Common Windows install locations
+3. Bundled package binary: `zongheng_vpn/bin/zhvpn.exe`
+4. `ZHVPN_EXE`
+5. `PATH`
+6. Common Windows install locations
 
-Set `ZHVPN_EXE` if the desktop GUI installed sidecar is not on `PATH`.
+Set `ZHVPN_EXE` only when you intentionally want to override the packaged CLI.
