@@ -44,6 +44,8 @@ macOS 包的前置依赖是先在 `shared/proxy` 补出 macOS 引擎后端（系
 
 ## 架构
 
+桌面 GUI 不拥有独立控制面。`zhvpn.exe` 是本机唯一控制面，GUI 只是把 CLI sidecar 的机器接口包装成图形界面；后续 Python SDK 也沿用同一原则，直接调用 CLI，不调用 GUI、不重写核心连接逻辑。
+
 ```text
 ┌─────────────────────────────────────────────┐
 │  Tauri 应用 (纵横 VPN)                          │
@@ -72,6 +74,7 @@ macOS 包的前置依赖是先在 `shared/proxy` 补出 macOS 引擎后端（系
 
 - 所有「难」的部分（提权拉 `--fast` 引擎、后台引擎进程、PID 管理、运行指纹重启）都封在 `zhvpn.exe` 内部，Rust 侧只负责拼参数、跑子进程、解析输出。
 - 系统代理的设置 / 还原放 **Rust 侧**（不污染 CLI），断电 / 崩溃的兜底还原也在 Rust 侧处理。
+- GUI 和 Python SDK 共享 CLI 机器接口；新增能力优先补到 CLI，再由 GUI / SDK 调用，避免多套状态机。
 
 ## CLI 机器接口改造（前置，M1）
 

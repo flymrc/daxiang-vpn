@@ -71,6 +71,7 @@ Android 控制面仍保留 WireGuard App:`jp-android-01` 使用 `10.66.0.101`,Hu
 - [zhvpn.exe 本地单例实现计划](30-implementation/client-singleton-plan.md)
 - [桌面 GUI 客户端实现方案](30-implementation/desktop-gui.md)
 - [Windows GUI 客户端优化 TODO](30-implementation/desktop-gui-client-todo.md)
+- [Python SDK 实现方案](30-implementation/python-sdk.md)
 - [服务端托管客户端配置](30-implementation/server-managed-client.md)
 - [管理内网状态栏工具](../clients/admin-menubar/README.md)
 

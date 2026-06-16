@@ -11,7 +11,8 @@
 ```text
 clients/              客户端(终端用户侧)
   cli/                CLI 客户端（原 frontend/zhvpn）
-  desktop-gui/        🅿️ 预留：mac/windows PC 单一跨平台 GUI 客户端
+  desktop-gui/        Windows 桌面 GUI 客户端（Tauri，调用 CLI sidecar）
+  python-sdk/         🅿️ 预留：Python SDK（调用 CLI，不重写核心控制面）
 
 hub/                  Hub 服务端（授权 API，原 backend/zhhub）
 
@@ -59,6 +60,8 @@ zhvpn.exe login <授权码>
 -> 本地代理 127.0.0.1:7890
 -> 日本住宅出口
 ```
+
+`zhvpn.exe` 是本机唯一控制面。桌面 GUI 和后续 Python SDK 都通过 CLI 的机器接口（`--json` 等）完成登录、连接、状态、换 IP、断开；SDK 不直接调用 GUI，也不重新实现 WireGuard / sing-box / Hub bootstrap 逻辑。
 
 ### Android 出口当前 POC
 
