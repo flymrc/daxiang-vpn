@@ -23,6 +23,14 @@
 - 异常里的命令、stdout/stderr、payload 会脱敏 `ZH-*` token。
 - CLI 补齐 `start --json`、`stop --json`、`version --json`，让 SDK 不解析人读文本。
 
+## 命名决策
+
+- pip / PyPI 发布名：`zongheng-vpn`。
+- Python import 包名：`zongheng_vpn`。
+- CLI / sidecar 二进制：`zhvpn` / `zhvpn.exe`。
+- 不采用 `zhvpn` 作为 pip 包名，避免把“CLI 短名”和“品牌发布名”混在一起。
+- 不采用 `zh-vpn`，仓库内没有这个命名体系。
+
 ## 目录修正
 
 最初草稿放在 `clients/python-sdk/`，但 SDK 不是终端 GUI / CLI 客户端本体。最终迁到 `sdk/python/`，与未来 `sdk/js/` 等语言 SDK 形成统一布局。

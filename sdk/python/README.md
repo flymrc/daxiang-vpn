@@ -4,6 +4,12 @@ Python SDK for controlling Zongheng VPN from scripts and applications.
 
 The SDK is a thin wrapper around `zhvpn.exe`. It does not talk to the GUI, does not call Hub APIs directly, and does not reimplement WireGuard or sing-box runtime logic.
 
+Naming:
+
+- Install package: `zongheng-vpn`
+- Python import: `zongheng_vpn`
+- CLI executable: `zhvpn` / `zhvpn.exe`
+
 ```text
 Python SDK -> zhvpn.exe --json -> local proxy 127.0.0.1:7890
 ```
