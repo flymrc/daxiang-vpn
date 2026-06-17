@@ -270,3 +270,7 @@ clients/desktop-gui/
   - `zhvpn status --json --no-ip-check` 和 GUI 高频轮询只读本地缓存,不再每 5 秒触发 Hub bootstrap。
   - 旧 token-only 配置会在第一次需要状态缓存时自动迁移一次。
   - GUI 版本号显示为 `v0.4.9`。
+- **0.4.10 Android 换 IP 并发保护展示已完成**（2026-06-17）：
+  - Hub 返回 `status:"busy"` 时,GUI 显示“换 IP 正在进行中”,不再展示 `? -> ?`。
+  - 随包 `zhvpn` sidecar 构建时注入同版本号,`zhvpn version --json` 返回 `0.4.10`。
+  - GUI 版本号显示为 `v0.4.10`。

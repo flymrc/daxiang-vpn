@@ -4,7 +4,7 @@ param(
     [switch]$Install,
     [switch]$WithRequests,
     [switch]$Wheel,
-    [string]$Version = "0.1.0"
+    [string]$Version = "0.1.1"
 )
 
 $ErrorActionPreference = "Stop"

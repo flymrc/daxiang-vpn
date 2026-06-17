@@ -13,6 +13,7 @@ $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repo = Resolve-Path (Join-Path $root "..\..")
+$desktopVersion = (Get-Content (Join-Path $root "package.json") -Raw | ConvertFrom-Json).version
 
 # 1. Resolve Rust target triple. Tauri externalBin expects this sidecar suffix.
 $hostTriple = (rustc -Vv | Select-String '^host:\s*(.+)$').Matches.Groups[1].Value.Trim()
@@ -55,7 +56,8 @@ function Build-Sidecar([string]$targetTriple, [string]$goArch) {
             # Maximum compatibility with older Intel i5 / Win10 machines.
             $env:GOAMD64 = "v1"
         }
-        go build -tags with_gvisor -trimpath -ldflags "-s -w" -o $out (Join-Path $repo "clients\cli")
+        $ldflags = "-s -w -X zongheng-vpn/clients/cli/internal/app.Version=$desktopVersion"
+        go build -tags with_gvisor -trimpath -ldflags $ldflags -o $out (Join-Path $repo "clients\cli")
         if ($LASTEXITCODE -ne 0) { throw "go build sidecar failed for $targetTriple" }
     }
     finally {
