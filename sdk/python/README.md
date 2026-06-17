@@ -30,6 +30,12 @@ print(vpn.get("https://api64.ipify.org", timeout=10).text)
 vpn.disconnect()
 ```
 
+自定义本地代理端口：
+
+```python
+vpn.connect(port=7891)
+```
+
 如果不用 SDK 发请求，只取代理配置：
 
 ```python
