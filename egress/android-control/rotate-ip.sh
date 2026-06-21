@@ -16,12 +16,41 @@
 DOWN="${1:-8}"
 LOG=/data/local/tmp/zhandroid-control.log
 
-setsid sh -c "
-  echo \"\$(date '+%F %T') rotate-ip: airplane ON (down=${DOWN}s)\" >> $LOG
-  cmd connectivity airplane-mode enable
-  sleep ${DOWN}
-  cmd connectivity airplane-mode disable
-  echo \"\$(date '+%F %T') rotate-ip: airplane OFF\" >> $LOG
-" >/dev/null 2>&1 </dev/null &
+case "$DOWN" in
+  ''|*[!0-9]*)
+    echo "invalid down seconds: $DOWN"
+    exit 2
+    ;;
+esac
+if [ "$DOWN" -lt 1 ] || [ "$DOWN" -gt 60 ]; then
+  echo "invalid down seconds: $DOWN (must be 1..60)"
+  exit 2
+fi
+
+setsid sh -c '
+  DOWN="$1"
+  LOG="$2"
+  ts() { date "+%F %T"; }
+
+  echo "$(ts) rotate-ip: airplane ON requested (down=${DOWN}s)" >> "$LOG"
+  if cmd connectivity airplane-mode enable >> "$LOG" 2>&1; then
+    echo "$(ts) rotate-ip: airplane ON ok" >> "$LOG"
+  else
+    rc=$?
+    echo "$(ts) rotate-ip: airplane ON failed rc=${rc}" >> "$LOG"
+  fi
+
+  sleep "$DOWN"
+
+  echo "$(ts) rotate-ip: airplane OFF requested" >> "$LOG"
+  if cmd connectivity airplane-mode disable >> "$LOG" 2>&1; then
+    echo "$(ts) rotate-ip: airplane OFF ok" >> "$LOG"
+  else
+    rc=$?
+    echo "$(ts) rotate-ip: airplane OFF failed rc=${rc}" >> "$LOG"
+  fi
+  state=$(settings get global airplane_mode_on 2>/dev/null || echo unknown)
+  echo "$(ts) rotate-ip: airplane final_state=${state}" >> "$LOG"
+' rotate-ip-bg "$DOWN" "$LOG" >/dev/null 2>&1 </dev/null &
 
 echo "rotate-ip dispatched (down=${DOWN}s); 约 20-40s 后重连并核对出口 IP"

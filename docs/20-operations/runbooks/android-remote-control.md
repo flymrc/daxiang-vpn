@@ -156,7 +156,7 @@ zhvpn.exe rotate-ip --direct --jump root@36.50.84.68 --key "$HOME\.ssh\zhandroid
 ```bash
 # rotate-ip.sh 内部用 setsid 脱离会话,避免切换瞬间断链把自己锁死
 ssh -i ~/.ssh/zhandroid_control -p 2022 root@10.66.0.101 'sh /data/adb/zhandroid/rotate-ip.sh'
-ssh ... 'sh /data/adb/zhandroid/rotate-ip.sh 12'   # 自定义断网秒数(默认 8)
+ssh ... 'sh /data/adb/zhandroid/rotate-ip.sh 12'   # 自定义断网秒数(默认 8,有效范围 1..60)
 
 # 等 ~20-40s 重连后核对新出口 IP
 ssh root@36.50.84.68 'curl -s -x http://10.66.0.1:18081 https://api.ipify.org'
@@ -167,7 +167,7 @@ ssh root@36.50.84.68 'curl -s -x http://10.66.0.1:18081 https://api.ipify.org'
 
 ⚠️ **绝不能在前台 SSH 里直接敲飞行模式开关**——"开飞行"会当场切断你的会话,"关飞行"还没跑手机就一直离线、把你锁在外面。务必走 `rotate-ip.sh`(它 `setsid` 脱离执行,断线也会自动把网络恢复)。
 
-注意:运营商可能仍返回相同/粘性 IP,不保证每次都变(多切几次或加大断网秒数);切换瞬间出口中断十几秒。实测一次:`133.106.140.188` → `133.106.35.50`。
+注意:运营商可能仍返回相同/粘性 IP,不保证每次都变(多切几次或适度加大断网秒数);切换瞬间出口中断十几秒。`rotate-ip.sh` 会把飞行模式 ON/OFF 的请求、结果和最终 `airplane_mode_on` 状态写入 `/data/local/tmp/zhandroid-control.log`。实测一次:`133.106.140.188` → `133.106.35.50`。
 
 ## 8. 排查慢速 / 换卡自检
 

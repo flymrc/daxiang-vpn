@@ -24,6 +24,10 @@ type Server struct {
 	rotateLocksMu   sync.Mutex
 	rotateLockExtra time.Duration
 	triggerRotateIP func(string, int) error
+	carrierCache    map[string]carrierCacheEntry
+	carrierCacheMu  sync.Mutex
+	carrierCacheTTL time.Duration
+	carrierProbe    func(string) string
 }
 
 type tokenLease struct {
@@ -34,6 +38,11 @@ type tokenLease struct {
 type rotateLock struct {
 	startedAt time.Time
 	until     time.Time
+}
+
+type carrierCacheEntry struct {
+	value     string
+	expiresAt time.Time
 }
 
 type bootstrapRequest struct {
@@ -52,6 +61,8 @@ type rotateIPResponse struct {
 	Message           string `json:"message,omitempty"`
 	RetryAfterSeconds int    `json:"retry_after_seconds,omitempty"`
 }
+
+const rotateDownSecondsMax = 60
 
 type bootstrapResponse struct {
 	Client     clientResponse `json:"client"`
@@ -73,6 +84,9 @@ func NewServer(store *TokenStore) *Server {
 		rotateLocks:     map[string]rotateLock{},
 		rotateLockExtra: rotateLockExtraFromEnv(),
 		triggerRotateIP: triggerAndroidRotateIP,
+		carrierCache:    map[string]carrierCacheEntry{},
+		carrierCacheTTL: carrierCacheTTLFromEnv(),
+		carrierProbe:    currentAndroidCarrier,
 	}
 }
 
@@ -109,22 +123,53 @@ func (s *Server) Bootstrap(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, bootstrapResponse{
 		Client:     clientResponse{Name: record.ClientName},
 		Hub:        record.Hub,
-		Egress:     dynamicEgress(record.Egress),
+		Egress:     s.egressWithCachedCarrierName(record.Egress),
 		LocalProxy: record.LocalProxy,
 		WireGuard:  record.WireGuard,
 	})
 }
 
-func dynamicEgress(egress Egress) Egress {
-	carrier := currentAndroidCarrier(egress.ManagementAddr)
+func (s *Server) egressWithCachedCarrierName(egress Egress) Egress {
+	carrier := s.cachedAndroidCarrier(egress.ManagementAddr, time.Now())
 	if carrier != "" {
 		egress.DisplayName = carrier
 	}
 	return egress
 }
 
+func (s *Server) cachedAndroidCarrier(managementAddr string, now time.Time) string {
+	managementAddr = strings.TrimSpace(managementAddr)
+	if managementAddr == "" || s == nil || s.carrierCacheTTL <= 0 {
+		return ""
+	}
+
+	s.carrierCacheMu.Lock()
+	defer s.carrierCacheMu.Unlock()
+
+	if s.carrierCache == nil {
+		s.carrierCache = map[string]carrierCacheEntry{}
+	}
+	if cached, ok := s.carrierCache[managementAddr]; ok && now.Before(cached.expiresAt) {
+		return cached.value
+	}
+
+	probe := s.carrierProbe
+	if probe == nil {
+		probe = currentAndroidCarrier
+	}
+	carrier := probe(managementAddr)
+	s.carrierCache[managementAddr] = carrierCacheEntry{
+		value:     carrier,
+		expiresAt: now.Add(s.carrierCacheTTL),
+	}
+	return carrier
+}
+
 func currentAndroidCarrier(managementAddr string) string {
 	keyPath := androidControlKeyPath()
+	if _, err := os.Stat(keyPath); err != nil {
+		return ""
+	}
 	host, port := splitHostPortDefault(managementAddr, "2022")
 	if host == "" {
 		return ""
@@ -136,8 +181,8 @@ func currentAndroidCarrier(managementAddr string) string {
 		"-p", port,
 		"-o", "BatchMode=yes",
 		"-o", "ConnectTimeout=1",
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile="+os.DevNull,
+		"-o", "StrictHostKeyChecking="+androidControlHostKeyPolicy(),
+		"-o", "UserKnownHostsFile="+androidControlKnownHostsPath(),
 		"root@"+host,
 		"getprop gsm.operator.alpha; getprop gsm.sim.operator.alpha",
 	)
@@ -158,6 +203,20 @@ func androidControlKeyPath() string {
 		return value
 	}
 	return "/root/.ssh/zhandroid_control_hub"
+}
+
+func androidControlKnownHostsPath() string {
+	if value := strings.TrimSpace(os.Getenv("ZHHUB_ANDROID_CONTROL_KNOWN_HOSTS")); value != "" {
+		return value
+	}
+	return "/root/.ssh/zhandroid_control_known_hosts"
+}
+
+func androidControlHostKeyPolicy() string {
+	if value := strings.TrimSpace(os.Getenv("ZHHUB_ANDROID_CONTROL_HOST_KEY_POLICY")); value != "" {
+		return value
+	}
+	return "accept-new"
 }
 
 func firstCSVValue(value string) string {
@@ -214,6 +273,19 @@ func rotateLockExtraFromEnv() time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
+func carrierCacheTTLFromEnv() time.Duration {
+	text := strings.TrimSpace(os.Getenv("ZHHUB_ANDROID_CARRIER_CACHE_SECONDS"))
+	if text == "" {
+		return 5 * time.Minute
+	}
+	seconds, err := strconv.Atoi(text)
+	if err != nil || seconds < 0 {
+		log.Printf("ZHHUB_ANDROID_CARRIER_CACHE_SECONDS 无效: %q, 使用默认 300s", text)
+		return 5 * time.Minute
+	}
+	return time.Duration(seconds) * time.Second
+}
+
 func (s *Server) RotateIP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method_not_allowed"})
@@ -228,7 +300,7 @@ func (s *Server) RotateIP(w http.ResponseWriter, r *http.Request) {
 	if req.DownSeconds == 0 {
 		req.DownSeconds = 8
 	}
-	if req.DownSeconds < 1 || req.DownSeconds > 60 {
+	if req.DownSeconds < 1 || req.DownSeconds > rotateDownSecondsMax {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_down_seconds"})
 		return
 	}
@@ -340,8 +412,8 @@ func triggerAndroidRotateIP(managementAddr string, downSeconds int) error {
 	cmd := exec.Command("ssh",
 		"-i", keyPath,
 		"-p", port,
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile="+os.DevNull,
+		"-o", "StrictHostKeyChecking="+androidControlHostKeyPolicy(),
+		"-o", "UserKnownHostsFile="+androidControlKnownHostsPath(),
 		"-o", "BatchMode=yes",
 		"-o", "ConnectTimeout=8",
 		"root@"+host,

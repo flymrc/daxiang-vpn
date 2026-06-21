@@ -25,7 +25,7 @@ ssh root@36.50.84.68
 - 服务：`zhhub.service`（2026-06-11 从旧 `dxhub.service` 迁移完成，dx→zh 收尾）。
 - 二进制 / tokens：`/opt/zongheng/zhhub/zhhub`、`/opt/zongheng/zhhub/tokens.yaml`。
 - 监听：`0.0.0.0:18080`（HTTP）；提供 `/healthz`、`/api/client/bootstrap`、`/api/client/rotate-ip`。
-- 关键 env：`ZHHUB_TOKENS`、`ZHHUB_LISTEN`、`ZHHUB_ANDROID_CONTROL_KEY=/root/.ssh/zhandroid_control_hub`、`ZHHUB_TOKEN_LEASE_SECONDS=30`。
+- 关键 env：`ZHHUB_TOKENS`、`ZHHUB_LISTEN`、`ZHHUB_ANDROID_CONTROL_KEY=/root/.ssh/zhandroid_control_hub`、`ZHHUB_ANDROID_CONTROL_KNOWN_HOSTS=/root/.ssh/zhandroid_control_known_hosts`、`ZHHUB_ANDROID_CARRIER_CACHE_SECONDS=300`、`ZHHUB_TOKEN_LEASE_SECONDS=30`。
 - 一键换 IP 依赖 `ZHHUB_ANDROID_CONTROL_KEY` 指向的私钥能登手机控制面 `10.66.0.101:2022`。
 - 旧 dx 服务 / 目录 / key 已归档到 Hub `/root/dx-attic-20260611/`（可回滚，确认稳定后再彻底删）。
 
@@ -130,11 +130,11 @@ curl --socks5-hostname 10.66.0.100:1080 https://api.ipify.org
 - Hub 监听 `39093/tcp` 和 `10.66.0.1:18081`。
 - Pixel 7a 已安装官方 WireGuard App `1.0.20260315`,导入 `jp-android-01`,地址 `10.66.0.101/24`,MTU `1120`,远程控制开关已开启。
 - Hub `wg0` 中 `10.66.0.101/32` 已切到 Pixel 新 peer;2026-06-11 验证最新握手、Hub ping、控制 SSH 均正常。
-- `zhandroid-control` 生产路径等 `tun0` 地址就绪后绑定 `10.66.0.101:2022`,不使用 `IP_FREEBIND`,避免 Pixel 上 `accept4: invalid argument`。
+- `zhandroid-control` 生产路径等 `tun0` 地址就绪后绑定 `10.66.0.101:2022`,不使用 `IP_FREEBIND`,避免 Pixel 上 `accept4: invalid argument`。若 `tun0` 长时间缺失,watchdog 先发 WireGuard `SET_TUNNEL_UP`;持续异常超过 10 分钟后升级为 `SET_TUNNEL_DOWN` + `SET_TUNNEL_UP` bounce。
 - Hub 可通过 `/root/.ssh/zhandroid_control_hub` 登录 `root@10.66.0.101:2022`;本机可用 `~/.ssh/zhandroid_control_local` 作为另一把授权钥匙。
 - TCP ADB 已启用在 `5555`,并由 `97-zhadb-tcp-wg-only.sh` 用 iptables 限制为 WireGuard 内网来源。
 - Android 当前 `transport: tcp`、`connections: 2`(2026-06-11 起,两条 yamux 会话互为兜底,单条隧道冻死不再连坐全部代理连接)、`address_family: ipv6`;`client.server_cert_sha256` 保留用于 QUIC 回滚。
-- Android 当前双网络 POC 配置:`tunnel_bind_interface: wlan0`,`tunnel_fallback_interface: rmnet1`,`tunnel_fallback_after_failures: 3`,`tunnel_primary_retry_interval: 1m`,`target_bind_interface: rmnet1`。正常态 Hub `/debug/session-health` 应看到住宅公网 IPv4 `60.124.42.38:*`;经代理访问 `https://api6.ipify.org` 应回手机蜂窝 `240b:c010:...`。若 WiFi/家宽断开,Android -> Hub 隧道会在连续失败后 fallback 到蜂窝 `rmnet1`;目标网站出口仍为蜂窝。回滚为恢复 `/data/adb/zhreverse/client.yaml.bak-20260614-tunnel-fallback` 或移除绑定/fallback 字段,再 `pkill zhreverse`。
+- Android 当前双网络 POC 配置:`tunnel_bind_interface: wlan0`,`tunnel_fallback_interface: rmnet1`,`tunnel_fallback_after_failures: 3`,`tunnel_primary_retry_interval: 1m`,`target_bind_interface: rmnet1`。watchdog 默认不再强制关闭 Wi-Fi(`DISABLE_WIFI=0`),避免破坏 `wlan0` 主隧道。正常态 Hub `/debug/session-health` 应看到住宅公网 IPv4 `60.124.42.38:*`;经代理访问 `https://api6.ipify.org` 应回手机蜂窝 `240b:c010:...`。若 WiFi/家宽断开,Android -> Hub 隧道会在连续失败后 fallback 到蜂窝 `rmnet1`;目标网站出口仍为蜂窝。回滚为恢复 `/data/adb/zhreverse/client.yaml.bak-20260614-tunnel-fallback` 或移除绑定/fallback 字段,再 `pkill zhreverse`。
 - Hub 当前 `resolve: client`(2026-06-10 起):目标域名在手机侧解析并优先 IPv6 直拨,绕开乐天 F5 BIG-IP 透明代理故障率高的 v4 侧,详见 `docs/90-history/worklogs/2026-06-10-pixel-7a-speed-audit.md`。
 - Hub 当前 `max_proxy_connections=96`、`max_proxy_connections_per_client=48`,用于保护 Android 手机出口免受客户端突发并发拖死,同时避免误伤浏览器常驻连接。
 - Hub 当前 `proxy_idle_timeout=2m`,用于回收 FAST/浏览器异常中断后残留的空闲 CONNECT 隧道,避免单客户端并发槽被长期占满。

@@ -321,16 +321,36 @@ tail -80 /data/local/tmp/zhadb-tcp.log
 
 - `zhandroid-control` 必须只绑定 `10.66.0.101:2022`，不要监听 `0.0.0.0`。
 - 只用 SSH key 登录，禁止密码登录。
+- Hub 控制面 SSH 默认使用 `/root/.ssh/zhandroid_control_known_hosts` 和 `StrictHostKeyChecking=accept-new`；若手机控制面 host key 重新生成,需要清理该 known_hosts 中对应记录或临时回滚 `ZHHUB_ANDROID_CONTROL_HOST_KEY_POLICY=no`。
+- Hub bootstrap 里的 Android 运营商名探测默认缓存 300 秒(`ZHHUB_ANDROID_CARRIER_CACHE_SECONDS=300`),避免客户端高频 bootstrap 时每次都 SSH 手机。设为 `0` 可禁用动态探测。
 - `zhandroid-control` 当前生产由 watchdog 等 `tun0` 地址就绪后以 `-freebind=false` 启动；如果日志出现大量 `accept4: invalid argument`，说明仍有旧进程或旧 watchdog，需要杀掉后重启 `/data/adb/zhandroid/watchdog.sh`。
-- WireGuard App 的“授权外部控制”必须开启；watchdog 用 root broadcast 拉起 `jp-android-01`。bounce 时应先等 `tun0` 地址消失再 UP，避免出现“有 `tun0` 但无新握手”的半坏状态。
+- WireGuard App 的“授权外部控制”必须开启；watchdog 用 root broadcast 拉起 `jp-android-01`。`tun0` 长时间缺失时,watchdog 会从单纯 `SET_TUNNEL_UP` 升级为 `SET_TUNNEL_DOWN` + `SET_TUNNEL_UP` bounce；bounce 时应先等 `tun0` 地址消失再 UP，避免出现“有 `tun0` 但无新握手”的半坏状态。
+- Android 双网络 POC 下 watchdog 默认 `DISABLE_WIFI=0`,不再强制关闭 Wi-Fi；若临时改成 `1`,会每 5 分钟尝试 `svc wifi disable`,可能破坏 `wlan0` 主隧道。
 - 带内控制依赖 WireGuard 隧道在线；手机没电、关机、无网、隧道未起时仍需要物理接触或 ADB 兜底。
+
+一键换 IP 若报 Hub 未能触发 Android 控制面,先确认是不是控制隧道本身没起来:
+
+```bash
+# Hub 上看 API 错误
+journalctl -u zhhub.service --since '1 hour ago' --no-pager | grep rotate-ip | tail -40
+
+# Hub 到 Android 控制面的当前连通性
+ping -c 3 -W 1 10.66.0.101
+nc -vz -w 2 10.66.0.101 2022
+
+# 无副作用验证:控制面能 exec,rotate-ip 脚本语法 OK
+ssh -i /root/.ssh/zhandroid_control_hub -p 2022 root@10.66.0.101 'echo control-exec-ok'
+ssh -i /root/.ssh/zhandroid_control_hub -p 2022 root@10.66.0.101 'sh -n /data/adb/zhandroid/rotate-ip.sh && echo rotate-script-syntax-ok'
+```
+
+若 Hub 日志是 `ssh: connect to host 10.66.0.101 port 2022: Connection timed out`,优先按 Android 本机检查 `tun0 / 10.66.0.101` 和 `/data/local/tmp/zhandroid-control.log`。日志中连续出现 `control deferred; 10.66.0.101 not present yet` 代表 WireGuard 控制隧道未建立,此时不是 `rotate-ip.sh` 本身坏了,而是 Hub 根本连不到手机控制面。
 
 ### 3.5 Android 本机检查
 
 ADB 可用时：
 
 ```powershell
-$adb="$env:LOCALAPPDATA\Android\platform-tools\adb.exe"
+$adb="$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 & $adb shell su -c "ip route get 36.50.84.68"
 & $adb shell su -c "ps -A -o PID,PPID,ARGS | grep zhreverse"
 & $adb shell su -c "tail -80 /data/local/tmp/zhreverse-egress.log"
@@ -385,6 +405,7 @@ tail -n 50 /usr/local/var/log/zhvpn/*.log
 | v4-only 站点经代理卡 15s 后 TLS 失败 | Rakuten IPv4/CGNAT/F5 侧故障;这是手机 IPv4 出口真实异常,不要改由 Hub 直拨 |
 | v4-only 站点出口 IP 变成 `36.50.84.68` | 异常:Hub 不应作为出口兜底;检查 `zhreverse` 是否已部署忽略 `v4_only_direct` 的版本 |
 | 一键换 IP 报「Hub 未能触发 Android 控制面换 IP」 | zhhub 找不到控制面私钥;查 `journalctl -u zhhub.service | grep rotate-ip` 的 `control key unavailable` 路径,核对 `ZHHUB_ANDROID_CONTROL_KEY` 指向真实存在的 `/root/.ssh/zhandroid_control_hub` |
+| 一键换 IP 日志为 `ssh: connect to host 10.66.0.101 port 2022: Connection timed out` | Android 控制隧道未在线;查 Hub `ping/nc 10.66.0.101:2022`、手机 `ip addr show tun0`、`zhandroid-control.log` 是否连续 `control deferred` |
 | 客户端提示授权码正在其他网络使用 | 同一 token 正在另一个公网来源 bootstrap，等待约 30 秒或先断开另一台设备 |
 | `ip_forward = 0` | Hub 没开转发，流量到 Hub 就断 |
 

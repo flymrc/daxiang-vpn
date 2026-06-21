@@ -62,3 +62,25 @@ func TestRotateIPTriggeredResponse(t *testing.T) {
 		t.Fatalf("status = %q", res.Status)
 	}
 }
+
+func TestRotateIPInvalidDownSecondsMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/client/rotate-ip" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "invalid_down_seconds"})
+	}))
+	defer srv.Close()
+	t.Setenv("ZHVPN_API_BASE", srv.URL)
+
+	_, err := RotateIP("ZH-OK", 61)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if err.Error() != "断网秒数必须在 1 到 60 秒之间" {
+		t.Fatalf("error = %q", err.Error())
+	}
+}

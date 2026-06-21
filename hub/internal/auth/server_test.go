@@ -67,11 +67,62 @@ func TestClientIPTrustsForwardedForFromLocalProxy(t *testing.T) {
 	}
 }
 
-func TestDynamicEgressFallsBackToConfiguredDisplayName(t *testing.T) {
-	egress := dynamicEgress(Egress{DisplayName: "静态出口", ProxyAddr: "127.0.0.1:1"})
+func TestEgressWithCachedCarrierFallsBackToConfiguredDisplayName(t *testing.T) {
+	server := &Server{}
+	egress := server.egressWithCachedCarrierName(Egress{DisplayName: "静态出口", ProxyAddr: "127.0.0.1:1"})
 
 	if egress.DisplayName != "静态出口" {
 		t.Fatalf("display name = %q", egress.DisplayName)
+	}
+}
+
+func TestCachedAndroidCarrierSuppressesRepeatedProbe(t *testing.T) {
+	calls := 0
+	server := &Server{
+		carrierCache:    map[string]carrierCacheEntry{},
+		carrierCacheTTL: time.Minute,
+		carrierProbe: func(addr string) string {
+			calls++
+			if addr != "10.66.0.101:2022" {
+				t.Fatalf("addr = %q", addr)
+			}
+			return "Rakuten"
+		},
+	}
+	now := time.Unix(1000, 0)
+
+	first := server.cachedAndroidCarrier("10.66.0.101:2022", now)
+	second := server.cachedAndroidCarrier("10.66.0.101:2022", now.Add(10*time.Second))
+	third := server.cachedAndroidCarrier("10.66.0.101:2022", now.Add(time.Minute+time.Second))
+
+	if first != "Rakuten" || second != "Rakuten" || third != "Rakuten" {
+		t.Fatalf("carrier values = %q %q %q", first, second, third)
+	}
+	if calls != 2 {
+		t.Fatalf("probe calls = %d, want 2", calls)
+	}
+}
+
+func TestCachedAndroidCarrierCachesEmptyResult(t *testing.T) {
+	calls := 0
+	server := &Server{
+		carrierCache:    map[string]carrierCacheEntry{},
+		carrierCacheTTL: time.Minute,
+		carrierProbe: func(string) string {
+			calls++
+			return ""
+		},
+	}
+	now := time.Unix(1000, 0)
+
+	if got := server.cachedAndroidCarrier("10.66.0.101:2022", now); got != "" {
+		t.Fatalf("carrier = %q", got)
+	}
+	if got := server.cachedAndroidCarrier("10.66.0.101:2022", now.Add(10*time.Second)); got != "" {
+		t.Fatalf("carrier = %q", got)
+	}
+	if calls != 1 {
+		t.Fatalf("probe calls = %d, want 1", calls)
 	}
 }
 

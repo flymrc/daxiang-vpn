@@ -30,6 +30,10 @@ type RotateIPResult struct {
 	RetryAfterSeconds int    `json:"retry_after_seconds"`
 }
 
+type errorResponse struct {
+	Error string `json:"error"`
+}
+
 func Fetch(token string) (config.Config, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -122,10 +126,21 @@ func RotateIP(token string, downSeconds int) (RotateIPResult, error) {
 	case http.StatusBadGateway:
 		return RotateIPResult{}, errors.New("Hub 未能触发 Android 控制面换 IP，请联系管理员检查控制面 key 或手机状态")
 	case http.StatusBadRequest:
+		if decodeErrorCode(resp) == "invalid_down_seconds" {
+			return RotateIPResult{}, errors.New("断网秒数必须在 1 到 60 秒之间")
+		}
 		return RotateIPResult{}, errors.New("当前出口不支持一键换 IP")
 	default:
 		return RotateIPResult{}, fmt.Errorf("换 IP 服务异常：%d", resp.StatusCode)
 	}
+}
+
+func decodeErrorCode(resp *http.Response) string {
+	var res errorResponse
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return ""
+	}
+	return res.Error
 }
 
 func decodeRotateIPResponse(resp *http.Response) (RotateIPResult, error) {

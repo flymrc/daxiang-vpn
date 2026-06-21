@@ -241,6 +241,16 @@ func TestParseRotateIPOptionsRejectsBadPort(t *testing.T) {
 	}
 }
 
+func TestParseRotateIPOptionsRejectsExcessiveDownSeconds(t *testing.T) {
+	cfg := config.Config{}
+	cfg.ApplyDefaults()
+
+	_, err := parseRotateIPOptions([]string{"--down-seconds", "61"}, cfg)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 func TestParseRotateIPOptionsAcceptsJSON(t *testing.T) {
 	cfg := config.Config{}
 	cfg.ApplyDefaults()

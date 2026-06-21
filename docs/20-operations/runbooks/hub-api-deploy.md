@@ -35,8 +35,13 @@ Remove-Item Env:\GOOS, Env:\GOARCH
 ZHHUB_TOKENS=/opt/zongheng/zhhub/tokens.yaml
 ZHHUB_LISTEN=0.0.0.0:18080
 ZHHUB_ANDROID_CONTROL_KEY=/root/.ssh/zhandroid_control_hub
+ZHHUB_ANDROID_CONTROL_KNOWN_HOSTS=/root/.ssh/zhandroid_control_known_hosts
+ZHHUB_ANDROID_CONTROL_HOST_KEY_POLICY=accept-new
+ZHHUB_ANDROID_CARRIER_CACHE_SECONDS=300
 ZHHUB_TOKEN_LEASE_SECONDS=30
 ```
+
+`ZHHUB_ANDROID_CARRIER_CACHE_SECONDS` 控制 bootstrap 响应里 Android 运营商名的控制面 SSH 探测缓存,默认 300 秒;设为 `0` 可禁用动态探测并使用 token 配置里的显示名。Hub 控制面 SSH 默认用独立 known_hosts 文件和 `accept-new` 策略,首次连接自动记录主机 key,后续若主机 key 变化会阻止连接;紧急回滚可临时把 `ZHHUB_ANDROID_CONTROL_HOST_KEY_POLICY` 设为 `no`。
 
 ## systemd 服务
 
@@ -51,6 +56,9 @@ WorkingDirectory=/opt/zongheng/zhhub
 Environment=ZHHUB_TOKENS=/opt/zongheng/zhhub/tokens.yaml
 Environment=ZHHUB_LISTEN=0.0.0.0:18080
 Environment=ZHHUB_ANDROID_CONTROL_KEY=/root/.ssh/zhandroid_control_hub
+Environment=ZHHUB_ANDROID_CONTROL_KNOWN_HOSTS=/root/.ssh/zhandroid_control_known_hosts
+Environment=ZHHUB_ANDROID_CONTROL_HOST_KEY_POLICY=accept-new
+Environment=ZHHUB_ANDROID_CARRIER_CACHE_SECONDS=300
 Environment=ZHHUB_TOKEN_LEASE_SECONDS=30
 ExecStart=/opt/zongheng/zhhub/zhhub
 Restart=always

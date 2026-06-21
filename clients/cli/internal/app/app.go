@@ -662,6 +662,8 @@ type rotateIPOptions struct {
 	direct      bool
 }
 
+const rotateDownSecondsMax = 60
+
 func parseRotateIPOptions(args []string, cfg config.Config) (rotateIPOptions, error) {
 	opts := rotateIPOptions{
 		downSeconds: 8,
@@ -805,6 +807,9 @@ func parseRotateIPOptions(args []string, cfg config.Config) (rotateIPOptions, er
 	}
 	if opts.proxyAddr == "" {
 		return opts, errors.New("代理地址不能为空")
+	}
+	if opts.downSeconds > rotateDownSecondsMax {
+		return opts, fmt.Errorf("--down-seconds 不能超过 %d 秒", rotateDownSecondsMax)
 	}
 	return opts, nil
 }

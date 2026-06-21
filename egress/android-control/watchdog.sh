@@ -19,9 +19,11 @@ WG_IP=10.66.0.101
 WG_HUB_IP=10.66.0.1
 WG_TUNNEL_NAME=jp-android-01
 WG_INTENT_COOLDOWN=120
+WG_STUCK_BOUNCE_AFTER=600
+WG_STUCK_LOG_INTERVAL=300
 INTERVAL=30
 NETWORK_TUNE_INTERVAL=300
-DISABLE_WIFI=1
+DISABLE_WIFI=0
 TUNE_BUFFERS=1
 
 EGRESS_NAME=zhreverse
@@ -34,6 +36,9 @@ LOG=/data/local/tmp/zhandroid-control.log
 STAMP=$BASE/.last-reboot-day
 WG_LAST_INTENT_FILE=$BASE/.last-wg-intent
 NETWORK_LAST_TUNE_FILE=$BASE/.last-network-tune
+WG_UNHEALTHY_SINCE=0
+WG_UNHEALTHY_REASON=""
+WG_LAST_STUCK_LOG=0
 
 log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
 
@@ -80,6 +85,7 @@ ensure_network_baseline() {
     settings put global stay_on_while_plugged_in 3 >/dev/null 2>&1 || true
     dumpsys deviceidle disable >/dev/null 2>&1 || true
     if [ "$DISABLE_WIFI" = "1" ]; then
+        log "network baseline: disabling Wi-Fi because DISABLE_WIFI=1"
         svc wifi disable >/dev/null 2>&1 || true
     fi
     if [ "$TUNE_BUFFERS" = "1" ]; then
@@ -157,14 +163,52 @@ recover_wg() {
     send_wg_intent UP
 }
 
+mark_wg_unhealthy() {
+    reason=$1
+    now=$(date +%s)
+    if [ "$WG_UNHEALTHY_SINCE" -eq 0 ]; then
+        WG_UNHEALTHY_SINCE=$now
+        WG_UNHEALTHY_REASON=$reason
+        log "wireguard unhealthy state started: $reason"
+    elif [ "$WG_UNHEALTHY_REASON" != "$reason" ]; then
+        WG_UNHEALTHY_REASON=$reason
+        log "wireguard unhealthy reason changed: $reason"
+    fi
+    elapsed=$((now - WG_UNHEALTHY_SINCE))
+    if [ "$elapsed" -ge "$WG_STUCK_BOUNCE_AFTER" ]; then
+        if [ $((now - WG_LAST_STUCK_LOG)) -ge "$WG_STUCK_LOG_INTERVAL" ]; then
+            WG_LAST_STUCK_LOG=$now
+            log "wireguard stuck for ${elapsed}s ($reason); escalating to DOWN/UP bounce"
+        fi
+        return 1
+    fi
+    return 0
+}
+
+reset_wg_health() {
+    if [ "$WG_UNHEALTHY_SINCE" -ne 0 ]; then
+        elapsed=$(($(date +%s) - WG_UNHEALTHY_SINCE))
+        log "wireguard recovered after ${elapsed}s"
+    fi
+    WG_UNHEALTHY_SINCE=0
+    WG_UNHEALTHY_REASON=""
+    WG_LAST_STUCK_LOG=0
+}
+
 ensure_wg() {
     if ! wg_addr_up; then
-        recover_wg up
+        if mark_wg_unhealthy "$WG_IP missing"; then
+            recover_wg up
+        else
+            recover_wg bounce
+        fi
         return 0
     fi
     if wg_hub_reachable; then
+        reset_wg_health
         return 0
     fi
+    mark_wg_unhealthy "$WG_HUB_IP unreachable" >/dev/null 2>&1 || true
     recover_wg bounce
 }
 
