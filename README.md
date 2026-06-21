@@ -46,6 +46,8 @@ dist/
 ```powershell
 # Windows 客户端
 clients/cli/build.ps1
+# macOS CLI
+./clients/cli/build-macos.sh
 # Hub 服务端
 go build -o dist/hub ./hub
 # 安卓出口代理（arm64）

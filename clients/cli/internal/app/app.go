@@ -48,7 +48,7 @@ func Run(args []string) error {
 		return withOperationLock(ctx, func() error { return loginCmd(ctx, args[1:]) })
 	case "import":
 		if len(args) != 2 {
-			return errors.New("用法：zhvpn.exe import <配置文件>")
+			return fmt.Errorf("用法：%s import <配置文件>", commandName())
 		}
 		return withOperationLock(ctx, func() error { return importConfig(ctx, args[1]) })
 	case "start":
@@ -72,26 +72,27 @@ func Run(args []string) error {
 }
 
 func printUsage() {
-	fmt.Println(`纵横 VPN CLI
+	name := commandName()
+	fmt.Printf(`纵横 VPN CLI
 
 用法：
-  zhvpn.exe login <授权码>
-  zhvpn.exe start [--port <端口>] [--fast]
-  zhvpn.exe status
-  zhvpn.exe rotate-ip [--down-seconds <秒>] [--wait-seconds <秒>]
-  zhvpn.exe stop
-  zhvpn.exe logout
-  zhvpn.exe version
-  zhvpn.exe help
+  %[1]s login <授权码>
+  %[1]s start [--port <端口>] [--fast]
+  %[1]s status
+  %[1]s rotate-ip [--down-seconds <秒>] [--wait-seconds <秒>]
+  %[1]s stop
+  %[1]s logout
+  %[1]s version
+  %[1]s help
 
 本地代理端口默认 7890，可临时指定其它端口：
-  zhvpn.exe start --port 7891
+  %[1]s start --port 7891
 也可用环境变量 ZHVPN_LOCAL_PORT 指定（--port 优先）。
 
---fast：高性能模式，使用系统网络栈（延迟更低、速度更快），
-        需要管理员权限，启动时会弹出 UAC 授权窗口。
+%[2]s
 
-rotate-ip：更换当前手机卡出口 IP，并等待出口恢复。`)
+rotate-ip：更换当前手机卡出口 IP，并等待出口恢复。
+`, name, fastModeHelp())
 }
 
 // ErrSilent signals that a command already reported its outcome (e.g. as a JSON
@@ -247,7 +248,7 @@ func loginCmd(ctx paths.Context, args []string) error {
 		positional = append(positional, arg)
 	}
 	if len(positional) != 1 {
-		return errors.New("用法：zhvpn.exe login <授权码> [--json]")
+		return fmt.Errorf("用法：%s login <授权码> [--json]", commandName())
 	}
 	return login(ctx, positional[0], jsonOut)
 }
@@ -340,7 +341,7 @@ func loadLocalInstalledConfig(ctx paths.Context) (config.Config, error) {
 	cfg, err := config.Load(ctx.ConfigPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return config.Config{}, errors.New("未找到配置，请先执行 zhvpn.exe login <授权码>")
+			return config.Config{}, fmt.Errorf("未找到配置，请先执行 %s login <授权码>", commandName())
 		}
 		return config.Config{}, err
 	}
@@ -841,7 +842,7 @@ func rotateIP(ctx paths.Context, args []string) error {
 	}
 	fmt.Printf("换 IP 后出口：%s\n", res.after)
 	if res.after == unavailableIP {
-		fmt.Println("提示：出口可能还没恢复，过几秒再执行 zhvpn.exe status，或加大 --wait-seconds。")
+		fmt.Printf("提示：出口可能还没恢复，过几秒再执行 %s status，或加大 --wait-seconds。\n", commandName())
 	}
 	return nil
 }
@@ -896,7 +897,7 @@ func performRotate(cfg config.Config, opts rotateIPOptions, quiet bool) (rotateO
 	if opts.jumpHost == "" {
 		controlAddr := net.JoinHostPort(opts.phone, strconv.Itoa(opts.port))
 		if reachable, _ := netcheck.TCP(controlAddr, 3*time.Second); !reachable {
-			return rotateOutcome{before: before}, fmt.Errorf("Android 控制面 %s 不可达。普通 zhvpn.exe start 是用户态代理模式，不会给 Windows 系统添加 10.66.0.0/24 路由；请使用 --jump root@36.50.84.68，或先用 zhvpn.exe start --fast / 管理内网 WireGuard 提供系统路由", controlAddr)
+			return rotateOutcome{before: before}, fmt.Errorf("Android 控制面 %s 不可达。普通 %s start 是用户态代理模式，不会给系统添加 10.66.0.0/24 路由；请使用 --jump root@36.50.84.68，或先用管理内网 WireGuard 提供系统路由", controlAddr, commandName())
 		}
 	}
 	if !quiet {
