@@ -21,15 +21,11 @@ type Context struct {
 func NewContext() (Context, error) {
 	root := os.Getenv("ZHVPN_HOME")
 	if root == "" {
-		local := os.Getenv("LOCALAPPDATA")
-		if local == "" {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return Context{}, err
-			}
-			local = filepath.Join(home, "AppData", "Local")
+		var err error
+		root, err = defaultRoot()
+		if err != nil {
+			return Context{}, err
 		}
-		root = filepath.Join(local, "ZonghengVPN")
 	}
 
 	return FromRoot(root), nil
@@ -44,7 +40,7 @@ func FromRoot(root string) Context {
 		SingBoxConfig:    filepath.Join(root, "runtime", "session.json"),
 		RunDir:           filepath.Join(root, "run"),
 		BinDir:           filepath.Join(root, "bin"),
-		SingBoxPath:      filepath.Join(root, "bin", "zhvpn.exe"),
+		SingBoxPath:      filepath.Join(root, "bin", clientBinaryName()),
 		PIDPath:          filepath.Join(root, "run", "zhvpn.pid"),
 		LogDir:           filepath.Join(root, "logs"),
 		SingBoxLogPath:   filepath.Join(root, "logs", "zhvpn.log"),

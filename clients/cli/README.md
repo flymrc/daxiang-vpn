@@ -1,21 +1,43 @@
-# zhvpn.exe
+# zhvpn CLI
 
-Windows 客户端 CLI MVP。
+Windows / macOS 客户端 CLI MVP。Windows 发布物名为 `zhvpn.exe`，macOS 发布物名为 `zhvpn`。
 
 ## 构建
 
 ```powershell
-go build -tags with_gvisor -o ..\..\dist\zhvpn.exe .
+# Windows
+.\build.ps1
+```
+
+```bash
+# macOS
+./build-macos.sh
+```
+
+也可手动构建当前平台：
+
+```bash
+go build -tags with_gvisor -o ../../dist/macos-arm64/zhvpn .
 ```
 
 ## 使用
 
 ```powershell
+# Windows
 .\zhvpn.exe login ZH-DEV-TOKEN
 .\zhvpn.exe start
 .\zhvpn.exe status
 .\zhvpn.exe rotate-ip
 .\zhvpn.exe stop
+```
+
+```bash
+# macOS
+./zhvpn login ZH-DEV-TOKEN
+./zhvpn start
+./zhvpn status
+./zhvpn rotate-ip
+./zhvpn stop
 ```
 
 机器接口：
