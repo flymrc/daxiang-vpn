@@ -36,6 +36,25 @@
 - 本机 `bash -n` 因 WSL 环境损坏无法运行。
 - 通过 USB ADB 将 `watchdog.sh`、`rotate-ip.sh` 推到 `/data/local/tmp/*-check.sh`,执行 Android `sh -n`:通过。未覆盖生产路径,检查后已删除临时文件。
 
-## 注意
+## 生产部署
 
-这些改动目前是仓库侧修复。要让生产生效,需要重新部署 Hub `zhhub` 二进制,并把更新后的 `watchdog.sh`、`rotate-ip.sh` 推送到 Android 对应路径后重启 watchdog 或重启手机侧服务。
+- 2026-06-21 22:18 JST 已部署到生产。
+- Hub:
+  - 本机交叉编译 `dist/linux-amd64/zhhub`,SHA256 `239C50A39014D605D7836061DD10EE3630852EA76D6163B217B0AF9E5A1FFA16`。
+  - 上传到 Hub `/tmp/zhhub-31e4a1e`。
+  - 备份旧二进制为 `/opt/zongheng/zhhub/zhhub.bak-20260621-131811`。
+  - 替换 `/opt/zongheng/zhhub/zhhub`,新增 systemd drop-in `/etc/systemd/system/zhhub.service.d/10-android-control-hardening.conf`。
+  - `systemctl restart zhhub.service` 后服务 active,PID `535340`,`/healthz` 返回 `{"status":"ok"}`。
+- Android:
+  - 通过 USB ADB 推送 `watchdog.sh`、`rotate-ip.sh` 到 `/data/adb/zhandroid/` 并 `chmod 700`。
+  - 重启 `watchdog.sh` 和 `zhandroid-control`;新进程为 `watchdog.sh` PID `6261`,`zhandroid-control` PID `6281`。
+  - 生产脚本 SHA256:
+    - `/data/adb/zhandroid/watchdog.sh`: `64fa3b1427a61affc7e9dca63a118b1eb80ee69df59000904d16927a49a92f42`
+    - `/data/adb/zhandroid/rotate-ip.sh`: `160ec0f41094f3f1a967267d50d70bcfed171d8bb8ce355838d5bd4c8d488575`
+- 部署后检查:
+  - Hub `zhhub.service` active,PID `535340`。
+  - Hub `/healthz` OK。
+  - Hub 使用 `/root/.ssh/zhandroid_control_hub` 和 `/root/.ssh/zhandroid_control_known_hosts` 可执行 Android 控制面命令。
+  - `/root/.ssh/zhandroid_control_known_hosts` 已生成。
+  - Android 代理 v6 出口 `curl --proxy http://10.66.0.1:18081 https://api6.ipify.org` 返回 `240b:c010:472:5fa4:0:18:7232:cb01`。
+  - 高频 bootstrap 仍存在,但 Android 控制面 SSH 日志未再按 bootstrap 频率增长;部署后的两次登录为人工健康检查。
