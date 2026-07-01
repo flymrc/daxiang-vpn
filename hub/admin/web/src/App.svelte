@@ -83,6 +83,7 @@
   };
 
   const themeStorageKey = "zhhub-admin-theme";
+  const tokenPageSize = 10;
   const themeOrder: ThemeName[] = ["深空蓝", "浅色", "石墨灰", "午夜紫"];
   const viewRoutes: Record<View, string> = {
     overview: "overview",
@@ -175,6 +176,7 @@
   let exitIPSecrets: Record<string, string> = {};
   let revealingTokenID = "";
   let revealingExitIPID = "";
+  let tokenPage = 1;
 
   onMount(() => {
     view = readHashView();
@@ -219,6 +221,12 @@
   $: displayEgress = egress.length > 0 ? egress : demoEgress;
   $: displayEvents = events.length > 0 ? events : demoEvents;
   $: enabledTokens = displayTokens.filter((token) => token.enabled).length;
+  $: tokenPageCount = Math.max(1, Math.ceil(displayTokens.length / tokenPageSize));
+  $: if (tokenPage > tokenPageCount) tokenPage = tokenPageCount;
+  $: tokenRangeStart = displayTokens.length === 0 ? 0 : (tokenPage - 1) * tokenPageSize + 1;
+  $: tokenRangeEnd = Math.min(displayTokens.length, tokenPage * tokenPageSize);
+  $: pagedTokens = displayTokens.slice(Math.max(0, tokenRangeStart - 1), tokenRangeEnd);
+  $: tokenPageItems = pageItems(tokenPage, tokenPageCount);
   $: stats = [
     { label: "在线客户端", value: String(displayOverview.stats.active_lease_count || displayLeases.length), sub: `共 ${enabledTokens} 个启用授权码`, dot: "ok" },
     { label: "启用授权码", value: String(displayOverview.stats.enabled_token_count || enabledTokens), sub: `共 ${displayTokens.length} 个 token`, dot: "ok" },
@@ -484,6 +492,19 @@
   function tokenValue(tokenID: string, maskedToken: string, revealedToken: string | undefined, revealingID: string) {
     if (revealingID === tokenID) return "读取中...";
     return revealedToken || maskedToken;
+  }
+
+  function pageItems(current: number, total: number): Array<number | string> {
+    if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1);
+    const pages = new Set([1, total, current - 1, current, current + 1].filter((value) => value >= 1 && value <= total));
+    const result: Array<number | string> = [];
+    let previous = 0;
+    for (const page of Array.from(pages).sort((a, b) => a - b)) {
+      if (previous && page - previous > 1) result.push(`gap-${previous}-${page}`);
+      result.push(page);
+      previous = page;
+    }
+    return result;
   }
 
   function exitIPValue(node: EgressSummary) {
@@ -779,11 +800,11 @@
             <table class="tbl">
               <thead><tr><th>授权码</th><th>客户端</th><th>状态</th><th>出口</th><th>WG 地址</th><th>到期</th><th>最近活跃</th><th class="right">操作</th></tr></thead>
               <tbody>
-                {#each displayTokens as row}
+                {#each pagedTokens as row}
                   {@const last = tokenLast(row)}
                   <tr>
                     <td>
-                      <div class="secretline mono strong">
+                      <div class="secretline tokenline mono strong">
                         <span class="secrettext">{tokenValue(row.id, row.masked_token, tokenSecrets[row.id], revealingTokenID)}</span>
                         <button
                           class="eyebtn"
@@ -813,6 +834,29 @@
                 {/each}
               </tbody>
             </table>
+            {#if tokenPageCount > 1}
+              <div class="pager fx ac jb">
+                <div class="note mono">显示 {tokenRangeStart}-{tokenRangeEnd} / {displayTokens.length}</div>
+                <div class="fx ac gap6">
+                  <button class="btn btnxs ghost" disabled={tokenPage === 1} on:click={() => (tokenPage = Math.max(1, tokenPage - 1))}>上一页</button>
+                  {#each tokenPageItems as item}
+                    {#if typeof item === "number"}
+                      <button
+                        class={`pagebtn mono ${item === tokenPage ? "on" : ""}`}
+                        type="button"
+                        aria-current={item === tokenPage ? "page" : undefined}
+                        on:click={() => (tokenPage = item)}
+                      >
+                        {item}
+                      </button>
+                    {:else}
+                      <span class="pagegap mono">...</span>
+                    {/if}
+                  {/each}
+                  <button class="btn btnxs ghost" disabled={tokenPage === tokenPageCount} on:click={() => (tokenPage = Math.min(tokenPageCount, tokenPage + 1))}>下一页</button>
+                </div>
+              </div>
+            {/if}
           </div>
         {:else if view === "egress"}
           <div class="fx ac jb">
@@ -882,7 +926,7 @@
                 {#each displayLeases as row}
                   <tr>
                     <td>
-                      <div class="secretline mono">
+                      <div class="secretline tokenline mono">
                         <span class="secrettext">{tokenValue(row.token_id, row.masked_token, tokenSecrets[row.token_id], revealingTokenID)}</span>
                         <button
                           class="eyebtn"
@@ -1431,6 +1475,21 @@
     white-space: nowrap;
   }
 
+  .tokenline {
+    display: inline-grid;
+    grid-template-columns: minmax(0, 178px) 24px;
+    align-items: center;
+    gap: 8px;
+    width: 210px;
+    max-width: 210px;
+  }
+
+  .tokenline .secrettext {
+    min-width: 0;
+    max-width: 178px;
+    width: 178px;
+  }
+
   .kvv.secretline {
     display: flex;
     margin-top: 5px;
@@ -1475,6 +1534,44 @@
     stroke-width: 1.8;
     stroke-linecap: round;
     stroke-linejoin: round;
+  }
+
+  .pager {
+    min-height: 44px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--bd);
+    background: var(--bg1);
+  }
+
+  .pagebtn {
+    min-width: 26px;
+    height: 26px;
+    padding: 0 8px;
+    border-radius: 7px;
+    border: 1px solid var(--bd2);
+    background: transparent;
+    color: var(--tx2);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .pagebtn:hover {
+    color: var(--tx);
+    border-color: var(--tx3);
+    background: var(--bg3);
+  }
+
+  .pagebtn.on {
+    color: #06121f;
+    background: var(--accent);
+    border-color: transparent;
+  }
+
+  .pagegap {
+    color: var(--tx3);
+    padding: 0 3px;
+    font-size: 12px;
   }
 
   .dot {
