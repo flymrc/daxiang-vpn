@@ -31,7 +31,7 @@ ssh -i ~/.ssh/zongheng_server root@36.50.84.68
 - WireGuard 客户端密钥迁移：2026-07-01 生产 `zhhub` 已支持客户端上报 `wireguard_public_key`,并用 `wg set wg0 peer <public_key> allowed-ips <client_ip>/32` 应用 peer;新协议响应不再下发 `wireguard.private_key`。老客户端未上报公钥时仍走 legacy 私钥响应,待新客户端分发后清理 tokens。
 - P0-2 上线备份：`/root/zongheng-backups/20260701091751-p0-local-wg-key`；对应 `zhhub` SHA256 `33e6b88b281b04cd3e0430d16ae3be7becbd0452f3a087fce4e0f5cd355f9e7d`。
 - admin SQLite 容量防护上线备份：`/root/zongheng-backups/20260701125316-admin-sqlite-retention`；当前 `zhhub` SHA256 `aff3855a6ae5bfd53fc62dc2342ba397d84c7444dde47d0da550735d92b6baf2`。
-- 管理控制台监听：`127.0.0.1:18100`；Caddy 对公网提供 `https://jp-proxy.ruichao.dev/admin/` 并反代到本地 listener。
+- 管理控制台监听：`127.0.0.1:18100`；Caddy 对公网提供 `https://jp-proxy.ruichao.dev/admin/` 并反代到本地 listener,根路径 `/` 302 到 `/admin/`,未知路径返回 404。
 - 关键 env：`ZHHUB_TOKENS`、`ZHHUB_LISTEN`、`ZHHUB_ADMIN_LISTEN=127.0.0.1:18100`、`ZHHUB_ADMIN_DB=/opt/zongheng/zhhub/admin.db`、`ZHHUB_ADMIN_PASSWORD_HASH`、`ZHHUB_ADMIN_AUDIT_RETENTION_DAYS=90`、`ZHHUB_ADMIN_AUDIT_MAX_ROWS=50000`、`ZHHUB_ADMIN_LOGIN_ATTEMPT_RETENTION_DAYS=7`、`ZHHUB_ADMIN_LOGIN_ATTEMPT_MAX_ROWS=10000`、`ZHHUB_ADMIN_DB_MAINTENANCE_MINUTES=60`、`ZHHUB_ANDROID_CONTROL_KEY=/root/.ssh/zhandroid_control_hub`、`ZHHUB_ANDROID_CONTROL_KNOWN_HOSTS=/root/.ssh/zhandroid_control_known_hosts`、`ZHHUB_ANDROID_CARRIER_CACHE_SECONDS=300`、`ZHHUB_TOKEN_LEASE_SECONDS=30`。
 - 一键换 IP 依赖 `ZHHUB_ANDROID_CONTROL_KEY` 指向的私钥能登手机控制面 `10.66.0.101:2022`。
 - 管理控制台门禁由应用内 Argon2id 管理员密码登录负责。明文密码和 hash 不写入文档。
@@ -181,7 +181,7 @@ ssh -i ~/.ssh/zhandroid_control_local -p 2022 root@10.66.0.101 \
 - IPv4 转发：已开启
 - WireGuard 服务：`wg-quick@wg0`，已启用并正在运行
 - 防火墙：`ufw` 已启用,默认拒绝入站;显式放行 SSH、WireGuard、zhhub bootstrap、zhreverse TCP、Caddy `80/443` 和 `wg0` 上的 `10.66.0.1:18081/tcp`
-- Caddy：`caddy.service` 已启用并运行,监听公网 `80/tcp` 和 `443/tcp`,配置 `/etc/caddy/Caddyfile`。当前承载 `/admin*` -> `127.0.0.1:18100`、`/api/client/*` 和 `/healthz` -> `127.0.0.1:18080`。Caddyfile 上线备份：`/etc/caddy/Caddyfile.bak-20260701084419-api-tls`。
+- Caddy：`caddy.service` 已启用并运行,监听公网 `80/tcp` 和 `443/tcp`,配置 `/etc/caddy/Caddyfile`。当前承载 `/admin*` -> `127.0.0.1:18100`、`/api/client/*` 和 `/healthz` -> `127.0.0.1:18080`;`/` 302 到 `/admin/`;未知路径 404。Caddyfile 关键备份：`/etc/caddy/Caddyfile.bak-20260701084419-api-tls`、`/etc/caddy/Caddyfile.bak-20260701130056-root-route-redir-fix`。
 - Docker：`linuxserver/librespeed` 已停止,`restart=no`;容器保留用于回滚,不再占用 `80/tcp`。
 
 ## 当前 WireGuard Peer

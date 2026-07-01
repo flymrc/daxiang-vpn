@@ -159,8 +159,12 @@ jp-proxy.ruichao.dev {
     reverse_proxy 127.0.0.1:18100
   }
 
+  handle / {
+    redir * /admin/ 302
+  }
+
   handle {
-    redir /admin/ 302
+    respond "not found" 404
   }
 }
 ```
@@ -186,8 +190,10 @@ systemctl reload caddy
 curl http://127.0.0.1:18080/healthz
 curl http://127.0.0.1:18100/admin/api/health
 curl https://jp-proxy.ruichao.dev/healthz
+curl -I https://jp-proxy.ruichao.dev/
 curl -I https://jp-proxy.ruichao.dev/api/client/bootstrap
 curl -I https://jp-proxy.ruichao.dev/admin/
+curl -I https://jp-proxy.ruichao.dev/not-found-check
 ```
 
 预期：
@@ -197,6 +203,8 @@ curl -I https://jp-proxy.ruichao.dev/admin/
 ```
 
 `/api/client/bootstrap` 只接受 POST,所以 `curl -I` 预期是 `405 Method Not Allowed`;这能证明 HTTPS 入口已经路由到 zhhub 客户端 API,而不是 Caddy/admin 的 404。
+
+根路径 `/` 预期 `302 Location: /admin/`;未知路径预期 `404 Not Found`,避免返回空白 200。
 
 ## 客户端 HTTPS 迁移
 
