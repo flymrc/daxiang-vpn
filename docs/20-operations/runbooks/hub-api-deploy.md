@@ -47,7 +47,7 @@ ZHHUB_TOKEN_LEASE_SECONDS=30
 ZHHUB_ADMIN_ENABLED=1
 ZHHUB_ADMIN_LISTEN=127.0.0.1:18100
 ZHHUB_ADMIN_DB=/opt/zongheng/zhhub/admin.db
-ZHHUB_ADMIN_PUBLIC_HOST=panel.jp-proxy.ruichao.dev
+ZHHUB_ADMIN_PUBLIC_HOST=jp-proxy.ruichao.dev
 ZHHUB_ADMIN_USER=admin
 ZHHUB_ADMIN_PASSWORD_HASH=<argon2id-phc-hash>
 ZHHUB_ADMIN_REVERSE_HEALTH_URL=http://10.66.0.1:18081/debug/session-health
@@ -83,7 +83,7 @@ Environment=ZHHUB_TOKEN_LEASE_SECONDS=30
 Environment=ZHHUB_ADMIN_ENABLED=1
 Environment=ZHHUB_ADMIN_LISTEN=127.0.0.1:18100
 Environment=ZHHUB_ADMIN_DB=/opt/zongheng/zhhub/admin.db
-Environment=ZHHUB_ADMIN_PUBLIC_HOST=panel.jp-proxy.ruichao.dev
+Environment=ZHHUB_ADMIN_PUBLIC_HOST=jp-proxy.ruichao.dev
 Environment=ZHHUB_ADMIN_USER=admin
 Environment=ZHHUB_ADMIN_PASSWORD_HASH=<argon2id-phc-hash>
 Environment=ZHHUB_ADMIN_REVERSE_HEALTH_URL=http://10.66.0.1:18081/debug/session-health
@@ -119,22 +119,30 @@ TCP 80
 TCP 443
 ```
 
-`18100/tcp` 不开放给公网,只监听 `127.0.0.1`。`80/443` 由 Caddy 使用,用于 `panel.jp-proxy.ruichao.dev` 自动 HTTPS 和反向代理。
+`18100/tcp` 不开放给公网,只监听 `127.0.0.1`。`80/443` 由 Caddy 使用,用于 `jp-proxy.ruichao.dev` 自动 HTTPS 和反向代理。
+
+## DNS
+
+控制台直接使用 `jp-proxy.ruichao.dev`,替代原测速页入口。
+
+推荐部署形态是把 Cloudflare DNS 记录切为 DNS-only:
+
+```text
+jp-proxy.ruichao.dev A 36.50.84.68
+```
+
+这样 Caddy 可以直接完成公网证书签发和续期。如果继续使用 Cloudflare 代理,浏览器侧证书由 Cloudflare 提供,Caddy 只负责源站侧 TLS/反代;此时需要单独确认 Cloudflare SSL 模式和源站证书策略。
 
 ## Caddy 与 Librespeed
 
 控制台公网入口由 Caddy 负责,不使用 Dokku。Caddy 自动签发/续期证书,并通过 `basic_auth` 提供第一层门禁。示例 Caddyfile:
 
 ```caddyfile
-panel.jp-proxy.ruichao.dev {
+jp-proxy.ruichao.dev {
   basic_auth {
     admin <caddy-bcrypt-hash>
   }
   reverse_proxy 127.0.0.1:18100
-}
-
-:80 {
-  reverse_proxy 127.0.0.1:18000
 }
 ```
 
@@ -144,14 +152,12 @@ panel.jp-proxy.ruichao.dev {
 caddy hash-password --plaintext 'change-this-basic-auth-password'
 ```
 
-现有 `linuxserver/librespeed` 不能继续占用公网 `80/tcp`;部署控制台前应先记录现有容器参数,再迁移到本机端口:
+现有 `linuxserver/librespeed` 不能继续占用公网 `80/tcp`;控制台上线将直接替代原测速页。部署前先记录现有容器参数,再取消自动重启并停止容器,方便必要时回滚:
 
 ```bash
 docker inspect librespeed > /root/librespeed.inspect.before-admin-panel.json
+docker update --restart=no librespeed
 docker stop librespeed
-docker rm librespeed
-# 按 inspect 中的 volume/env 重新启动,端口改为:
-# -p 127.0.0.1:18000:80
 ```
 
 更新 Caddy 配置前必须验证:
@@ -166,7 +172,7 @@ systemctl reload caddy
 ```bash
 curl http://127.0.0.1:18080/healthz
 curl http://127.0.0.1:18100/admin/api/health
-curl -I https://panel.jp-proxy.ruichao.dev/admin/
+curl -I https://jp-proxy.ruichao.dev/admin/
 ```
 
 预期：

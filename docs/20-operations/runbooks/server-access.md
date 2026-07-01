@@ -6,6 +6,7 @@
 
 - 角色：流量 Hub / WireGuard 中转服务器
 - 公网 IP：`36.50.84.68`
+- 公网域名：`jp-proxy.ruichao.dev`。2026-07-01 当前 DNS 仍为 Cloudflare 代理记录,源站由 Caddy 接管 `80/443` 并反代管理控制台。
 - SSH 用户：`root`
 - SSH 密码：已省略。优先使用免密 SSH。
 - SSH 登录命令：
@@ -25,10 +26,11 @@ ssh root@36.50.84.68
 - 服务：`zhhub.service`（2026-06-11 从旧 `dxhub.service` 迁移完成，dx→zh 收尾）。
 - 二进制 / tokens / admin DB：`/opt/zongheng/zhhub/zhhub`、`/opt/zongheng/zhhub/tokens.yaml`、`/opt/zongheng/zhhub/admin.db`。
 - 客户端 API 监听：`0.0.0.0:18080`（HTTP）；提供 `/healthz`、`/api/client/bootstrap`、`/api/client/rotate-ip`。
-- 管理控制台监听：`127.0.0.1:18100`；Caddy 对公网提供 `https://panel.jp-proxy.ruichao.dev/admin/` 并反代到本地 listener。
+- 管理控制台监听：`127.0.0.1:18100`；Caddy 对公网提供 `https://jp-proxy.ruichao.dev/admin/` 并反代到本地 listener。
 - 关键 env：`ZHHUB_TOKENS`、`ZHHUB_LISTEN`、`ZHHUB_ADMIN_LISTEN=127.0.0.1:18100`、`ZHHUB_ADMIN_DB=/opt/zongheng/zhhub/admin.db`、`ZHHUB_ADMIN_PASSWORD_HASH`、`ZHHUB_ANDROID_CONTROL_KEY=/root/.ssh/zhandroid_control_hub`、`ZHHUB_ANDROID_CONTROL_KNOWN_HOSTS=/root/.ssh/zhandroid_control_known_hosts`、`ZHHUB_ANDROID_CARRIER_CACHE_SECONDS=300`、`ZHHUB_TOKEN_LEASE_SECONDS=30`。
 - 一键换 IP 依赖 `ZHHUB_ANDROID_CONTROL_KEY` 指向的私钥能登手机控制面 `10.66.0.101:2022`。
 - 管理控制台首层公网门禁由 Caddy `basic_auth` 负责;应用内再用 Argon2id 管理员密码登录。明文密码和 hash 不写入文档。
+- 管理凭据存放在本机 `~/.zhhub/hub-admin-credentials-20260701.txt` 和 Hub `/root/hub-admin-credentials-20260701.txt`；两处都不进入仓库。
 - 旧 dx 服务 / 目录 / key 已归档到 Hub `/root/dx-attic-20260611/`（可回滚，确认稳定后再彻底删）。
 
 ## 日本 Mac 出口节点（Deprecated）
@@ -163,18 +165,19 @@ ssh -i ~/.ssh/zhandroid_control_local -p 2022 root@10.66.0.101 \
 
 ## 当前服务器状态
 
-检查日期：2026-06-03。
+检查日期：2026-07-01。
 
 - 主机名：`jp-proxy.ruichao.dev`
-- 系统：Ubuntu 24.04.3 LTS
+- 系统：Ubuntu 24.04.4 LTS
 - 内核：Linux 6.8
 - WireGuard 接口：`wg0`
 - Hub 的 WireGuard 内网 IP：`10.66.0.1/24`
 - WireGuard 监听端口：`51820/udp`
 - IPv4 转发：已开启
 - WireGuard 服务：`wg-quick@wg0`，已启用并正在运行
-- 防火墙：`ufw` 已启用,默认拒绝入站;显式放行 SSH、WireGuard、zhhub bootstrap、zhreverse TCP 和 `wg0` 上的 `10.66.0.1:18081/tcp`
-- Docker：正在运行 `linuxserver/librespeed`，占用 `80/tcp`
+- 防火墙：`ufw` 已启用,默认拒绝入站;显式放行 SSH、WireGuard、zhhub bootstrap、zhreverse TCP、Caddy `80/443` 和 `wg0` 上的 `10.66.0.1:18081/tcp`
+- Caddy：`caddy.service` 已启用并运行,监听公网 `80/tcp` 和 `443/tcp`,配置 `/etc/caddy/Caddyfile`。
+- Docker：`linuxserver/librespeed` 已停止,`restart=no`;容器保留用于回滚,不再占用 `80/tcp`。
 
 ## 当前 WireGuard Peer
 

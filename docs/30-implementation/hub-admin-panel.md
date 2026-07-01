@@ -15,7 +15,7 @@ v1 不做 token 创建/删除,也不自动改 WireGuard peer 配置。
 
 ```text
 Browser
-  -> HTTPS panel.jp-proxy.ruichao.dev
+  -> HTTPS jp-proxy.ruichao.dev
   -> Caddy basic_auth
   -> reverse_proxy 127.0.0.1:18100
   -> zhhub admin /admin/

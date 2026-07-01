@@ -121,7 +121,7 @@ ss -ltnp | grep -E ':(18080|18100)\b'
 curl -s http://127.0.0.1:18100/admin/api/health
 systemctl status caddy
 caddy validate --config /etc/caddy/Caddyfile
-curl -I https://panel.jp-proxy.ruichao.dev/admin/
+curl -I https://jp-proxy.ruichao.dev/admin/
 ```
 
 正常判断:
@@ -129,9 +129,10 @@ curl -I https://panel.jp-proxy.ruichao.dev/admin/
 - `127.0.0.1:18100` 有监听,但公网不应直连 `18100/tcp`。
 - `/admin/api/health` 返回 `{"status":"ok"}`。
 - 公网入口先被 Caddy `basic_auth` 拦截;通过后还需要应用内管理员登录。
-- Caddy 管理 `80/443` 自动 HTTPS;Librespeed 应迁到 `127.0.0.1:18000` 后由 Caddy 反代。
+- Caddy 管理 `80/443` 自动 HTTPS;控制台上线后替代原 Librespeed 测速页。
+- 当前 DNS 仍可走 Cloudflare 代理;无 Basic Auth 访问 `https://jp-proxy.ruichao.dev/admin/` 预期返回 `401 Unauthorized`。
 
-> 历史状态：`80/tcp` 曾由 Docker `linuxserver/librespeed` 直接占用。启用控制台公网 HTTPS 后,`80/443` 应交给 Caddy。
+> 历史状态：`80/tcp` 曾由 Docker `linuxserver/librespeed` 直接占用。2026-07-01 起该容器已停止并取消自动重启,`80/443` 交给 Caddy。
 
 ---
 

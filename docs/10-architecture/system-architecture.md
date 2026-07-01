@@ -103,16 +103,20 @@ WireGuard App 仍负责内网控制面,例如 `10.66.0.101:2022` SSH 运维、`1
 ```text
 public browser
     |
-    | HTTPS + Caddy basic_auth
+    | HTTPS
     v
-Caddy :443 / panel.jp-proxy.ruichao.dev
+Cloudflare proxy (DNS currently orange-cloud)
+    |
+    | HTTPS to origin + Caddy basic_auth
+    v
+Caddy :443 / jp-proxy.ruichao.dev
     |
     | reverse_proxy
     v
 zhhub admin 127.0.0.1:18100
 ```
 
-控制台 API 固定在 `/admin/api/*`,前端静态资源由 Go `embed` 托管在 `/admin/`。应用内还有管理员登录、HttpOnly/Secure session cookie、CSRF token、登录限速和 SQLite 审计日志。公网只开放 Caddy 的 `80/443`;`18100/tcp` 只监听 localhost,不得直接暴露。Librespeed 从 Docker 公网 `80/tcp` 迁移为 `127.0.0.1:18000`,由 Caddy 反代保留。
+控制台 API 固定在 `/admin/api/*`,前端静态资源由 Go `embed` 托管在 `/admin/`。应用内还有管理员登录、HttpOnly/Secure session cookie、CSRF token、登录限速和 SQLite 审计日志。公网只开放 Caddy 的 `80/443`;`18100/tcp` 只监听 localhost,不得直接暴露。原 Docker `librespeed` 测速页已停止并取消自动重启,由 Caddy 接管 `jp-proxy.ruichao.dev`。
 
 ## 分阶段设计
 

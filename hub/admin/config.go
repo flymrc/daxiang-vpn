@@ -24,7 +24,7 @@ func ConfigFromEnv() Config {
 	return Config{
 		ListenAddr:       env("ZHHUB_ADMIN_LISTEN", "127.0.0.1:18100"),
 		DBPath:           env("ZHHUB_ADMIN_DB", "/opt/zongheng/zhhub/admin.db"),
-		PublicHost:       env("ZHHUB_ADMIN_PUBLIC_HOST", "panel.jp-proxy.ruichao.dev"),
+		PublicHost:       env("ZHHUB_ADMIN_PUBLIC_HOST", "jp-proxy.ruichao.dev"),
 		HubPublicIP:      env("ZHHUB_PUBLIC_IP", "36.50.84.68"),
 		HubWGIP:          env("ZHHUB_WG_IP", "10.66.0.1"),
 		Version:          env("ZHHUB_VERSION", "dev"),

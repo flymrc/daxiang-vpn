@@ -500,7 +500,7 @@
         <div class="mark"></div>
         <div>
           <div class="brand">纵横 Hub<span class="dim"> 控制台</span></div>
-          <div class="note mono">panel.jp-proxy.ruichao.dev</div>
+          <div class="note mono">jp-proxy.ruichao.dev</div>
         </div>
       </div>
       <label class="field">

@@ -71,6 +71,8 @@ zhvpn.exe login <授权码>
 
 `zhvpn.exe` 是本机唯一控制面。桌面 GUI 和后续 Python SDK 都通过 CLI 的机器接口（`--json` 等）完成登录、连接、状态、换 IP、断开；SDK 不直接调用 GUI，也不重新实现 WireGuard / sing-box / Hub bootstrap 逻辑。
 
+Hub 管理控制台由同一个 `zhhub` 二进制提供,内网监听 `127.0.0.1:18100`,公网入口由 Caddy 接管 `https://jp-proxy.ruichao.dev/admin/`,并已替代原 `librespeed` 测速页。
+
 > 2026-06-15 决策：Mac mini `10.66.0.100:1080` 出口路线已弃用，不再作为新客户端、自动调度或 easyJet/Wraith 验证出口。Mac 上的 WireGuard/sing-box 只保留为历史/管理诊断对象；新流量默认应走 Android `zhreverse` Hub 入口 `10.66.0.1:18081`。
 
 ### Android 出口当前 POC
