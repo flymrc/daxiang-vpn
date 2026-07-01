@@ -7,6 +7,8 @@ export type LeaseSummary = components["schemas"]["LeaseSummary"];
 export type EgressSummary = components["schemas"]["EgressSummary"];
 export type AuditEvent = components["schemas"]["AuditEvent"];
 export type RotateIPResponse = components["schemas"]["RotateIPResponse"];
+export type TokenSecretResponse = components["schemas"]["TokenSecretResponse"];
+export type EgressExitIPResponse = components["schemas"]["EgressExitIPResponse"];
 
 export class ApiError extends Error {
   status: number;
@@ -77,12 +79,20 @@ export class AdminApi {
     return this.request<{ tokens: TokenSummary[] }>("/tokens");
   }
 
+  revealToken(tokenId: string) {
+    return this.request<TokenSecretResponse>(`/tokens/${encodeURIComponent(tokenId)}/secret`);
+  }
+
   leases() {
     return this.request<{ leases: LeaseSummary[] }>("/leases");
   }
 
   egress() {
     return this.request<{ egress: EgressSummary[] }>("/egress");
+  }
+
+  revealEgressExitIP(egressId: string) {
+    return this.request<EgressExitIPResponse>(`/egress/${encodeURIComponent(egressId)}/exit-ip`);
   }
 
   events(limit = 80) {

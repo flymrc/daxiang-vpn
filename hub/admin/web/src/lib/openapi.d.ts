@@ -100,6 +100,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tokens/{token_id}/secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["revealTokenSecret"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/leases": {
         parameters: {
             query?: never;
@@ -124,6 +140,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["listEgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/egress/{egress_id}/exit-ip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["revealEgressExitIP"];
         put?: never;
         post?: never;
         delete?: never;
@@ -221,6 +253,10 @@ export interface components {
             wg_address: string;
             expires_at: string | null;
         };
+        TokenSecretResponse: {
+            id: string;
+            token: string;
+        };
         LeasesResponse: {
             leases: components["schemas"]["LeaseSummary"][];
         };
@@ -253,6 +289,12 @@ export interface components {
             raw_health?: {
                 [key: string]: unknown;
             } | null;
+        };
+        EgressExitIPResponse: {
+            egress_id: string;
+            exit_ip: string;
+            /** Format: date-time */
+            checked_at: string;
         };
         EventsResponse: {
             events: components["schemas"]["AuditEvent"][];
@@ -436,6 +478,30 @@ export interface operations {
             401: components["responses"]["Error"];
         };
     };
+    revealTokenSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revealed token value for an authenticated admin. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenSecretResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
     listLeases: {
         parameters: {
             query?: never;
@@ -476,6 +542,31 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+        };
+    };
+    revealEgressExitIP: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                egress_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current public exit IP measured through the egress proxy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EgressExitIPResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            502: components["responses"]["Error"];
         };
     };
     listEvents: {

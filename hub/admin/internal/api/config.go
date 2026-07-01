@@ -8,6 +8,8 @@ const (
 	defaultLoginAttemptRetention = 7 * 24 * time.Hour
 	defaultMaxLoginAttempts      = int64(10000)
 	defaultMaintenanceInterval   = time.Hour
+	defaultExitIPCheckURL        = "https://api.ipify.org"
+	defaultExitIPCheckTimeout    = 8 * time.Second
 )
 
 type Config struct {
@@ -27,6 +29,8 @@ type Config struct {
 	LoginAttemptRetention time.Duration
 	MaxLoginAttempts      int64
 	MaintenanceInterval   time.Duration
+	ExitIPCheckURL        string
+	ExitIPCheckTimeout    time.Duration
 }
 
 func (cfg Config) withDefaults() Config {
@@ -44,6 +48,12 @@ func (cfg Config) withDefaults() Config {
 	}
 	if cfg.MaintenanceInterval == 0 {
 		cfg.MaintenanceInterval = defaultMaintenanceInterval
+	}
+	if cfg.ExitIPCheckURL == "" {
+		cfg.ExitIPCheckURL = defaultExitIPCheckURL
+	}
+	if cfg.ExitIPCheckTimeout == 0 {
+		cfg.ExitIPCheckTimeout = defaultExitIPCheckTimeout
 	}
 	return cfg
 }

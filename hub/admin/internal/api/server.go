@@ -84,10 +84,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/admin/api/health", s.handleHealth)
 	s.mux.HandleFunc("/admin/api/overview", s.requireSession(s.handleOverview, false))
 	s.mux.HandleFunc("/admin/api/tokens", s.requireSession(s.handleTokens, false))
+	s.mux.HandleFunc("/admin/api/tokens/", s.requireSession(s.handleTokenSecret, false))
 	s.mux.HandleFunc("/admin/api/leases", s.requireSession(s.handleLeases, false))
 	s.mux.HandleFunc("/admin/api/egress", s.requireSession(s.handleEgress, false))
 	s.mux.HandleFunc("/admin/api/events", s.requireSession(s.handleEvents, false))
-	s.mux.HandleFunc("/admin/api/egress/", s.requireSession(s.handleRotateIP, true))
+	s.mux.HandleFunc("/admin/api/egress/", s.requireSession(s.handleEgressAction, false))
 	s.mux.HandleFunc("/admin/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "")
 	})

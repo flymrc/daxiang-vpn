@@ -1,11 +1,16 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	generated "zongheng-vpn/hub/admin/internal/spec/generated"
@@ -67,6 +72,30 @@ func (s *Server) handleTokens(w http.ResponseWriter, r *http.Request, _ sessionC
 	writeJSON(w, http.StatusOK, generated.TokensResponse{Tokens: s.tokenSummaries()})
 }
 
+func (s *Server) handleTokenSecret(w http.ResponseWriter, r *http.Request, sc sessionContext) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "")
+		return
+	}
+	id, ok := parseTokenSecretPath(r.URL.Path)
+	if !ok {
+		writeError(w, http.StatusNotFound, "not_found", "")
+		return
+	}
+	for _, item := range s.tokens.Snapshot() {
+		if tokenID(item.Token) == id {
+			s.audit("admin.reveal_token", sc.session.Username, requestIP(r), "token:"+id, "{}", "ok", "")
+			writeJSON(w, http.StatusOK, generated.TokenSecretResponse{
+				Id:    id,
+				Token: item.Token,
+			})
+			return
+		}
+	}
+	s.audit("admin.reveal_token", sc.session.Username, requestIP(r), "token:"+id, "{}", "denied", "token_not_found")
+	writeError(w, http.StatusNotFound, "token_not_found", "")
+}
+
 func (s *Server) handleLeases(w http.ResponseWriter, r *http.Request, _ sessionContext) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "")
@@ -81,6 +110,51 @@ func (s *Server) handleEgress(w http.ResponseWriter, r *http.Request, _ sessionC
 		return
 	}
 	writeJSON(w, http.StatusOK, generated.EgressResponse{Egress: s.egressSummaries(r.Context())})
+}
+
+func (s *Server) handleEgressAction(w http.ResponseWriter, r *http.Request, sc sessionContext) {
+	if _, ok := parseRotatePath(r.URL.Path); ok {
+		if !requireCSRF(w, r, sc) {
+			return
+		}
+		s.handleRotateIP(w, r, sc)
+		return
+	}
+	if _, ok := parseEgressExitIPPath(r.URL.Path); ok {
+		s.handleEgressExitIP(w, r, sc)
+		return
+	}
+	writeError(w, http.StatusNotFound, "not_found", "")
+}
+
+func (s *Server) handleEgressExitIP(w http.ResponseWriter, r *http.Request, sc sessionContext) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "")
+		return
+	}
+	egressID, ok := parseEgressExitIPPath(r.URL.Path)
+	if !ok {
+		writeError(w, http.StatusNotFound, "not_found", "")
+		return
+	}
+	egress, ok := s.tokens.EgressByName(egressID)
+	if !ok {
+		s.audit("admin.reveal_exit_ip", sc.session.Username, requestIP(r), "egress:"+egressID, "{}", "denied", "egress_not_found")
+		writeError(w, http.StatusNotFound, "egress_not_found", "")
+		return
+	}
+	exitIP, err := s.checkEgressExitIP(r.Context(), egress.ProxyAddr)
+	if err != nil {
+		s.audit("admin.reveal_exit_ip", sc.session.Username, requestIP(r), "egress:"+egressID, fmt.Sprintf(`{"error":%q}`, err.Error()), "error", "exit_ip_check_failed")
+		writeError(w, http.StatusBadGateway, "exit_ip_check_failed", "")
+		return
+	}
+	s.audit("admin.reveal_exit_ip", sc.session.Username, requestIP(r), "egress:"+egressID, "{}", "ok", "")
+	writeJSON(w, http.StatusOK, generated.EgressExitIPResponse{
+		EgressId:  egressID,
+		ExitIp:    exitIP,
+		CheckedAt: time.Now(),
+	})
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, _ sessionContext) {
@@ -188,4 +262,40 @@ func (s *Server) handleRotateIP(w http.ResponseWriter, r *http.Request, sc sessi
 		EgressId:    egressID,
 		DownSeconds: downSeconds,
 	})
+}
+
+func (s *Server) checkEgressExitIP(ctx context.Context, proxyAddr string) (string, error) {
+	proxyAddr = strings.TrimSpace(proxyAddr)
+	if proxyAddr == "" {
+		return "", fmt.Errorf("empty egress proxy address")
+	}
+	proxyURL := &url.URL{Scheme: "http", Host: proxyAddr}
+	transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{
+		Timeout:   s.cfg.ExitIPCheckTimeout,
+		Transport: transport,
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.cfg.ExitIPCheckURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "zhhub-admin/exit-ip-check")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("exit ip check status %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 128))
+	if err != nil {
+		return "", err
+	}
+	value := strings.TrimSpace(string(body))
+	if net.ParseIP(strings.Trim(value, "[]")) == nil {
+		return "", fmt.Errorf("exit ip check returned non-ip value")
+	}
+	return value, nil
 }

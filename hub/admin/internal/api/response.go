@@ -128,6 +128,34 @@ func parseRotatePath(path string) (string, bool) {
 	return id, true
 }
 
+func parseEgressExitIPPath(path string) (string, bool) {
+	const prefix = "/admin/api/egress/"
+	const suffix = "/exit-ip"
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		return "", false
+	}
+	id := strings.TrimSuffix(strings.TrimPrefix(path, prefix), suffix)
+	id = strings.Trim(id, "/")
+	if id == "" {
+		return "", false
+	}
+	return id, true
+}
+
+func parseTokenSecretPath(path string) (string, bool) {
+	const prefix = "/admin/api/tokens/"
+	const suffix = "/secret"
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		return "", false
+	}
+	id := strings.TrimSuffix(strings.TrimPrefix(path, prefix), suffix)
+	id = strings.Trim(id, "/")
+	if id == "" {
+		return "", false
+	}
+	return id, true
+}
+
 func truncateText(value string, maxBytes int) string {
 	value = strings.TrimSpace(value)
 	if maxBytes <= 0 || len(value) <= maxBytes {

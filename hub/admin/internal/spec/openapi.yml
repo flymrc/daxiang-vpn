@@ -83,6 +83,26 @@ paths:
                 $ref: '#/components/schemas/TokensResponse'
         '401':
           $ref: '#/components/responses/Error'
+  /tokens/{token_id}/secret:
+    get:
+      operationId: revealTokenSecret
+      parameters:
+        - in: path
+          name: token_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Revealed token value for an authenticated admin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenSecretResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
   /leases:
     get:
       operationId: listLeases
@@ -106,6 +126,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/EgressResponse'
         '401':
+          $ref: '#/components/responses/Error'
+  /egress/{egress_id}/exit-ip:
+    get:
+      operationId: revealEgressExitIP
+      parameters:
+        - in: path
+          name: egress_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Current public exit IP measured through the egress proxy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EgressExitIPResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '502':
           $ref: '#/components/responses/Error'
   /events:
     get:
@@ -284,6 +326,14 @@ components:
         expires_at:
           type: string
           nullable: true
+    TokenSecretResponse:
+      type: object
+      required: [id, token]
+      properties:
+        id:
+          type: string
+        token:
+          type: string
     LeasesResponse:
       type: object
       required: [leases]
@@ -350,6 +400,17 @@ components:
           type: object
           additionalProperties: true
           nullable: true
+    EgressExitIPResponse:
+      type: object
+      required: [egress_id, exit_ip, checked_at]
+      properties:
+        egress_id:
+          type: string
+        exit_ip:
+          type: string
+        checked_at:
+          type: string
+          format: date-time
     EventsResponse:
       type: object
       required: [events]

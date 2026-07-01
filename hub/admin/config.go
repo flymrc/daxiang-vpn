@@ -28,6 +28,8 @@ func ConfigFromEnv() Config {
 		LoginAttemptRetention: daysFromEnv("ZHHUB_ADMIN_LOGIN_ATTEMPT_RETENTION_DAYS", 7),
 		MaxLoginAttempts:      int64FromEnv("ZHHUB_ADMIN_LOGIN_ATTEMPT_MAX_ROWS", 10000),
 		MaintenanceInterval:   minutesFromEnv("ZHHUB_ADMIN_DB_MAINTENANCE_MINUTES", 60),
+		ExitIPCheckURL:        env("ZHHUB_ADMIN_EXIT_IP_CHECK_URL", "https://api.ipify.org"),
+		ExitIPCheckTimeout:    secondsFromEnv("ZHHUB_ADMIN_EXIT_IP_CHECK_TIMEOUT_SECONDS", 8),
 	}
 }
 
@@ -87,6 +89,18 @@ func minutesFromEnv(name string, fallbackMinutes int) time.Duration {
 		return time.Duration(fallbackMinutes) * time.Minute
 	}
 	return time.Duration(minutes) * time.Minute
+}
+
+func secondsFromEnv(name string, fallbackSeconds int) time.Duration {
+	value := os.Getenv(name)
+	if value == "" {
+		return time.Duration(fallbackSeconds) * time.Second
+	}
+	seconds, err := strconv.Atoi(value)
+	if err != nil || seconds < 1 || seconds > 60 {
+		return time.Duration(fallbackSeconds) * time.Second
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 func int64FromEnv(name string, fallback int64) int64 {

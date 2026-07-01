@@ -79,6 +79,10 @@ P0 各项已由 [Hub 安全审查报告 2026-06-04](../40-security/security-audi
 - [x] **admin SQLite 容量防护** —— 2026-07-01 完成。`audit_events` 与
       `admin_login_attempts` 使用 retention + 最大行数双重上限,并定期
       `wal_checkpoint(TRUNCATE)`;自由文本写入时做长度限制,避免日志表或 WAL 文件撑爆磁盘。
+- [x] **admin 敏感值默认脱敏 + 按需 reveal** —— 2026-07-01 完成。授权码列表默认只返回
+      `masked_token` 和稳定 hash id;管理员点击眼睛时才单项读取完整 token,并写
+      `admin.reveal_token` 审计。出口公网 IP 也按需经出口代理探测,未登录访问 reveal API
+      返回 401。完整 token 不写审计、不写文档。
 - [x] **重启收尾** —— 2026-06-04 完成。重启前实证确认两个保命点（SSH 可连、客户机自动恢复），
       重启后 SSH 5 秒恢复、全部服务自启、ufw/ip_forward 恢复、端到端出口 IP 与基线一致（118.158.252.9）。
 - [ ] **zhhub 降权运行**（审查 #7）—— 现以 root 运行，改用专用低权限用户。

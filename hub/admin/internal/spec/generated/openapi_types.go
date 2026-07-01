@@ -54,6 +54,13 @@ type AuthMeResponse struct {
 	Username  string    `json:"username"`
 }
 
+// EgressExitIPResponse defines model for EgressExitIPResponse.
+type EgressExitIPResponse struct {
+	CheckedAt time.Time `json:"checked_at"`
+	EgressId  string    `json:"egress_id"`
+	ExitIp    string    `json:"exit_ip"`
+}
+
 // EgressResponse defines model for EgressResponse.
 type EgressResponse struct {
 	Egress []EgressSummary `json:"egress"`
@@ -157,6 +164,12 @@ type RotateIPResponse struct {
 
 // RotateIPResponseStatus defines model for RotateIPResponse.Status.
 type RotateIPResponseStatus string
+
+// TokenSecretResponse defines model for TokenSecretResponse.
+type TokenSecretResponse struct {
+	Id    string `json:"id"`
+	Token string `json:"token"`
+}
 
 // TokenSummary defines model for TokenSummary.
 type TokenSummary struct {

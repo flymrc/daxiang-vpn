@@ -51,6 +51,8 @@ ZHHUB_ADMIN_PUBLIC_HOST=jp-proxy.ruichao.dev
 ZHHUB_ADMIN_USER=admin
 ZHHUB_ADMIN_PASSWORD_HASH=<argon2id-phc-hash>
 ZHHUB_ADMIN_REVERSE_HEALTH_URL=http://10.66.0.1:18081/debug/session-health
+ZHHUB_ADMIN_EXIT_IP_CHECK_URL=https://api.ipify.org
+ZHHUB_ADMIN_EXIT_IP_CHECK_TIMEOUT_SECONDS=8
 ```
 
 `ZHHUB_ANDROID_CARRIER_CACHE_SECONDS` 控制 bootstrap 响应里 Android 运营商名的控制面 SSH 探测缓存,默认 300 秒;设为 `0` 可禁用动态探测并使用 token 配置里的显示名。Hub 控制面 SSH 默认用独立 known_hosts 文件和 `accept-new` 策略,首次连接自动记录主机 key,后续若主机 key 变化会阻止连接;紧急回滚可临时把 `ZHHUB_ANDROID_CONTROL_HOST_KEY_POLICY` 设为 `no`。
@@ -87,6 +89,8 @@ Environment=ZHHUB_ADMIN_PUBLIC_HOST=jp-proxy.ruichao.dev
 Environment=ZHHUB_ADMIN_USER=admin
 Environment=ZHHUB_ADMIN_PASSWORD_HASH=<argon2id-phc-hash>
 Environment=ZHHUB_ADMIN_REVERSE_HEALTH_URL=http://10.66.0.1:18081/debug/session-health
+Environment=ZHHUB_ADMIN_EXIT_IP_CHECK_URL=https://api.ipify.org
+Environment=ZHHUB_ADMIN_EXIT_IP_CHECK_TIMEOUT_SECONDS=8
 ExecStart=/opt/zongheng/zhhub/zhhub
 Restart=always
 RestartSec=3
@@ -121,6 +125,16 @@ TCP 443
 `18100/tcp` 不开放给公网,只监听 `127.0.0.1`。`18080/tcp` 是 zhhub 客户端 API 的明文本地后端,只应由 Caddy 在本机反代访问;老客户端还在直连 `http://36.50.84.68:18080` 的迁移期可临时保留公网放行,待 HTTPS 客户端发布并确认升级后必须收掉公网 `18080/tcp`。
 
 `80/443` 由 Caddy 使用,用于 `jp-proxy.ruichao.dev` 自动 HTTPS 和反向代理。
+
+## Admin 敏感值 reveal
+
+管理控制台默认仍以脱敏方式展示授权码和出口 IP:
+
+- `/admin/api/tokens` 只返回 `masked_token` 和稳定 hash `id`,不返回完整 token。
+- 点授权码眼睛时调用 `GET /admin/api/tokens/{token_id}/secret`,只 reveal 单个 token,并写入 `admin.reveal_token` 审计事件。
+- 点出口 IP 眼睛时调用 `GET /admin/api/egress/{egress_id}/exit-ip`,Hub 通过该出口的 `proxy_addr` 请求 `ZHHUB_ADMIN_EXIT_IP_CHECK_URL`。默认 URL 是 `https://api.ipify.org`,超时默认 8 秒。
+
+不要把 reveal 响应、完整 token 或管理员密码写入日志/文档/对话。
 
 ## DNS
 
@@ -190,6 +204,8 @@ curl -I https://jp-proxy.ruichao.dev/
 curl -I https://jp-proxy.ruichao.dev/api/client/bootstrap
 curl -I https://jp-proxy.ruichao.dev/admin/
 curl -I https://jp-proxy.ruichao.dev/not-found-check
+curl -I https://jp-proxy.ruichao.dev/admin/api/tokens/not-real/secret
+curl -I https://jp-proxy.ruichao.dev/admin/api/egress/jp-android-01/exit-ip
 ```
 
 预期：
@@ -201,6 +217,8 @@ curl -I https://jp-proxy.ruichao.dev/not-found-check
 `/api/client/bootstrap` 只接受 POST,所以 `curl -I` 预期是 `405 Method Not Allowed`;这能证明 HTTPS 入口已经路由到 zhhub 客户端 API,而不是 Caddy/admin 的 404。
 
 根路径 `/` 和未知路径都预期 `404 Not Found`,避免返回空白 200 或暴露控制台入口提示。
+
+未登录访问 admin reveal API 预期 `401 Unauthorized`。登录后的 reveal 验证应只在本机/生产会话内进行,不得把完整 token 输出到共享日志。
 
 ## 客户端 HTTPS 迁移
 

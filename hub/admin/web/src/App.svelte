@@ -171,6 +171,10 @@
   let leases: LeaseSummary[] = [];
   let egress: EgressSummary[] = [];
   let events: AuditEvent[] = [];
+  let tokenSecrets: Record<string, string> = {};
+  let exitIPSecrets: Record<string, string> = {};
+  let revealingTokenID = "";
+  let revealingExitIPID = "";
 
   onMount(() => {
     view = readHashView();
@@ -330,6 +334,42 @@
     modal = "rotate";
   }
 
+  async function toggleTokenSecret(token: TokenSummary) {
+    if (tokenSecrets[token.id]) {
+      const next = { ...tokenSecrets };
+      delete next[token.id];
+      tokenSecrets = next;
+      return;
+    }
+    revealingTokenID = token.id;
+    try {
+      const result = await api.revealToken(token.id);
+      tokenSecrets = { ...tokenSecrets, [token.id]: result.token };
+    } catch (err) {
+      showToast(err instanceof ApiError ? "授权码读取失败" : "授权码读取失败");
+    } finally {
+      revealingTokenID = "";
+    }
+  }
+
+  async function toggleExitIP(node: EgressSummary) {
+    if (exitIPSecrets[node.id]) {
+      const next = { ...exitIPSecrets };
+      delete next[node.id];
+      exitIPSecrets = next;
+      return;
+    }
+    revealingExitIPID = node.id;
+    try {
+      const result = await api.revealEgressExitIP(node.id);
+      exitIPSecrets = { ...exitIPSecrets, [node.id]: result.exit_ip };
+    } catch {
+      showToast("出口 IP 探测失败，请稍后再试");
+    } finally {
+      revealingExitIPID = "";
+    }
+  }
+
   async function confirmRotate() {
     modal = null;
     loading = true;
@@ -441,10 +481,33 @@
       .join(" · ");
   }
 
-  function exitIP(node: EgressSummary) {
+  function tokenValue(token: TokenSummary) {
+    return tokenSecrets[token.id] || token.masked_token;
+  }
+
+  function exitIPValue(node: EgressSummary) {
     const raw = node.raw_health || {};
     const value = raw.exit_ip || raw.public_ip || raw.ip;
-    return typeof value === "string" ? value : "153.246.***.***";
+    return typeof value === "string" ? value : null;
+  }
+
+  function exitIP(node: EgressSummary) {
+    const revealed = exitIPSecrets[node.id];
+    if (revealed) return revealed;
+    const value = exitIPValue(node);
+    return value ? maskIPAddress(value) : "未采集";
+  }
+
+  function maskIPAddress(value: string) {
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(value)) {
+      const parts = value.split(".");
+      return `${parts[0]}.${parts[1]}.***.***`;
+    }
+    if (value.includes(":")) {
+      const parts = value.split(":").filter(Boolean);
+      if (parts.length >= 2) return `${parts[0]}:${parts[1]}:****`;
+    }
+    return "***";
   }
 
   function latency(node: EgressSummary) {
@@ -718,7 +781,26 @@
                 {#each displayTokens as row}
                   {@const last = tokenLast(row)}
                   <tr>
-                    <td class="mono strong">{row.masked_token}</td>
+                    <td>
+                      <div class="secretline mono strong">
+                        <span class="secrettext">{tokenValue(row)}</span>
+                        <button
+                          class="eyebtn"
+                          type="button"
+                          aria-label={tokenSecrets[row.id] ? "隐藏授权码" : "显示授权码"}
+                          title={tokenSecrets[row.id] ? "隐藏授权码" : "显示授权码"}
+                          aria-pressed={Boolean(tokenSecrets[row.id])}
+                          disabled={revealingTokenID === row.id}
+                          on:click={() => toggleTokenSecret(row)}
+                        >
+                          {#if tokenSecrets[row.id]}
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18" /><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" /><path d="M9.5 5.2A9.7 9.7 0 0 1 12 5c5 0 8.5 4.1 9.6 6.2a1.7 1.7 0 0 1 0 1.6 15 15 0 0 1-2.1 2.9" /><path d="M6.4 6.4A15 15 0 0 0 2.4 11.2a1.7 1.7 0 0 0 0 1.6C3.5 14.9 7 19 12 19a9.7 9.7 0 0 0 4.2-.9" /></svg>
+                          {:else}
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.4 11.2C3.5 9.1 7 5 12 5s8.5 4.1 9.6 6.2a1.7 1.7 0 0 1 0 1.6C20.5 14.9 17 19 12 19s-8.5-4.1-9.6-6.2a1.7 1.7 0 0 1 0-1.6Z" /><circle cx="12" cy="12" r="3" /></svg>
+                          {/if}
+                        </button>
+                      </div>
+                    </td>
                     <td class="dim">{row.client_name}</td>
                     <td><span class={`pill ${statusPill(row.status)}`}>{statusLabel(row.status)}</span></td>
                     <td class="mono dim">{row.egress_id}</td>
@@ -750,7 +832,27 @@
                   <div class="fx ac gap8"><button class="btn primary" on:click={() => openRotate(node)}>换 IP</button><button class="btn" disabled>重连隧道</button><button class="btn ghost" disabled>控制台 SSH</button></div>
                 </div>
                 <div class="kv flat">
-                  <div class="kvc"><div class="kvl">当前出口 IP</div><div class="kvv mono">{exitIP(node)}</div></div>
+                  <div class="kvc">
+                    <div class="kvl">当前出口 IP</div>
+                    <div class="kvv secretline mono">
+                      <span class="secrettext">{exitIP(node)}</span>
+                      <button
+                        class="eyebtn"
+                        type="button"
+                        aria-label={exitIPSecrets[node.id] ? "隐藏出口 IP" : "显示出口 IP"}
+                        title={exitIPSecrets[node.id] ? "隐藏出口 IP" : "显示出口 IP"}
+                        aria-pressed={Boolean(exitIPSecrets[node.id])}
+                        disabled={revealingExitIPID === node.id}
+                        on:click={() => toggleExitIP(node)}
+                      >
+                        {#if exitIPSecrets[node.id]}
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18" /><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" /><path d="M9.5 5.2A9.7 9.7 0 0 1 12 5c5 0 8.5 4.1 9.6 6.2a1.7 1.7 0 0 1 0 1.6 15 15 0 0 1-2.1 2.9" /><path d="M6.4 6.4A15 15 0 0 0 2.4 11.2a1.7 1.7 0 0 0 0 1.6C3.5 14.9 7 19 12 19a9.7 9.7 0 0 0 4.2-.9" /></svg>
+                        {:else}
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.4 11.2C3.5 9.1 7 5 12 5s8.5 4.1 9.6 6.2a1.7 1.7 0 0 1 0 1.6C20.5 14.9 17 19 12 19s-8.5-4.1-9.6-6.2a1.7 1.7 0 0 1 0-1.6Z" /><circle cx="12" cy="12" r="3" /></svg>
+                        {/if}
+                      </button>
+                    </div>
+                  </div>
                   <div class="kvc"><div class="kvl">回程延迟</div><div class="kvv mono">{latency(node)}</div></div>
                   <div class="kvc"><div class="kvl">隧道绑定</div><div class="kvv">wlan0 <span class="muted small">→ fallback rmnet1</span></div></div>
                   <div class="kvc"><div class="kvl">换 IP 锁</div><div class="kvv fx ac gap6"><span class={`dot ${node.rotate_lock_until ? "warn" : "ok"}`}></span>{node.rotate_lock_until ? shortDate(node.rotate_lock_until) : "空闲"}</div></div>
@@ -1290,6 +1392,69 @@
 
   .detail {
     font-size: 12px;
+  }
+
+  .secretline {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .secrettext {
+    display: inline-block;
+    min-width: 96px;
+    max-width: 210px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kvv.secretline {
+    display: flex;
+    margin-top: 5px;
+  }
+
+  .kvv .secrettext {
+    min-width: 112px;
+    max-width: 160px;
+  }
+
+  .eyebtn {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 1px solid var(--bd2);
+    background: transparent;
+    color: var(--tx3);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex: none;
+    padding: 0;
+  }
+
+  .eyebtn:hover {
+    color: var(--tx);
+    border-color: var(--tx3);
+    background: var(--bg3);
+  }
+
+  .eyebtn:disabled {
+    cursor: wait;
+    opacity: .55;
+  }
+
+  .eyebtn svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
   .dot {

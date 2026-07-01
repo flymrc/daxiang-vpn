@@ -87,6 +87,41 @@ func TestAdminTokensAreMasked(t *testing.T) {
 	}
 }
 
+func TestAdminTokenReveal(t *testing.T) {
+	server := newTestServer(t)
+	cookie, _ := loginTestAdmin(t, server)
+
+	listReq := httptest.NewRequest(http.MethodGet, "/admin/api/tokens", nil)
+	listReq.AddCookie(cookie)
+	listRec := httptest.NewRecorder()
+	server.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("tokens status = %d body=%s", listRec.Code, listRec.Body.String())
+	}
+	var listed generated.TokensResponse
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Tokens) != 1 {
+		t.Fatalf("tokens = %#v", listed.Tokens)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/tokens/"+listed.Tokens[0].Id+"/secret", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("token secret status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var got generated.TokenSecretResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Token != "ZH-JP-TEST-001" {
+		t.Fatalf("token secret = %#v", got)
+	}
+}
+
 func TestAdminEgressHealth(t *testing.T) {
 	health := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -118,6 +153,39 @@ func TestAdminEgressHealth(t *testing.T) {
 	}
 }
 
+func TestAdminEgressExitIPRevealUsesProxy(t *testing.T) {
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("proxy method = %s", r.Method)
+		}
+		if got := r.URL.String(); got != "http://exit-ip.test/" {
+			t.Fatalf("proxy request URL = %q", got)
+		}
+		w.Write([]byte("203.0.113.9"))
+	}))
+	defer proxy.Close()
+
+	server := newTestServerWithTokenStore(t, testTokenStore(strings.TrimPrefix(proxy.URL, "http://")), func(cfg *Config) {
+		cfg.ExitIPCheckURL = "http://exit-ip.test/"
+	})
+	cookie, _ := loginTestAdmin(t, server)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/egress/jp-android-01/exit-ip", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("exit ip status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var got generated.EgressExitIPResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ExitIp != "203.0.113.9" {
+		t.Fatalf("exit ip = %#v", got)
+	}
+}
+
 func TestAdminUIServesIndexWithoutRedirect(t *testing.T) {
 	server := newTestServer(t)
 
@@ -138,6 +206,10 @@ func TestAdminUIServesIndexWithoutRedirect(t *testing.T) {
 }
 
 func newTestServer(t *testing.T, opts ...func(*Config)) *Server {
+	return newTestServerWithTokenStore(t, testTokenStore("10.66.0.1:18081"), opts...)
+}
+
+func newTestServerWithTokenStore(t *testing.T, tokenStore *auth.TokenStore, opts ...func(*Config)) *Server {
 	t.Helper()
 	passwordHash, err := HashPassword("secret-password")
 	if err != nil {
@@ -159,7 +231,18 @@ func newTestServer(t *testing.T, opts ...func(*Config)) *Server {
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	tokenStore := &auth.TokenStore{Tokens: map[string]auth.TokenRecord{
+	authServer := auth.NewServer(tokenStore)
+	authServer.SetRotateTrigger(func(string, int) error { return nil })
+	server, err := NewServer(cfg, tokenStore, authServer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { server.Close() })
+	return server
+}
+
+func testTokenStore(proxyAddr string) *auth.TokenStore {
+	return &auth.TokenStore{Tokens: map[string]auth.TokenRecord{
 		"ZH-JP-TEST-001": {
 			Enabled:    true,
 			ClientName: "cn-client-01",
@@ -170,7 +253,7 @@ func newTestServer(t *testing.T, opts ...func(*Config)) *Server {
 				Region:         "日本",
 				Type:           "手机 IP",
 				ManagementAddr: "10.66.0.101:2022",
-				ProxyAddr:      "10.66.0.1:18081",
+				ProxyAddr:      proxyAddr,
 			},
 			WireGuard: auth.WireGuard{
 				Address:    "10.66.0.20/24",
@@ -178,14 +261,6 @@ func newTestServer(t *testing.T, opts ...func(*Config)) *Server {
 			},
 		},
 	}}
-	authServer := auth.NewServer(tokenStore)
-	authServer.SetRotateTrigger(func(string, int) error { return nil })
-	server, err := NewServer(cfg, tokenStore, authServer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { server.Close() })
-	return server
 }
 
 func loginTestAdmin(t *testing.T, server *Server) (*http.Cookie, generated.AuthMeResponse) {

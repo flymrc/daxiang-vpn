@@ -143,6 +143,14 @@ func (s *Server) requireSession(next func(http.ResponseWriter, *http.Request, se
 	}
 }
 
+func requireCSRF(w http.ResponseWriter, r *http.Request, sc sessionContext) bool {
+	if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(sc.session.CsrfToken)) != 1 {
+		writeError(w, http.StatusForbidden, "bad_csrf", "")
+		return false
+	}
+	return true
+}
+
 func (s *Server) sessionFromRequest(w http.ResponseWriter, r *http.Request) (dbgen.AdminSession, bool) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil || cookie.Value == "" {
