@@ -344,8 +344,10 @@ components:
             $ref: '#/components/schemas/LeaseSummary'
     LeaseSummary:
       type: object
-      required: [masked_token, client_name, source_ip, egress_id, seen_at, expires_at]
+      required: [token_id, masked_token, client_name, source_ip, egress_id, seen_at, expires_at]
       properties:
+        token_id:
+          type: string
         masked_token:
           type: string
         client_name:

@@ -119,6 +119,7 @@ type LeaseSummary struct {
 	MaskedToken string     `json:"masked_token"`
 	SeenAt      time.Time  `json:"seen_at"`
 	SourceIp    string     `json:"source_ip"`
+	TokenId     string     `json:"token_id"`
 }
 
 // LeasesResponse defines model for LeasesResponse.

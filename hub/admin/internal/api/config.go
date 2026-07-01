@@ -8,7 +8,7 @@ const (
 	defaultLoginAttemptRetention = 7 * 24 * time.Hour
 	defaultMaxLoginAttempts      = int64(10000)
 	defaultMaintenanceInterval   = time.Hour
-	defaultExitIPCheckURL        = "https://api.ipify.org"
+	defaultExitIPCheckURL        = "https://api64.ipify.org"
 	defaultExitIPCheckTimeout    = 8 * time.Second
 )
 

@@ -110,8 +110,8 @@
   const demoTokens: TokenSummary[] = buildDemoTokens();
 
   const demoLeases: LeaseSummary[] = [
-    { masked_token: "ZH-***01", client_name: "cn-client-01", source_ip: "219.76.18.x", egress_id: "jp-android-01", seen_at: new Date().toISOString(), expires_at: new Date(Date.now() + 30000).toISOString() },
-    { masked_token: "ZH-***04", client_name: "admin-innernet", source_ip: "10.66.0.5", egress_id: "管理内网", seen_at: new Date(Date.now() - 2000).toISOString(), expires_at: new Date(Date.now() + 30000).toISOString() },
+    { token_id: "tok-1", masked_token: "ZH-***01", client_name: "cn-client-01", source_ip: "219.76.18.x", egress_id: "jp-android-01", seen_at: new Date().toISOString(), expires_at: new Date(Date.now() + 30000).toISOString() },
+    { token_id: "tok-4", masked_token: "ZH-***04", client_name: "admin-innernet", source_ip: "10.66.0.5", egress_id: "管理内网", seen_at: new Date(Date.now() - 2000).toISOString(), expires_at: new Date(Date.now() + 30000).toISOString() },
   ];
 
   const demoEgress: EgressSummary[] = [
@@ -334,19 +334,19 @@
     modal = "rotate";
   }
 
-  async function toggleTokenSecret(token: TokenSummary) {
-    if (tokenSecrets[token.id]) {
+  async function toggleTokenSecret(tokenID: string) {
+    if (tokenSecrets[tokenID]) {
       const next = { ...tokenSecrets };
-      delete next[token.id];
+      delete next[tokenID];
       tokenSecrets = next;
       return;
     }
-    revealingTokenID = token.id;
+    revealingTokenID = tokenID;
     try {
-      const result = await api.revealToken(token.id);
-      tokenSecrets = { ...tokenSecrets, [token.id]: result.token };
-    } catch (err) {
-      showToast(err instanceof ApiError ? "授权码读取失败" : "授权码读取失败");
+      const result = await api.revealToken(tokenID);
+      tokenSecrets = { ...tokenSecrets, [tokenID]: result.token };
+    } catch {
+      showToast("授权码读取失败");
     } finally {
       revealingTokenID = "";
     }
@@ -481,8 +481,9 @@
       .join(" · ");
   }
 
-  function tokenValue(token: TokenSummary) {
-    return tokenSecrets[token.id] || token.masked_token;
+  function tokenValue(tokenID: string, maskedToken: string) {
+    if (revealingTokenID === tokenID) return "读取中...";
+    return tokenSecrets[tokenID] || maskedToken;
   }
 
   function exitIPValue(node: EgressSummary) {
@@ -494,8 +495,9 @@
   function exitIP(node: EgressSummary) {
     const revealed = exitIPSecrets[node.id];
     if (revealed) return revealed;
+    if (revealingExitIPID === node.id) return "探测中...";
     const value = exitIPValue(node);
-    return value ? maskIPAddress(value) : "未采集";
+    return value ? maskIPAddress(value) : "点击眼睛探测";
   }
 
   function maskIPAddress(value: string) {
@@ -783,7 +785,7 @@
                   <tr>
                     <td>
                       <div class="secretline mono strong">
-                        <span class="secrettext">{tokenValue(row)}</span>
+                        <span class="secrettext">{tokenValue(row.id, row.masked_token)}</span>
                         <button
                           class="eyebtn"
                           type="button"
@@ -791,7 +793,7 @@
                           title={tokenSecrets[row.id] ? "隐藏授权码" : "显示授权码"}
                           aria-pressed={Boolean(tokenSecrets[row.id])}
                           disabled={revealingTokenID === row.id}
-                          on:click={() => toggleTokenSecret(row)}
+                          on:click|stopPropagation={() => toggleTokenSecret(row.id)}
                         >
                           {#if tokenSecrets[row.id]}
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18" /><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" /><path d="M9.5 5.2A9.7 9.7 0 0 1 12 5c5 0 8.5 4.1 9.6 6.2a1.7 1.7 0 0 1 0 1.6 15 15 0 0 1-2.1 2.9" /><path d="M6.4 6.4A15 15 0 0 0 2.4 11.2a1.7 1.7 0 0 0 0 1.6C3.5 14.9 7 19 12 19a9.7 9.7 0 0 0 4.2-.9" /></svg>
@@ -843,7 +845,7 @@
                         title={exitIPSecrets[node.id] ? "隐藏出口 IP" : "显示出口 IP"}
                         aria-pressed={Boolean(exitIPSecrets[node.id])}
                         disabled={revealingExitIPID === node.id}
-                        on:click={() => toggleExitIP(node)}
+                        on:click|stopPropagation={() => toggleExitIP(node)}
                       >
                         {#if exitIPSecrets[node.id]}
                           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18" /><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" /><path d="M9.5 5.2A9.7 9.7 0 0 1 12 5c5 0 8.5 4.1 9.6 6.2a1.7 1.7 0 0 1 0 1.6 15 15 0 0 1-2.1 2.9" /><path d="M6.4 6.4A15 15 0 0 0 2.4 11.2a1.7 1.7 0 0 0 0 1.6C3.5 14.9 7 19 12 19a9.7 9.7 0 0 0 4.2-.9" /></svg>
@@ -880,7 +882,26 @@
               <tbody>
                 {#each displayLeases as row}
                   <tr>
-                    <td class="mono">{row.masked_token}</td><td class="dim">{row.client_name}</td><td class="mono dim">{row.source_ip}</td><td class="mono dim">{row.egress_id}</td><td class="mono muted">{timeOnly(row.seen_at)}</td><td><span class="fx ac gap8"><span class="dot ok"></span><span class="dim mono">{secondsAgo(row.seen_at)}</span></span></td>
+                    <td>
+                      <div class="secretline mono">
+                        <span class="secrettext">{tokenValue(row.token_id, row.masked_token)}</span>
+                        <button
+                          class="eyebtn"
+                          type="button"
+                          aria-label={tokenSecrets[row.token_id] ? "隐藏授权码" : "显示授权码"}
+                          title={tokenSecrets[row.token_id] ? "隐藏授权码" : "显示授权码"}
+                          aria-pressed={Boolean(tokenSecrets[row.token_id])}
+                          disabled={revealingTokenID === row.token_id}
+                          on:click|stopPropagation={() => toggleTokenSecret(row.token_id)}
+                        >
+                          {#if tokenSecrets[row.token_id]}
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18" /><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" /><path d="M9.5 5.2A9.7 9.7 0 0 1 12 5c5 0 8.5 4.1 9.6 6.2a1.7 1.7 0 0 1 0 1.6 15 15 0 0 1-2.1 2.9" /><path d="M6.4 6.4A15 15 0 0 0 2.4 11.2a1.7 1.7 0 0 0 0 1.6C3.5 14.9 7 19 12 19a9.7 9.7 0 0 0 4.2-.9" /></svg>
+                          {:else}
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.4 11.2C3.5 9.1 7 5 12 5s8.5 4.1 9.6 6.2a1.7 1.7 0 0 1 0 1.6C20.5 14.9 17 19 12 19s-8.5-4.1-9.6-6.2a1.7 1.7 0 0 1 0-1.6Z" /><circle cx="12" cy="12" r="3" /></svg>
+                          {/if}
+                        </button>
+                      </div>
+                    </td><td class="dim">{row.client_name}</td><td class="mono dim">{row.source_ip}</td><td class="mono dim">{row.egress_id}</td><td class="mono muted">{timeOnly(row.seen_at)}</td><td><span class="fx ac gap8"><span class="dot ok"></span><span class="dim mono">{secondsAgo(row.seen_at)}</span></span></td>
                     <td><div class="fx jend"><button class="btn btnxs danger" disabled>断开</button></div></td>
                   </tr>
                 {/each}

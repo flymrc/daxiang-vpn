@@ -103,7 +103,7 @@ admin SQLite 中只有两类表会持续追加:
 - 登录失败按 username + source IP 限速。
 - API 不返回 WireGuard 私钥;`/admin/api/tokens` 列表默认只返回 token 脱敏值和稳定 hash id。
 - 管理员可通过 `GET /admin/api/tokens/{token_id}/secret` 按需 reveal 单个完整 token;该请求要求已登录 session,并只在审计里记录 token hash id,不记录真实 token。
-- 管理员可通过 `GET /admin/api/egress/{egress_id}/exit-ip` 按需 reveal 当前出口公网 IP;后端会经该出口的 `proxy_addr` 访问 `ZHHUB_ADMIN_EXIT_IP_CHECK_URL`,不使用 Hub 自身公网出口。
+- 管理员可通过 `GET /admin/api/egress/{egress_id}/exit-ip` 按需 reveal 当前出口公网 IP;后端会经该出口的 `proxy_addr` 访问 `ZHHUB_ADMIN_EXIT_IP_CHECK_URL`,不使用 Hub 自身公网出口。默认探测 URL 为 `https://api64.ipify.org`,优先覆盖 Android/Rakuten 更稳定的 IPv6 主路径。
 - 客户端 bootstrap/rotate 与管理员操作都会写入 `audit_events`。
 - SQLite 审计与登录尝试表有 retention + 最大行数双重上限,避免日志型表撑爆磁盘。
 
@@ -121,7 +121,7 @@ npm run build:embed
 
 UI 先按 `design/Hub 控制台.dc.html` 做原型对齐:顶栏、侧栏、总览卡片、出口健康、最近操作、表格页和换 IP 弹窗优先保持原型尺寸、间距、颜色和信息结构。总览不再展示静态单链路拓扑卡,避免多出口场景下误导。v1 未实现的新建/编辑/删除 token、断开会话、重连隧道、控制台 SSH、筛选等控件保留原型位置,但统一禁用。
 
-授权码和出口 IP 默认脱敏显示。授权码表每行有眼睛按钮,点击后才调用 reveal API 读取完整 token;出口节点页的当前出口 IP 也通过眼睛按钮按需探测并显示完整 IP,再次点击会重新隐藏。
+授权码和出口 IP 默认脱敏显示。授权码表和在线客户端表的授权码列都有眼睛按钮,点击后才调用 reveal API 读取完整 token;出口节点页的当前出口 IP 也通过眼睛按钮按需探测并显示完整 IP,再次点击会重新隐藏。点击眼睛后会立即显示“读取中...”或“探测中...”,避免看起来像没有响应。
 
 出口节点页点击「换 IP」前会先检查 `rotate_lock_until`:若锁仍未释放,前端只显示 toast 提示剩余等待时间并刷新状态,不再打开二次确认弹窗;锁空闲时才进入确认弹窗。
 

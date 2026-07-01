@@ -60,6 +60,7 @@ func (s *Server) leaseSummaries() []generated.LeaseSummary {
 			expires = &lease.ExpiresAt
 		}
 		rows = append(rows, generated.LeaseSummary{
+			TokenId:     tokenID(lease.Token),
 			MaskedToken: maskToken(lease.Token),
 			ClientName:  record.ClientName,
 			SourceIp:    lease.SourceIP,

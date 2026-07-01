@@ -261,6 +261,7 @@ export interface components {
             leases: components["schemas"]["LeaseSummary"][];
         };
         LeaseSummary: {
+            token_id: string;
             masked_token: string;
             client_name: string;
             source_ip: string;
