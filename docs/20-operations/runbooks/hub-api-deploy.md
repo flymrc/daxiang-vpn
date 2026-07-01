@@ -242,6 +242,16 @@ legacy `wireguard.private_key` 响应。
 - 验证：新协议 bootstrap 返回 `200 OK`,响应省略 `wireguard.private_key`;`wg0` peer
   数保持 25,近 10 分钟无 peer 应用失败日志。
 
+admin SQLite 容量防护生产部署记录:
+
+- 备份目录：`/root/zongheng-backups/20260701125316-admin-sqlite-retention`。
+- 新 `zhhub` SHA256：`aff3855a6ae5bfd53fc62dc2342ba397d84c7444dde47d0da550735d92b6baf2`。
+- 验证：`zhhub` 和 `caddy` 均 active;`127.0.0.1:18080/healthz`、`127.0.0.1:18100/admin/api/health`、
+  `https://jp-proxy.ruichao.dev/healthz` 正常;`https://jp-proxy.ruichao.dev/admin/` 返回 200;
+  `https://jp-proxy.ruichao.dev/api/client/bootstrap` 的 HEAD 返回预期 405。
+- 启动维护验证：`/opt/zongheng/zhhub/admin.db-wal` 从部署前约 4.0M 收缩到约 20K;
+  `journalctl -u zhhub.service --since "5 min ago"` 无 `admin db maintenance failed`、panic 或 fatal。
+
 剩余收尾:
 
 1. 分发新 CLI,并同步更新 Windows GUI sidecar 与 Python SDK bundled CLI。
