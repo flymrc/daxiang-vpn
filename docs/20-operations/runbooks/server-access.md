@@ -33,7 +33,8 @@ ssh -i ~/.ssh/zongheng_server root@36.50.84.68
 - admin SQLite 容量防护上线备份：`/root/zongheng-backups/20260701125316-admin-sqlite-retention`；对应 `zhhub` SHA256 `aff3855a6ae5bfd53fc62dc2342ba397d84c7444dde47d0da550735d92b6baf2`。
 - admin 换 IP 锁 UI 上线备份：`/root/zongheng-backups/20260701131306-admin-rotate-lock-ui`；对应 `zhhub` SHA256 `6e33908ed10e54326e1f23cb958b524af3e8bee7e83e891ba661582fb61da1d3`。
 - admin 敏感值 reveal 上线备份：`/root/zongheng-backups/20260701132111-admin-sensitive-reveal`；对应 `zhhub` SHA256 `aa9216e9e467ce8f39866dc96c732de332622ea922ca9b77f49a8ab2843ea286`。
-- admin reveal UI 修复上线备份：`/root/zongheng-backups/20260701133234-admin-reveal-ui-fix`；当前 `zhhub` SHA256 `debfb1c17ddfab8b1fda8b1a2b470bf5507d007000e57f914ba1b3acb31d3168`。
+- admin reveal UI 修复上线备份：`/root/zongheng-backups/20260701133234-admin-reveal-ui-fix`；对应 `zhhub` SHA256 `debfb1c17ddfab8b1fda8b1a2b470bf5507d007000e57f914ba1b3acb31d3168`。
+- admin reveal 依赖追踪修复上线备份：`/root/zongheng-backups/20260701134256-admin-reveal-reactivity-fix`；当前 `zhhub` SHA256 `8cb90800e2c64f9731e51e95042ffc0af4324358a5782e449d1859b1245d7187`。
 - 管理控制台监听：`127.0.0.1:18100`；Caddy 对公网提供 `https://jp-proxy.ruichao.dev/admin/` 并反代到本地 listener,根路径 `/` 和未知路径都返回 404。
 - 关键 env：`ZHHUB_TOKENS`、`ZHHUB_LISTEN`、`ZHHUB_ADMIN_LISTEN=127.0.0.1:18100`、`ZHHUB_ADMIN_DB=/opt/zongheng/zhhub/admin.db`、`ZHHUB_ADMIN_PASSWORD_HASH`、`ZHHUB_ADMIN_AUDIT_RETENTION_DAYS=90`、`ZHHUB_ADMIN_AUDIT_MAX_ROWS=50000`、`ZHHUB_ADMIN_LOGIN_ATTEMPT_RETENTION_DAYS=7`、`ZHHUB_ADMIN_LOGIN_ATTEMPT_MAX_ROWS=10000`、`ZHHUB_ADMIN_DB_MAINTENANCE_MINUTES=60`、`ZHHUB_ADMIN_EXIT_IP_CHECK_URL=https://api64.ipify.org`、`ZHHUB_ADMIN_EXIT_IP_CHECK_TIMEOUT_SECONDS=8`、`ZHHUB_ANDROID_CONTROL_KEY=/root/.ssh/zhandroid_control_hub`、`ZHHUB_ANDROID_CONTROL_KNOWN_HOSTS=/root/.ssh/zhandroid_control_known_hosts`、`ZHHUB_ANDROID_CARRIER_CACHE_SECONDS=300`、`ZHHUB_TOKEN_LEASE_SECONDS=30`。
 - 一键换 IP 依赖 `ZHHUB_ANDROID_CONTROL_KEY` 指向的私钥能登手机控制面 `10.66.0.101:2022`。

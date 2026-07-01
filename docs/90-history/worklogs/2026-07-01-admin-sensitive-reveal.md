@@ -73,3 +73,33 @@
 - `https://jp-proxy.ruichao.dev/admin/` 返回 200,页面引用新资源 `index-csoHTLlm.js`。
 - `https://jp-proxy.ruichao.dev/` 仍返回 404。
 - 未登录访问 reveal API 仍返回 401。
+
+## 同日追加：Svelte reveal 依赖追踪修复
+
+继续排查用户反馈“点击眼睛没有反应,点右上角刷新后才显示”。用 Chrome/Playwright 复现确认:
+
+- 点击授权码眼睛会发出 `GET /admin/api/tokens/{id}/secret`,响应 200。
+- 点击出口 IP 眼睛会发出 `GET /admin/api/egress/jp-android-01/exit-ip`,响应 200。
+- 但 DOM 文本没有随 `tokenSecrets` / `exitIPSecrets` 更新。
+
+根因是模板里写成 `tokenValue(row.id, row.masked_token)` 和 `exitIP(node)`,真实依赖藏在函数内部。Svelte 编译器只追踪模板表达式里显式出现的变量,因此 `tokenSecrets` 或 `exitIPSecrets` 改变时不会重算这段文本;右上角刷新改了 `tokens/egress` 后才顺带重算。
+
+修复:
+
+- 将依赖显式传入模板表达式:
+  - `tokenValue(row.id, row.masked_token, tokenSecrets[row.id], revealingTokenID)`
+  - `exitIP(node, exitIPSecrets[node.id], revealingExitIPID)`
+- 保留“读取中...”和“探测中...”即时反馈。
+
+验证:
+
+- `npm run check` in `hub/admin/web`:通过。
+- `go test ./...`:通过。
+- `npm run build:embed` in `hub/admin/web`:通过,生成 `index-BE97mfWm.js`。
+- `GOOS=linux GOARCH=amd64 go build -o dist/linux-amd64/zhhub ./hub`:通过。
+- 生产部署 SHA256:`8cb90800e2c64f9731e51e95042ffc0af4324358a5782e449d1859b1245d7187`。
+- 备份旧二进制与 systemd 配置到 `/root/zongheng-backups/20260701134256-admin-reveal-reactivity-fix`。
+- Chrome/Playwright 登录生产页面后验证:
+  - 授权码点击眼睛后立即有反馈,最终从脱敏值变为完整值。
+  - 出口 IP 点击眼睛后立即有反馈,最终显示 IPv6。
+  - 两个 reveal 请求均返回 200。

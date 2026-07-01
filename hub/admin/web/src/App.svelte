@@ -481,9 +481,9 @@
       .join(" · ");
   }
 
-  function tokenValue(tokenID: string, maskedToken: string) {
-    if (revealingTokenID === tokenID) return "读取中...";
-    return tokenSecrets[tokenID] || maskedToken;
+  function tokenValue(tokenID: string, maskedToken: string, revealedToken: string | undefined, revealingID: string) {
+    if (revealingID === tokenID) return "读取中...";
+    return revealedToken || maskedToken;
   }
 
   function exitIPValue(node: EgressSummary) {
@@ -492,10 +492,9 @@
     return typeof value === "string" ? value : null;
   }
 
-  function exitIP(node: EgressSummary) {
-    const revealed = exitIPSecrets[node.id];
+  function exitIP(node: EgressSummary, revealed: string | undefined, revealingID: string) {
     if (revealed) return revealed;
-    if (revealingExitIPID === node.id) return "探测中...";
+    if (revealingID === node.id) return "探测中...";
     const value = exitIPValue(node);
     return value ? maskIPAddress(value) : "点击眼睛探测";
   }
@@ -785,7 +784,7 @@
                   <tr>
                     <td>
                       <div class="secretline mono strong">
-                        <span class="secrettext">{tokenValue(row.id, row.masked_token)}</span>
+                        <span class="secrettext">{tokenValue(row.id, row.masked_token, tokenSecrets[row.id], revealingTokenID)}</span>
                         <button
                           class="eyebtn"
                           type="button"
@@ -837,7 +836,7 @@
                   <div class="kvc">
                     <div class="kvl">当前出口 IP</div>
                     <div class="kvv secretline mono">
-                      <span class="secrettext">{exitIP(node)}</span>
+                      <span class="secrettext">{exitIP(node, exitIPSecrets[node.id], revealingExitIPID)}</span>
                       <button
                         class="eyebtn"
                         type="button"
@@ -884,7 +883,7 @@
                   <tr>
                     <td>
                       <div class="secretline mono">
-                        <span class="secrettext">{tokenValue(row.token_id, row.masked_token)}</span>
+                        <span class="secrettext">{tokenValue(row.token_id, row.masked_token, tokenSecrets[row.token_id], revealingTokenID)}</span>
                         <button
                           class="eyebtn"
                           type="button"
