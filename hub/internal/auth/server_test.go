@@ -2,6 +2,7 @@ package auth
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -64,6 +65,103 @@ func TestClientIPTrustsForwardedForFromLocalProxy(t *testing.T) {
 
 	if got := clientIP(req); got != "203.0.113.20" {
 		t.Fatalf("clientIP() = %q, want forwarded source", got)
+	}
+}
+
+func TestBootstrapWithClientPublicKeyAppliesPeerAndOmitsPrivateKey(t *testing.T) {
+	server := testBootstrapServer()
+	publicKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
+	var appliedKey, appliedAddress string
+	server.applyClientPeer = func(publicKey string, address string) error {
+		appliedKey = publicKey
+		appliedAddress = address
+		return nil
+	}
+
+	body, err := json.Marshal(bootstrapRequest{
+		Token:              "ZH-OK",
+		WireGuardPublicKey: publicKey,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/client/bootstrap", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	server.Bootstrap(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if appliedKey != publicKey || appliedAddress != "10.66.0.30/24" {
+		t.Fatalf("applied key/address = %q %q", appliedKey, appliedAddress)
+	}
+	var res bootstrapResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.WireGuard.PrivateKey != "" {
+		t.Fatalf("new bootstrap leaked private key: %q", res.WireGuard.PrivateKey)
+	}
+	if res.WireGuard.PublicKey != publicKey {
+		t.Fatalf("public key = %q", res.WireGuard.PublicKey)
+	}
+}
+
+func TestBootstrapLegacyClientStillReceivesConfiguredPrivateKey(t *testing.T) {
+	server := testBootstrapServer()
+	body, err := json.Marshal(bootstrapRequest{Token: "ZH-OK"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/client/bootstrap", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	server.Bootstrap(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var res bootstrapResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.WireGuard.PrivateKey != "CLIENT_PRIVATE_KEY" {
+		t.Fatalf("legacy private key = %q", res.WireGuard.PrivateKey)
+	}
+}
+
+func TestBootstrapRejectsInvalidClientPublicKey(t *testing.T) {
+	server := testBootstrapServer()
+	body, err := json.Marshal(bootstrapRequest{
+		Token:              "ZH-OK",
+		WireGuardPublicKey: "not-a-key",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/client/bootstrap", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	server.Bootstrap(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPeerAllowedIPNarrowsClientAddress(t *testing.T) {
+	got, err := peerAllowedIP("10.66.0.30/24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "10.66.0.30/32" {
+		t.Fatalf("allowed IP = %q", got)
+	}
+
+	got, err = peerAllowedIP("fd00::10/64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "fd00::10/128" {
+		t.Fatalf("allowed IP = %q", got)
 	}
 }
 
@@ -207,6 +305,39 @@ func testRotateServer() *Server {
 				Egress: Egress{
 					Name:           "jp-android-01",
 					ManagementAddr: "10.66.0.101:2022",
+				},
+			},
+		}},
+		tokenLeases:     map[string]tokenLease{},
+		tokenLeaseTTL:   30 * time.Second,
+		rotateLocks:     map[string]rotateLock{},
+		rotateLockExtra: time.Minute,
+	}
+}
+
+func testBootstrapServer() *Server {
+	return &Server{
+		store: &TokenStore{Tokens: map[string]TokenRecord{
+			"ZH-OK": {
+				Enabled:    true,
+				ClientName: "test-client",
+				Hub: Hub{
+					Endpoint:  "36.50.84.68:51820",
+					PublicKey: "HUB_PUBLIC_KEY",
+				},
+				Egress: Egress{
+					Name:           "jp-android-01",
+					DisplayName:    "Rakuten",
+					ManagementAddr: "10.66.0.101:2022",
+					ProxyAddr:      "10.66.0.1:18081",
+				},
+				LocalProxy: LocalProxy{
+					ListenAddr: "127.0.0.1",
+					ListenPort: 7890,
+				},
+				WireGuard: WireGuard{
+					Address:    "10.66.0.30/24",
+					PrivateKey: "CLIENT_PRIVATE_KEY",
 				},
 			},
 		}},

@@ -14,6 +14,13 @@ P0 各项已由 [Hub 安全审查报告 2026-06-04](../40-security/security-audi
 
 - 现状：Hub 用明文 HTTP 监听（`http.ListenAndServe`，[main.go:26](../../hub/main.go#L26)），
   bootstrap 响应里直接下发 WireGuard 私钥（[server.go:55-61](../../hub/internal/auth/server.go#L55-L61)）。
+- 2026-07-01 状态澄清：Hub 管理控制台已经通过 Caddy 提供
+  `https://jp-proxy.ruichao.dev/admin/`，但这只覆盖 admin 管理面,不能等同于客户端
+  bootstrap 已安全。
+- 2026-07-01 迁移进展：生产 Caddy 已提供 `https://jp-proxy.ruichao.dev/api/client/*`
+  和 `/healthz` 到 `127.0.0.1:18080` 的 HTTPS 反代；客户端代码已改为默认使用
+  `https://jp-proxy.ruichao.dev`。客户端发布和公网 `18080/tcp` 收口仍需按 runbook
+  分步执行后才算关闭 P0-1。
 - 风险：私钥与 token 经明文 HTTP 在中国↔日本这条最敌对的链路上传输，可被中间人窃听/篡改。
 - 方案（二选一）：
   - 在 Hub 前置反向代理（Caddy/Nginx）终止 TLS，对外只暴露 HTTPS。
@@ -24,6 +31,10 @@ P0 各项已由 [Hub 安全审查报告 2026-06-04](../40-security/security-audi
 
 - 现状：私钥存在 Hub（[store.go:45-48](../../hub/internal/auth/store.go#L45-L48)），
   经 HTTP 下发给客户端。私钥同时存在于 Hub + 链路 + 客户端三处。
+- 2026-07-01 迁移进展：CLI 已实现本地生成/复用 `ZHVPN_HOME/wireguard/client.key`,
+  bootstrap 请求上报 `wireguard_public_key`;生产 Hub 已部署新 `zhhub`,可校验公钥、
+  `wg set` 应用 peer,并在新协议响应中省略 `wireguard.private_key`。仍需分发新客户端,
+  再清理 `tokens.yaml` 中 legacy `private_key` 后才算关闭。
 - 目标：客户端首次启动时本地生成 WireGuard 密钥对，私钥永不离开设备，
   login/bootstrap 时只把【公钥】上报给 Hub，Hub 用公钥配置 peer，从不接触私钥。
 - 好处：

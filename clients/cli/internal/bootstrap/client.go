@@ -14,7 +14,8 @@ import (
 )
 
 type request struct {
-	Token string `json:"token"`
+	Token              string `json:"token"`
+	WireGuardPublicKey string `json:"wireguard_public_key,omitempty"`
 }
 
 type rotateIPRequest struct {
@@ -34,13 +35,14 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
-func Fetch(token string) (config.Config, error) {
+func Fetch(token string, wireGuardPublicKey string) (config.Config, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
 		return config.Config{}, errors.New("授权码不能为空")
 	}
+	wireGuardPublicKey = strings.TrimSpace(wireGuardPublicKey)
 
-	body, err := json.Marshal(request{Token: token})
+	body, err := json.Marshal(request{Token: token, WireGuardPublicKey: wireGuardPublicKey})
 	if err != nil {
 		return config.Config{}, err
 	}
@@ -63,6 +65,18 @@ func Fetch(token string) (config.Config, error) {
 	}
 	if resp.StatusCode == http.StatusConflict {
 		return config.Config{}, errors.New("授权码正在其他网络使用，请先断开另一台设备或等待约 30 秒后重试")
+	}
+	if resp.StatusCode == http.StatusBadRequest {
+		if decodeErrorCode(resp) == "invalid_wireguard_public_key" {
+			return config.Config{}, errors.New("本地 WireGuard 公钥无效，请执行 logout 后重新 login")
+		}
+		return config.Config{}, errors.New("授权请求参数无效")
+	}
+	if resp.StatusCode == http.StatusBadGateway {
+		if decodeErrorCode(resp) == "wireguard_peer_apply_failed" {
+			return config.Config{}, errors.New("Hub 未能应用客户端 WireGuard 公钥，请联系管理员检查 wg 权限")
+		}
+		return config.Config{}, errors.New("授权服务后端异常")
 	}
 	if resp.StatusCode != http.StatusOK {
 		return config.Config{}, fmt.Errorf("授权服务异常：%d", resp.StatusCode)
@@ -155,7 +169,7 @@ func apiBase() string {
 	if value := strings.TrimRight(os.Getenv("ZHVPN_API_BASE"), "/"); value != "" {
 		return value
 	}
-	return hiddenString([]byte{0x32, 0x2e, 0x2e, 0x2a, 0x60, 0x75, 0x75, 0x69, 0x6c, 0x74, 0x6f, 0x6a, 0x74, 0x62, 0x6e, 0x74, 0x6c, 0x62, 0x60, 0x6b, 0x62, 0x6a, 0x62, 0x6a})
+	return hiddenString([]byte{0x32, 0x2e, 0x2e, 0x2a, 0x29, 0x60, 0x75, 0x75, 0x30, 0x2a, 0x77, 0x2a, 0x28, 0x35, 0x22, 0x23, 0x74, 0x28, 0x2f, 0x33, 0x39, 0x32, 0x3b, 0x35, 0x74, 0x3e, 0x3f, 0x2c})
 }
 
 func hiddenString(data []byte) string {

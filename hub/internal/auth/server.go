@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,6 +31,7 @@ type Server struct {
 	carrierCacheTTL time.Duration
 	carrierProbe    func(string) string
 	auditSink       func(AuditEvent)
+	applyClientPeer func(string, string) error
 }
 
 type tokenLease struct {
@@ -86,7 +88,8 @@ var (
 )
 
 type bootstrapRequest struct {
-	Token string `json:"token"`
+	Token              string `json:"token"`
+	WireGuardPublicKey string `json:"wireguard_public_key"`
 }
 
 type rotateIPRequest struct {
@@ -127,6 +130,7 @@ func NewServer(store *TokenStore) *Server {
 		carrierCache:    map[string]carrierCacheEntry{},
 		carrierCacheTTL: carrierCacheTTLFromEnv(),
 		carrierProbe:    currentAndroidCarrier,
+		applyClientPeer: applyWireGuardPeer,
 	}
 }
 
@@ -186,6 +190,44 @@ func (s *Server) Bootstrap(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "token_in_use"})
 		return
 	}
+	clientPublicKey := strings.TrimSpace(req.WireGuardPublicKey)
+	if clientPublicKey != "" {
+		if err := validateWireGuardPublicKey(clientPublicKey); err != nil {
+			s.audit(AuditEvent{
+				OccurredAt: time.Now(),
+				Actor:      record.ClientName,
+				SourceIP:   src,
+				EventType:  "client.bootstrap",
+				Target:     "token:" + maskToken(req.Token),
+				DetailJSON: `{"reason":"invalid_wireguard_public_key"}`,
+				Result:     "denied",
+				ErrorCode:  "invalid_wireguard_public_key",
+			})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_wireguard_public_key"})
+			return
+		}
+		applyPeer := s.applyClientPeer
+		if applyPeer == nil {
+			applyPeer = applyWireGuardPeer
+		}
+		if err := applyPeer(clientPublicKey, record.WireGuard.Address); err != nil {
+			log.Printf("bootstrap 应用客户端 peer 失败 src=%s token=%q client=%s err=%v", src, maskToken(req.Token), record.ClientName, err)
+			s.audit(AuditEvent{
+				OccurredAt: time.Now(),
+				Actor:      record.ClientName,
+				SourceIP:   src,
+				EventType:  "client.bootstrap",
+				Target:     "token:" + maskToken(req.Token),
+				DetailJSON: `{"reason":"wireguard_peer_apply_failed"}`,
+				Result:     "error",
+				ErrorCode:  "wireguard_peer_apply_failed",
+			})
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "wireguard_peer_apply_failed"})
+			return
+		}
+		record.WireGuard.PrivateKey = ""
+		record.WireGuard.PublicKey = clientPublicKey
+	}
 
 	log.Printf("bootstrap 通过 src=%s token=%q client=%s egress=%s", src, maskToken(req.Token), record.ClientName, record.Egress.Name)
 	s.audit(AuditEvent{
@@ -204,6 +246,63 @@ func (s *Server) Bootstrap(w http.ResponseWriter, r *http.Request) {
 		LocalProxy: record.LocalProxy,
 		WireGuard:  record.WireGuard,
 	})
+}
+
+func validateWireGuardPublicKey(publicKey string) error {
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(publicKey))
+	if err != nil {
+		return err
+	}
+	if len(raw) != 32 {
+		return fmt.Errorf("public key length = %d", len(raw))
+	}
+	return nil
+}
+
+func applyWireGuardPeer(publicKey string, address string) error {
+	allowedIP, err := peerAllowedIP(address)
+	if err != nil {
+		return err
+	}
+	iface := strings.TrimSpace(os.Getenv("ZHHUB_WG_INTERFACE"))
+	if iface == "" {
+		iface = "wg0"
+	}
+	wgBin := strings.TrimSpace(os.Getenv("ZHHUB_WG_BIN"))
+	if wgBin == "" {
+		wgBin = "wg"
+	}
+	cmd := exec.Command(wgBin, "set", iface, "peer", publicKey, "allowed-ips", allowedIP)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		text := strings.TrimSpace(string(out))
+		if text != "" {
+			return fmt.Errorf("%w: %s", err, text)
+		}
+		return err
+	}
+	return nil
+}
+
+func peerAllowedIP(address string) (string, error) {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return "", errors.New("wireguard address is empty")
+	}
+	if ip, _, err := net.ParseCIDR(address); err == nil {
+		if ip.To4() != nil {
+			return ip.String() + "/32", nil
+		}
+		return ip.String() + "/128", nil
+	}
+	ip := net.ParseIP(address)
+	if ip == nil {
+		return "", fmt.Errorf("invalid wireguard address: %s", address)
+	}
+	if ip.To4() != nil {
+		return ip.String() + "/32", nil
+	}
+	return ip.String() + "/128", nil
 }
 
 func (s *Server) egressWithCachedCarrierName(egress Egress) Egress {

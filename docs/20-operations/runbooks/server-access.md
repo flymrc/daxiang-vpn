@@ -6,16 +6,18 @@
 
 - 角色：流量 Hub / WireGuard 中转服务器
 - 公网 IP：`36.50.84.68`
-- 公网域名：`jp-proxy.ruichao.dev`。2026-07-01 当前 DNS 仍为 Cloudflare 代理记录,源站由 Caddy 接管 `80/443` 并反代管理控制台。
+- 公网域名：`jp-proxy.ruichao.dev`。2026-07-01 当前 DNS 仍为 Cloudflare 代理记录,源站由 Caddy 接管 `80/443` 并反代管理控制台与客户端授权 API `/api/client/*`。
 - SSH 用户：`root`
 - SSH 密码：已省略。优先使用免密 SSH。
 - SSH 登录命令：
 
 ```bash
-ssh root@36.50.84.68
+ssh -i ~/.ssh/zongheng_server root@36.50.84.68
 ```
 
-- 免密登录：已为开发机 `xuotq@mizuki`（公钥 `ssh-ed25519 ...xuotq@mizuki`）配置免密。
+- 免密登录：本机 SSH key 文件为 `~/.ssh/zongheng_server`（2026-07-01 从旧文件名 `daxiang_server` 重命名,公钥注释仍为历史 `daxiang-claude`）。
+  - 指纹：`SHA256:j2TPLqcrM6MHy24eQBPOT9p8458mv9IpMSz8Zx7LJuo`。
+  - 已为开发机 `xuotq@mizuki`（公钥 `ssh-ed25519 ...xuotq@mizuki`）配置免密。
   - 公钥已写入 Hub 的 `~/.ssh/authorized_keys`，可直接 `ssh root@36.50.84.68` 无需密码。
   - 配置日期：2026-06-05。
   - 主机键指纹（ssh-ed25519）：`SHA256:wtFvvxp8XoiLYFJaka/dY5Jg4ciLwBksha6W33b8sYI`。
@@ -25,7 +27,9 @@ ssh root@36.50.84.68
 
 - 服务：`zhhub.service`（2026-06-11 从旧 `dxhub.service` 迁移完成，dx→zh 收尾）。
 - 二进制 / tokens / admin DB：`/opt/zongheng/zhhub/zhhub`、`/opt/zongheng/zhhub/tokens.yaml`、`/opt/zongheng/zhhub/admin.db`。
-- 客户端 API 监听：`0.0.0.0:18080`（HTTP）；提供 `/healthz`、`/api/client/bootstrap`、`/api/client/rotate-ip`。
+- 客户端 API 监听：`0.0.0.0:18080`（HTTP 后端）；提供 `/healthz`、`/api/client/bootstrap`、`/api/client/rotate-ip`。公网 HTTPS 入口是 Caddy `https://jp-proxy.ruichao.dev/api/client/*`;公网 `18080/tcp` 仅作老客户端迁移期兼容,新客户端验证稳定后应从 ufw 收口。
+- WireGuard 客户端密钥迁移：2026-07-01 生产 `zhhub` 已支持客户端上报 `wireguard_public_key`,并用 `wg set wg0 peer <public_key> allowed-ips <client_ip>/32` 应用 peer;新协议响应不再下发 `wireguard.private_key`。老客户端未上报公钥时仍走 legacy 私钥响应,待新客户端分发后清理 tokens。
+- P0-2 上线备份：`/root/zongheng-backups/20260701091751-p0-local-wg-key`；当前 `zhhub` SHA256 `33e6b88b281b04cd3e0430d16ae3be7becbd0452f3a087fce4e0f5cd355f9e7d`。
 - 管理控制台监听：`127.0.0.1:18100`；Caddy 对公网提供 `https://jp-proxy.ruichao.dev/admin/` 并反代到本地 listener。
 - 关键 env：`ZHHUB_TOKENS`、`ZHHUB_LISTEN`、`ZHHUB_ADMIN_LISTEN=127.0.0.1:18100`、`ZHHUB_ADMIN_DB=/opt/zongheng/zhhub/admin.db`、`ZHHUB_ADMIN_PASSWORD_HASH`、`ZHHUB_ANDROID_CONTROL_KEY=/root/.ssh/zhandroid_control_hub`、`ZHHUB_ANDROID_CONTROL_KNOWN_HOSTS=/root/.ssh/zhandroid_control_known_hosts`、`ZHHUB_ANDROID_CARRIER_CACHE_SECONDS=300`、`ZHHUB_TOKEN_LEASE_SECONDS=30`。
 - 一键换 IP 依赖 `ZHHUB_ANDROID_CONTROL_KEY` 指向的私钥能登手机控制面 `10.66.0.101:2022`。
@@ -176,7 +180,7 @@ ssh -i ~/.ssh/zhandroid_control_local -p 2022 root@10.66.0.101 \
 - IPv4 转发：已开启
 - WireGuard 服务：`wg-quick@wg0`，已启用并正在运行
 - 防火墙：`ufw` 已启用,默认拒绝入站;显式放行 SSH、WireGuard、zhhub bootstrap、zhreverse TCP、Caddy `80/443` 和 `wg0` 上的 `10.66.0.1:18081/tcp`
-- Caddy：`caddy.service` 已启用并运行,监听公网 `80/tcp` 和 `443/tcp`,配置 `/etc/caddy/Caddyfile`。
+- Caddy：`caddy.service` 已启用并运行,监听公网 `80/tcp` 和 `443/tcp`,配置 `/etc/caddy/Caddyfile`。当前承载 `/admin*` -> `127.0.0.1:18100`、`/api/client/*` 和 `/healthz` -> `127.0.0.1:18080`。Caddyfile 上线备份：`/etc/caddy/Caddyfile.bak-20260701084419-api-tls`。
 - Docker：`linuxserver/librespeed` 已停止,`restart=no`;容器保留用于回滚,不再占用 `80/tcp`。
 
 ## 当前 WireGuard Peer

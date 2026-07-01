@@ -73,6 +73,8 @@ zhvpn.exe login <授权码>
 
 Hub 管理控制台由同一个 `zhhub` 二进制提供,内网监听 `127.0.0.1:18100`,公网入口由 Caddy 接管 `https://jp-proxy.ruichao.dev/admin/`,并已替代原 `librespeed` 测速页。
 
+客户端授权 API 正在做 P0 TLS 迁移:生产 Caddy 已提供 `https://jp-proxy.ruichao.dev/api/client/*` -> `127.0.0.1:18080` 的 HTTPS 反代,客户端默认 API base 已改为 `https://jp-proxy.ruichao.dev`。生产 Hub 已支持客户端本地生成 WireGuard 私钥、bootstrap 只上报公钥,但旧公网 `18080/tcp` 和 legacy 私钥响应仍作为老客户端迁移期兼容入口/路径保留;新客户端验证稳定后应关闭公网放行并清理 tokens 里的旧私钥字段。
+
 > 2026-06-15 决策：Mac mini `10.66.0.100:1080` 出口路线已弃用，不再作为新客户端、自动调度或 easyJet/Wraith 验证出口。Mac 上的 WireGuard/sing-box 只保留为历史/管理诊断对象；新流量默认应走 Android `zhreverse` Hub 入口 `10.66.0.1:18081`。
 
 ### Android 出口当前 POC

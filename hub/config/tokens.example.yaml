@@ -18,4 +18,5 @@ tokens:
       public_key: HUB_WIREGUARD_PUBLIC_KEY
     wireguard:
       address: 10.66.0.20/24
-      private_key: CLIENT_WIREGUARD_PRIVATE_KEY
+      # 新客户端本地生成 WireGuard 私钥,bootstrap 时只上报公钥。
+      # Hub 只需要保留客户端地址;生产迁移期老 token 可能仍有 private_key。

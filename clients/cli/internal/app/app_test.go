@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 
 	"zongheng-vpn/shared/config"
@@ -42,12 +44,57 @@ func bootstrapTestServer(t *testing.T, cfg config.Config, calls *int) *httptest.
 			http.NotFound(w, r)
 			return
 		}
+		var req struct {
+			Token              string `json:"token"`
+			WireGuardPublicKey string `json:"wireguard_public_key"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("decode bootstrap request: %v", err)
+			return
+		}
+		if req.WireGuardPublicKey == "" {
+			t.Error("bootstrap request missing wireguard_public_key")
+			return
+		}
 		*calls += 1
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(cfg); err != nil {
 			t.Errorf("encode bootstrap response: %v", err)
 		}
 	}))
+}
+
+func TestDoLoginUsesLocalWireGuardPrivateKeyWhenHubOmitsPrivateKey(t *testing.T) {
+	ctx := paths.FromRoot(t.TempDir())
+	calls := 0
+	cfg := testClientConfig("ZH-TEST")
+	cfg.WireGuard.PrivateKey = ""
+	srv := bootstrapTestServer(t, cfg, &calls)
+	defer srv.Close()
+	t.Setenv("ZHVPN_API_BASE", srv.URL)
+
+	first, err := doLogin(ctx, "ZH-TEST")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.WireGuard.PrivateKey == "" {
+		t.Fatal("login result missing local private key")
+	}
+	keyData, err := os.ReadFile(ctx.WireGuardKeyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(keyData)) != first.WireGuard.PrivateKey {
+		t.Fatal("login did not use persisted local private key")
+	}
+
+	second, err := refreshInstalledConfig(ctx, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.WireGuard.PrivateKey != first.WireGuard.PrivateKey {
+		t.Fatal("refresh generated a new private key")
+	}
 }
 
 func TestDoLoginPersistsStatusCacheWithoutPrivateKey(t *testing.T) {

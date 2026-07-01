@@ -12,6 +12,7 @@ type Context struct {
 	RunDir           string
 	BinDir           string
 	SingBoxPath      string
+	WireGuardKeyPath string
 	PIDPath          string
 	LogDir           string
 	SingBoxLogPath   string
@@ -41,6 +42,7 @@ func FromRoot(root string) Context {
 		RunDir:           filepath.Join(root, "run"),
 		BinDir:           filepath.Join(root, "bin"),
 		SingBoxPath:      filepath.Join(root, "bin", clientBinaryName()),
+		WireGuardKeyPath: filepath.Join(root, "wireguard", "client.key"),
 		PIDPath:          filepath.Join(root, "run", "zhvpn.pid"),
 		LogDir:           filepath.Join(root, "logs"),
 		SingBoxLogPath:   filepath.Join(root, "logs", "zhvpn.log"),

@@ -51,6 +51,7 @@ type LocalProxyConfig struct {
 type WireGuardConfig struct {
 	Address    string `json:"address,omitempty" yaml:"address,omitempty"`
 	PrivateKey string `json:"private_key,omitempty" yaml:"private_key,omitempty"`
+	PublicKey  string `json:"public_key,omitempty" yaml:"public_key,omitempty"`
 }
 
 type RuntimeConfig struct {

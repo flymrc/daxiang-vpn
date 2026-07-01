@@ -1,7 +1,9 @@
 package app
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -14,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/curve25519"
 	"zongheng-vpn/clients/cli/internal/bootstrap"
 	"zongheng-vpn/clients/cli/internal/netcheck"
 	"zongheng-vpn/shared/config"
@@ -275,7 +278,7 @@ func doLogin(ctx paths.Context, token string) (config.Config, error) {
 	if err := ctx.EnsureDirs(); err != nil {
 		return config.Config{}, err
 	}
-	cfg, err := bootstrap.Fetch(token)
+	cfg, err := fetchBootstrapWithLocalKey(ctx, token)
 	if err != nil {
 		return config.Config{}, err
 	}
@@ -293,6 +296,9 @@ func logout(ctx paths.Context, args []string) error {
 		return err
 	}
 	if err := os.Remove(ctx.ConfigPath); err != nil && !os.IsNotExist(err) {
+		return reportErr(jsonOut, err)
+	}
+	if err := os.Remove(ctx.WireGuardKeyPath); err != nil && !os.IsNotExist(err) {
 		return reportErr(jsonOut, err)
 	}
 	_ = os.Remove(runtimeFingerprintPath(ctx))
@@ -363,7 +369,7 @@ func refreshInstalledConfig(ctx paths.Context, cached config.Config) (config.Con
 	if strings.TrimSpace(cached.License.Token) == "" {
 		return cached, cached.Validate()
 	}
-	cfg, err := bootstrap.Fetch(cached.License.Token)
+	cfg, err := fetchBootstrapWithLocalKey(ctx, cached.License.Token)
 	if err != nil {
 		return config.Config{}, err
 	}
@@ -401,6 +407,85 @@ func saveClientConfigCache(ctx paths.Context, cfg config.Config) error {
 	// private key in memory for the current start/login command, not on disk.
 	cache.WireGuard.PrivateKey = ""
 	return config.Save(ctx.ConfigPath, cache)
+}
+
+func fetchBootstrapWithLocalKey(ctx paths.Context, token string) (config.Config, error) {
+	privateKey, publicKey, err := ensureLocalWireGuardKey(ctx)
+	if err != nil {
+		return config.Config{}, err
+	}
+	cfg, err := bootstrap.Fetch(token, publicKey)
+	if err != nil {
+		return config.Config{}, err
+	}
+	// New Hub responses omit private_key after accepting the uploaded public key.
+	// Legacy Hubs still return a server-stored private key; keep accepting that
+	// during migration so old deployments do not strand users.
+	if strings.TrimSpace(cfg.WireGuard.PrivateKey) == "" {
+		cfg.WireGuard.PrivateKey = privateKey
+		cfg.WireGuard.PublicKey = publicKey
+	}
+	return cfg, nil
+}
+
+func ensureLocalWireGuardKey(ctx paths.Context) (string, string, error) {
+	if data, err := os.ReadFile(ctx.WireGuardKeyPath); err == nil {
+		privateKey := strings.TrimSpace(string(data))
+		publicKey, err := wireGuardPublicKey(privateKey)
+		if err != nil {
+			return "", "", fmt.Errorf("本地 WireGuard 私钥无效：%w", err)
+		}
+		return privateKey, publicKey, nil
+	} else if !os.IsNotExist(err) {
+		return "", "", fmt.Errorf("读取本地 WireGuard 私钥失败：%w", err)
+	}
+
+	privateKey, publicKey, err := generateWireGuardKeypair()
+	if err != nil {
+		return "", "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(ctx.WireGuardKeyPath), 0700); err != nil {
+		return "", "", err
+	}
+	if err := os.WriteFile(ctx.WireGuardKeyPath, []byte(privateKey+"\n"), 0600); err != nil {
+		return "", "", err
+	}
+	return privateKey, publicKey, nil
+}
+
+func generateWireGuardKeypair() (string, string, error) {
+	private := make([]byte, 32)
+	if _, err := rand.Read(private); err != nil {
+		return "", "", err
+	}
+	clampWireGuardPrivateKey(private)
+	public, err := curve25519.X25519(private, curve25519.Basepoint)
+	if err != nil {
+		return "", "", err
+	}
+	return base64.StdEncoding.EncodeToString(private), base64.StdEncoding.EncodeToString(public), nil
+}
+
+func wireGuardPublicKey(privateKey string) (string, error) {
+	private, err := base64.StdEncoding.DecodeString(strings.TrimSpace(privateKey))
+	if err != nil {
+		return "", err
+	}
+	if len(private) != 32 {
+		return "", fmt.Errorf("长度为 %d, want 32", len(private))
+	}
+	clampWireGuardPrivateKey(private)
+	public, err := curve25519.X25519(private, curve25519.Basepoint)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(public), nil
+}
+
+func clampWireGuardPrivateKey(key []byte) {
+	key[0] &= 248
+	key[31] &= 127
+	key[31] |= 64
 }
 
 var Version = "dev"

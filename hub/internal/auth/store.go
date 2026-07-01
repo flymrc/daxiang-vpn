@@ -49,7 +49,8 @@ type LocalProxy struct {
 
 type WireGuard struct {
 	Address    string `yaml:"address" json:"address"`
-	PrivateKey string `yaml:"private_key" json:"private_key"`
+	PrivateKey string `yaml:"private_key,omitempty" json:"private_key,omitempty"`
+	PublicKey  string `yaml:"public_key,omitempty" json:"public_key,omitempty"`
 }
 
 func LoadTokenStore(path string) (*TokenStore, error) {

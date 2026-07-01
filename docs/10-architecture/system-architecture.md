@@ -118,6 +118,24 @@ zhhub admin 127.0.0.1:18100
 
 控制台 API 固定在 `/admin/api/*`,前端静态资源由 Go `embed` 托管在 `/admin/`。应用内还有管理员登录、HttpOnly/Secure session cookie、CSRF token、登录限速和 SQLite 审计日志。公网只开放 Caddy 的 `80/443`;`18100/tcp` 只监听 localhost,不得直接暴露。原 Docker `librespeed` 测速页已停止并取消自动重启,由 Caddy 接管 `jp-proxy.ruichao.dev`。
 
+### 客户端授权 API TLS 迁移
+
+P0 安全目标是让中国客户端只经 HTTPS 访问 Hub bootstrap/rotate API:
+
+```text
+zhvpn client
+    |
+    | HTTPS /api/client/*
+    v
+Caddy :443 / jp-proxy.ruichao.dev
+    |
+    | reverse_proxy
+    v
+zhhub client API 127.0.0.1:18080
+```
+
+2026-07-01 生产 Caddy 已部署 `/api/client/*` 和 `/healthz` 反代。客户端默认 API base 已改为 `https://jp-proxy.ruichao.dev`,仍保留 `ZHVPN_API_BASE` 作为测试/回滚覆盖。生产 Hub 也已支持客户端上报 `wireguard_public_key`,由 Hub 用 `wg set` 应用 peer,新协议响应不再下发 `wireguard.private_key`。剩余迁移顺序是:发布新客户端,确认 bootstrap/rotate 正常,清理生产 token 中的 legacy 私钥字段,最后关闭公网 `18080/tcp`。在收口前,`18080/tcp` 和 legacy 私钥响应只是老客户端兼容路径,不应视为目标安全状态。
+
 ## 分阶段设计
 
 ### P0：Hub 内网互通

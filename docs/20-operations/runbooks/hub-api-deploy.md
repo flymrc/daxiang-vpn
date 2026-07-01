@@ -111,15 +111,16 @@ systemctl status zhhub
 
 ## 防火墙
 
-Hub 需要开放：
+目标状态下 Hub 对公网只需要开放：
 
 ```text
-TCP 18080
 TCP 80
 TCP 443
 ```
 
-`18100/tcp` 不开放给公网,只监听 `127.0.0.1`。`80/443` 由 Caddy 使用,用于 `jp-proxy.ruichao.dev` 自动 HTTPS 和反向代理。
+`18100/tcp` 不开放给公网,只监听 `127.0.0.1`。`18080/tcp` 是 zhhub 客户端 API 的明文本地后端,只应由 Caddy 在本机反代访问;老客户端还在直连 `http://36.50.84.68:18080` 的迁移期可临时保留公网放行,待 HTTPS 客户端发布并确认升级后必须收掉公网 `18080/tcp`。
+
+`80/443` 由 Caddy 使用,用于 `jp-proxy.ruichao.dev` 自动 HTTPS 和反向代理。
 
 ## DNS
 
@@ -135,12 +136,32 @@ jp-proxy.ruichao.dev A 36.50.84.68
 
 ## Caddy 与 Librespeed
 
-控制台公网入口由 Caddy 负责,不使用 Dokku。Caddy 自动签发/续期证书并反代到本机 admin listener。示例 Caddyfile:
+控制台和客户端授权 API 的公网 HTTPS 入口都由 Caddy 负责,不使用 Dokku。Caddy 自动签发/续期证书:
+
+- `/api/client/*` 和 `/healthz` 反代到 zhhub 客户端 API 后端 `127.0.0.1:18080`。
+- `/admin/*` 反代到 zhhub admin listener `127.0.0.1:18100`。
+
+示例 Caddyfile:
 
 ```caddyfile
 jp-proxy.ruichao.dev {
   encode gzip zstd
-  reverse_proxy 127.0.0.1:18100
+
+  handle /api/client/* {
+    reverse_proxy 127.0.0.1:18080
+  }
+
+  handle /healthz {
+    reverse_proxy 127.0.0.1:18080
+  }
+
+  handle /admin* {
+    reverse_proxy 127.0.0.1:18100
+  }
+
+  handle {
+    redir /admin/ 302
+  }
 }
 ```
 
@@ -164,6 +185,8 @@ systemctl reload caddy
 ```bash
 curl http://127.0.0.1:18080/healthz
 curl http://127.0.0.1:18100/admin/api/health
+curl https://jp-proxy.ruichao.dev/healthz
+curl -I https://jp-proxy.ruichao.dev/api/client/bootstrap
 curl -I https://jp-proxy.ruichao.dev/admin/
 ```
 
@@ -172,6 +195,59 @@ curl -I https://jp-proxy.ruichao.dev/admin/
 ```json
 {"status":"ok"}
 ```
+
+`/api/client/bootstrap` 只接受 POST,所以 `curl -I` 预期是 `405 Method Not Allowed`;这能证明 HTTPS 入口已经路由到 zhhub 客户端 API,而不是 Caddy/admin 的 404。
+
+## 客户端 HTTPS 迁移
+
+2026-07-01 起,新客户端默认授权 API 为:
+
+```text
+https://jp-proxy.ruichao.dev
+```
+
+客户端仍支持 `ZHVPN_API_BASE` 覆盖,用于本地测试或紧急回滚。迁移顺序:
+
+1. 先部署 Caddy `/api/client/*` HTTPS 反代并验证。
+2. 再发布默认走 `https://jp-proxy.ruichao.dev` 的客户端。
+3. 观察新客户端 bootstrap/rotate 正常。
+4. 最后删除 ufw 的公网 `18080/tcp` 放行,只保留 Caddy `80/443`。
+
+## 客户端本地 WireGuard 密钥迁移
+
+2026-07-01 起,新 `zhhub` 支持客户端本地生成 WireGuard 私钥、bootstrap 只上报公钥:
+
+```json
+{
+  "token": "ZH-JP-TEST-001",
+  "wireguard_public_key": "CLIENT_WIREGUARD_PUBLIC_KEY"
+}
+```
+
+Hub 会校验公钥为 32 字节 base64,并执行:
+
+```bash
+wg set wg0 peer <client_public_key> allowed-ips <client_ip>/32
+```
+
+`ZHHUB_WG_INTERFACE` 可覆盖 WireGuard 接口名,默认 `wg0`;`ZHHUB_WG_BIN` 可覆盖 `wg`
+命令路径。新协议响应不包含 `wireguard.private_key`,只返回运行所需配置和
+`wireguard.public_key`。迁移期内,未上报 `wireguard_public_key` 的老客户端仍兼容
+legacy `wireguard.private_key` 响应。
+
+生产部署记录:
+
+- 备份目录：`/root/zongheng-backups/20260701091751-p0-local-wg-key`。
+- 新 `zhhub` SHA256：`33e6b88b281b04cd3e0430d16ae3be7becbd0452f3a087fce4e0f5cd355f9e7d`。
+- 验证：新协议 bootstrap 返回 `200 OK`,响应省略 `wireguard.private_key`;`wg0` peer
+  数保持 25,近 10 分钟无 peer 应用失败日志。
+
+剩余收尾:
+
+1. 分发新 CLI,并同步更新 Windows GUI sidecar 与 Python SDK bundled CLI。
+2. 用真实新客户端 login/start 验证本地私钥路径和 peer 应用。
+3. 清理生产 `tokens.yaml` 中客户端 legacy `wireguard.private_key`。
+4. 完成 HTTPS 客户端迁移后关闭公网 `18080/tcp`。
 
 ## 客户端 token 单来源租约
 

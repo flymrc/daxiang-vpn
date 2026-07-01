@@ -53,7 +53,7 @@ go build -tags with_gvisor -o ../../dist/macos-arm64/zhvpn .
 .\zhvpn.exe version --json
 ```
 
-`login` / `start` 会写入本地状态缓存，供 `status` 和桌面 GUI 高频轮询读取；`status` 不会重复请求 Hub bootstrap。`start` 仍会重新 bootstrap 获取最新运行配置。状态缓存不持久化 WireGuard 私钥。
+`login` / `start` 会写入本地状态缓存，供 `status` 和桌面 GUI 高频轮询读取；`status` 不会重复请求 Hub bootstrap。`start` 仍会重新 bootstrap 获取最新运行配置。WireGuard 私钥由客户端本地生成并保存在 `ZHVPN_HOME/wireguard/client.key`，bootstrap 只上报公钥；状态缓存不持久化 WireGuard 私钥。
 
 ## Android 出口换 IP
 

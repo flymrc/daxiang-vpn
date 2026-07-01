@@ -7,6 +7,60 @@ import (
 	"testing"
 )
 
+func TestAPIBaseDefaultsToHTTPSPublicHost(t *testing.T) {
+	t.Setenv("ZHVPN_API_BASE", "")
+
+	if got := apiBase(); got != "https://jp-proxy.ruichao.dev" {
+		t.Fatalf("apiBase() = %q", got)
+	}
+}
+
+func TestAPIBaseEnvOverrideTrimsTrailingSlash(t *testing.T) {
+	t.Setenv("ZHVPN_API_BASE", "http://127.0.0.1:18080/")
+
+	if got := apiBase(); got != "http://127.0.0.1:18080" {
+		t.Fatalf("apiBase() = %q", got)
+	}
+}
+
+func TestFetchSendsWireGuardPublicKey(t *testing.T) {
+	const publicKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/client/bootstrap" {
+			http.NotFound(w, r)
+			return
+		}
+		var req request
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatal(err)
+		}
+		if req.Token != "ZH-OK" {
+			t.Fatalf("token = %q", req.Token)
+		}
+		if req.WireGuardPublicKey != publicKey {
+			t.Fatalf("wireguard_public_key = %q", req.WireGuardPublicKey)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"client":{"name":"test"},
+			"hub":{"endpoint":"36.50.84.68:51820","public_key":"hub-public"},
+			"egress":{"name":"jp-android-01","display_name":"Rakuten","region":"Japan","type":"phone","management_addr":"10.66.0.101:2022","proxy_addr":"10.66.0.1:18081"},
+			"local_proxy":{"listen_addr":"127.0.0.1","listen_port":7890},
+			"wireguard":{"address":"10.66.0.30/32"}
+		}`))
+	}))
+	defer srv.Close()
+	t.Setenv("ZHVPN_API_BASE", srv.URL)
+
+	cfg, err := Fetch("ZH-OK", publicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.WireGuard.PrivateKey != "" {
+		t.Fatalf("private key = %q", cfg.WireGuard.PrivateKey)
+	}
+}
+
 func TestRotateIPBusyResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/client/rotate-ip" {
