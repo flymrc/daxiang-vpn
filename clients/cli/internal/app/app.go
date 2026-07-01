@@ -510,6 +510,11 @@ func start(ctx paths.Context, args []string) error {
 		if err := cfg.Validate(); err != nil {
 			return reportErr(opts.jsonOut, err)
 		}
+		// Keep status/GUI aligned with the effective runtime port while still
+		// stripping the WireGuard private key from the persisted cache.
+		if err := saveClientConfigCache(ctx, cfg); err != nil {
+			return reportErr(opts.jsonOut, err)
+		}
 	}
 	if err := ctx.EnsureDirs(); err != nil {
 		return reportErr(opts.jsonOut, err)

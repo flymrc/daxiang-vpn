@@ -219,6 +219,27 @@ func TestRefreshInstalledConfigAlwaysBootstraps(t *testing.T) {
 	}
 }
 
+func TestStartPortOverridePersistsStatusCacheWithoutPrivateKey(t *testing.T) {
+	ctx := paths.FromRoot(t.TempDir())
+	cfg := testClientConfig("ZH-TEST")
+	cfg.LocalProxy.ListenPort = 7897
+
+	if err := saveClientConfigCache(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	saved, err := loadInstalledConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.LocalProxy.ListenPort != 7897 {
+		t.Fatalf("saved port = %d, want 7897", saved.LocalProxy.ListenPort)
+	}
+	if saved.WireGuard.PrivateKey != "" {
+		t.Fatal("status cache should not persist wireguard private key")
+	}
+}
+
 func TestParseRotateIPOptionsUsesConfigDefaults(t *testing.T) {
 	cfg := config.Config{}
 	cfg.ApplyDefaults()
