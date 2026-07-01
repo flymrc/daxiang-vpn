@@ -134,6 +134,26 @@ curl -I https://jp-proxy.ruichao.dev/admin/
 
 > 历史状态：`80/tcp` 曾由 Docker `linuxserver/librespeed` 直接占用。2026-07-01 起该容器已停止并取消自动重启,`80/443` 交给 Caddy。
 
+### 1.8 Hub admin SQLite 容量检查
+
+只读检查 admin DB 和 WAL 文件大小:
+
+```bash
+du -h /opt/zongheng/zhhub/admin.db*
+sqlite3 /opt/zongheng/zhhub/admin.db \
+  "SELECT 'audit_events', count(*) FROM audit_events UNION ALL SELECT 'admin_login_attempts', count(*) FROM admin_login_attempts UNION ALL SELECT 'admin_sessions', count(*) FROM admin_sessions;"
+sqlite3 /opt/zongheng/zhhub/admin.db \
+  "SELECT min(occurred_at), max(occurred_at), count(*) FROM audit_events;"
+```
+
+正常判断:
+
+- `audit_events` 默认最多约 `50000` 行,保留约 90 天。
+- `admin_login_attempts` 默认最多约 `10000` 行,保留约 7 天。
+- `admin.db-wal` 不应长期明显大于 `admin.db`;维护任务会定期 `wal_checkpoint(TRUNCATE)`。
+- 若行数持续超过上限,先看 `journalctl -u zhhub.service --since '2 hours ago' --no-pager | grep 'admin db maintenance failed'`。
+- 容量上限由 `ZHHUB_ADMIN_AUDIT_*`、`ZHHUB_ADMIN_LOGIN_ATTEMPT_*` 和 `ZHHUB_ADMIN_DB_MAINTENANCE_MINUTES` 控制。
+
 ---
 
 ## 2. Deprecated 日本 Mac 出口节点

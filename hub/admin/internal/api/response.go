@@ -10,8 +10,16 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	generated "zongheng-vpn/hub/admin/internal/spec/generated"
+)
+
+const (
+	maxAdminUsernameBytes = 128
+	maxSourceIPBytes      = 128
+	maxUserAgentBytes     = 512
+	maxErrorCodeBytes     = 128
 )
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
@@ -37,10 +45,10 @@ func requestIP(r *http.Request) string {
 	if remoteIP != nil && (remoteIP.IsLoopback() || remoteIP.IsPrivate()) {
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 			first, _, _ := strings.Cut(xff, ",")
-			return strings.TrimSpace(first)
+			return truncateText(first, maxSourceIPBytes)
 		}
 	}
-	return host
+	return truncateText(host, maxSourceIPBytes)
 }
 
 func randomHex(bytes int) (string, error) {
@@ -118,4 +126,19 @@ func parseRotatePath(path string) (string, bool) {
 		return "", false
 	}
 	return id, true
+}
+
+func truncateText(value string, maxBytes int) string {
+	value = strings.TrimSpace(value)
+	if maxBytes <= 0 || len(value) <= maxBytes {
+		return value
+	}
+	for len(value) > maxBytes {
+		_, size := utf8.DecodeLastRuneInString(value)
+		if size <= 0 {
+			return ""
+		}
+		value = value[:len(value)-size]
+	}
+	return value
 }

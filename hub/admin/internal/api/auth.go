@@ -5,7 +5,6 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"net/http"
-	"strings"
 	"time"
 
 	dbgen "zongheng-vpn/hub/admin/internal/db/generated"
@@ -27,7 +26,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_request", "")
 		return
 	}
-	req.Username = strings.TrimSpace(req.Username)
+	req.Username = truncateText(req.Username, maxAdminUsernameBytes)
 	source := requestIP(r)
 	now := time.Now()
 	limited, err := s.loginLimited(r.Context(), req.Username, source, now)
@@ -70,7 +69,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		TokenHash:  hashSecret(sessionToken),
 		CsrfToken:  csrfToken,
 		SourceIp:   source,
-		UserAgent:  r.UserAgent(),
+		UserAgent:  truncateText(r.UserAgent(), maxUserAgentBytes),
 		CreatedAt:  formatTime(now),
 		LastSeenAt: formatTime(now),
 		ExpiresAt:  formatTime(expiresAt),
@@ -184,9 +183,9 @@ func (s *Server) recordLogin(ctx context.Context, username string, sourceIP stri
 	}
 	_ = s.store.Queries().InsertLoginAttempt(ctx, dbgen.InsertLoginAttemptParams{
 		OccurredAt: formatTime(time.Now()),
-		Username:   username,
-		SourceIp:   sourceIP,
+		Username:   truncateText(username, maxAdminUsernameBytes),
+		SourceIp:   truncateText(sourceIP, maxSourceIPBytes),
 		Success:    ok,
-		ErrorCode:  errorCode,
+		ErrorCode:  truncateText(errorCode, maxErrorCodeBytes),
 	})
 }

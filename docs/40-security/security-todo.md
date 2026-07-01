@@ -76,6 +76,9 @@ P0 各项已由 [Hub 安全审查报告 2026-06-04](../40-security/security-audi
 - [x] **apt 安全更新**（审查 #6）—— 2026-06-04 完成，剩余安全包 0。
       顺带修复 `ssh` 开机自启（原 disabled，重启会登不上）。无内核更新故未重启。
       遗留：libc6/apparmor 建议低峰重启收尾（非必须）。
+- [x] **admin SQLite 容量防护** —— 2026-07-01 完成。`audit_events` 与
+      `admin_login_attempts` 使用 retention + 最大行数双重上限,并定期
+      `wal_checkpoint(TRUNCATE)`;自由文本写入时做长度限制,避免日志表或 WAL 文件撑爆磁盘。
 - [x] **重启收尾** —— 2026-06-04 完成。重启前实证确认两个保命点（SSH 可连、客户机自动恢复），
       重启后 SSH 5 秒恢复、全部服务自启、ufw/ip_forward 恢复、端到端出口 IP 与基线一致（118.158.252.9）。
 - [ ] **zhhub 降权运行**（审查 #7）—— 现以 root 运行，改用专用低权限用户。

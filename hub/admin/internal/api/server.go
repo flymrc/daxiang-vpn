@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	dbstore "zongheng-vpn/hub/admin/internal/db"
@@ -21,9 +22,14 @@ type Server struct {
 	mux        *http.ServeMux
 	startedAt  time.Time
 	httpClient *http.Client
+
+	maintenanceCancel context.CancelFunc
+	maintenanceDone   chan struct{}
+	maintenanceOnce   sync.Once
 }
 
 func NewServer(cfg Config, tokenStore *auth.TokenStore, clientAuth *auth.Server) (*Server, error) {
+	cfg = cfg.withDefaults()
 	store, err := dbstore.OpenStore(cfg.DBPath)
 	if err != nil {
 		return nil, err
@@ -52,10 +58,18 @@ func NewServer(cfg Config, tokenStore *auth.TokenStore, clientAuth *auth.Server)
 		})
 	}
 	s.routes()
+	s.startMaintenance()
 	return s, nil
 }
 
 func (s *Server) Close() error {
+	if s == nil {
+		return nil
+	}
+	s.stopMaintenance()
+	if s.store == nil {
+		return nil
+	}
 	return s.store.Close()
 }
 
@@ -81,4 +95,53 @@ func (s *Server) routes() {
 		http.Redirect(w, r, "/admin/", http.StatusMovedPermanently)
 	})
 	s.mux.Handle("/admin/", webui.Handler())
+}
+
+func (s *Server) startMaintenance() {
+	if s.cfg.MaintenanceInterval < 0 {
+		return
+	}
+	if err := s.runMaintenance(context.Background()); err != nil {
+		log.Printf("admin db maintenance failed: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	s.maintenanceCancel = cancel
+	s.maintenanceDone = done
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(s.cfg.MaintenanceInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := s.runMaintenance(ctx); err != nil {
+					log.Printf("admin db maintenance failed: %v", err)
+				}
+			}
+		}
+	}()
+}
+
+func (s *Server) stopMaintenance() {
+	s.maintenanceOnce.Do(func() {
+		if s.maintenanceCancel != nil {
+			s.maintenanceCancel()
+		}
+		if s.maintenanceDone != nil {
+			<-s.maintenanceDone
+		}
+	})
+}
+
+func (s *Server) runMaintenance(ctx context.Context) error {
+	return s.store.Maintain(ctx, dbstore.MaintenancePolicy{
+		AuditRetention:        s.cfg.AuditRetention,
+		MaxAuditEvents:        s.cfg.MaxAuditEvents,
+		LoginAttemptRetention: s.cfg.LoginAttemptRetention,
+		MaxLoginAttempts:      s.cfg.MaxLoginAttempts,
+		Checkpoint:            true,
+	})
 }

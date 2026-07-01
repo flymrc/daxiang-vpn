@@ -36,6 +36,19 @@ WHERE token_hash = ?;
 DELETE FROM admin_sessions
 WHERE expires_at <= ?;
 
+-- name: DeleteAdminLoginAttemptsBefore :exec
+DELETE FROM admin_login_attempts
+WHERE occurred_at < ?;
+
+-- name: PruneAdminLoginAttempts :exec
+DELETE FROM admin_login_attempts
+WHERE id NOT IN (
+  SELECT id
+  FROM admin_login_attempts
+  ORDER BY occurred_at DESC, id DESC
+  LIMIT ?
+);
+
 -- name: InsertLoginAttempt :exec
 INSERT INTO admin_login_attempts (occurred_at, username, source_ip, success, error_code)
 VALUES (?, ?, ?, ?, ?);
@@ -106,11 +119,28 @@ ON CONFLICT(egress_id) DO UPDATE SET
 DELETE FROM rotate_locks
 WHERE egress_id = ?;
 
+-- name: DeleteExpiredRotateLocks :exec
+DELETE FROM rotate_locks
+WHERE until_at <= ?;
+
 -- name: InsertAuditEvent :exec
 INSERT INTO audit_events (
   occurred_at, actor, source_ip, event_type, target, detail_json, result, error_code
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: DeleteAuditEventsBefore :exec
+DELETE FROM audit_events
+WHERE occurred_at < ?;
+
+-- name: PruneAuditEvents :exec
+DELETE FROM audit_events
+WHERE id NOT IN (
+  SELECT id
+  FROM audit_events
+  ORDER BY occurred_at DESC, id DESC
+  LIMIT ?
+);
 
 -- name: ListAuditEvents :many
 SELECT id, occurred_at, actor, source_ip, event_type, target, detail_json, result, error_code

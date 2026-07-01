@@ -82,6 +82,16 @@ func (q *Queries) CreateAdminSession(ctx context.Context, arg CreateAdminSession
 	return err
 }
 
+const deleteAdminLoginAttemptsBefore = `-- name: DeleteAdminLoginAttemptsBefore :exec
+DELETE FROM admin_login_attempts
+WHERE occurred_at < ?
+`
+
+func (q *Queries) DeleteAdminLoginAttemptsBefore(ctx context.Context, occurredAt string) error {
+	_, err := q.db.ExecContext(ctx, deleteAdminLoginAttemptsBefore, occurredAt)
+	return err
+}
+
 const deleteAdminSessionByHash = `-- name: DeleteAdminSessionByHash :exec
 DELETE FROM admin_sessions
 WHERE token_hash = ?
@@ -92,6 +102,16 @@ func (q *Queries) DeleteAdminSessionByHash(ctx context.Context, tokenHash string
 	return err
 }
 
+const deleteAuditEventsBefore = `-- name: DeleteAuditEventsBefore :exec
+DELETE FROM audit_events
+WHERE occurred_at < ?
+`
+
+func (q *Queries) DeleteAuditEventsBefore(ctx context.Context, occurredAt string) error {
+	_, err := q.db.ExecContext(ctx, deleteAuditEventsBefore, occurredAt)
+	return err
+}
+
 const deleteExpiredAdminSessions = `-- name: DeleteExpiredAdminSessions :exec
 DELETE FROM admin_sessions
 WHERE expires_at <= ?
@@ -99,6 +119,16 @@ WHERE expires_at <= ?
 
 func (q *Queries) DeleteExpiredAdminSessions(ctx context.Context, expiresAt string) error {
 	_, err := q.db.ExecContext(ctx, deleteExpiredAdminSessions, expiresAt)
+	return err
+}
+
+const deleteExpiredRotateLocks = `-- name: DeleteExpiredRotateLocks :exec
+DELETE FROM rotate_locks
+WHERE until_at <= ?
+`
+
+func (q *Queries) DeleteExpiredRotateLocks(ctx context.Context, untilAt string) error {
+	_, err := q.db.ExecContext(ctx, deleteExpiredRotateLocks, untilAt)
 	return err
 }
 
@@ -258,6 +288,36 @@ func (q *Queries) ListAuditEvents(ctx context.Context, limit int64) ([]AuditEven
 		return nil, err
 	}
 	return items, nil
+}
+
+const pruneAdminLoginAttempts = `-- name: PruneAdminLoginAttempts :exec
+DELETE FROM admin_login_attempts
+WHERE id NOT IN (
+  SELECT id
+  FROM admin_login_attempts
+  ORDER BY occurred_at DESC, id DESC
+  LIMIT ?
+)
+`
+
+func (q *Queries) PruneAdminLoginAttempts(ctx context.Context, limit int64) error {
+	_, err := q.db.ExecContext(ctx, pruneAdminLoginAttempts, limit)
+	return err
+}
+
+const pruneAuditEvents = `-- name: PruneAuditEvents :exec
+DELETE FROM audit_events
+WHERE id NOT IN (
+  SELECT id
+  FROM audit_events
+  ORDER BY occurred_at DESC, id DESC
+  LIMIT ?
+)
+`
+
+func (q *Queries) PruneAuditEvents(ctx context.Context, limit int64) error {
+	_, err := q.db.ExecContext(ctx, pruneAuditEvents, limit)
+	return err
 }
 
 const touchAdminSession = `-- name: TouchAdminSession :exec

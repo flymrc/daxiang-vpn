@@ -6,15 +6,29 @@ import (
 	"database/sql"
 	"embed"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	_ "modernc.org/sqlite"
 
 	generated "zongheng-vpn/hub/admin/internal/db/generated"
 	"zongheng-vpn/hub/internal/auth"
+)
+
+const (
+	maxAuditActorBytes      = 256
+	maxAuditSourceIPBytes   = 128
+	maxAuditEventTypeBytes  = 128
+	maxAuditTargetBytes     = 256
+	maxAuditDetailJSONBytes = 4096
+	maxAuditResultBytes     = 64
+	maxAuditErrorCodeBytes  = 128
 )
 
 //go:embed schema.sql
@@ -23,6 +37,15 @@ var schemaFS embed.FS
 type Store struct {
 	db *sql.DB
 	q  *generated.Queries
+}
+
+type MaintenancePolicy struct {
+	Now                   time.Time
+	AuditRetention        time.Duration
+	MaxAuditEvents        int64
+	LoginAttemptRetention time.Duration
+	MaxLoginAttempts      int64
+	Checkpoint            bool
 }
 
 func OpenStore(path string) (*Store, error) {
@@ -84,14 +107,73 @@ func (s *Store) EnsureAdminUser(ctx context.Context, username string, passwordHa
 func (s *Store) InsertAudit(ctx context.Context, event auth.AuditEvent) error {
 	return s.q.InsertAuditEvent(ctx, generated.InsertAuditEventParams{
 		OccurredAt: formatTime(defaultTime(event.OccurredAt)),
-		Actor:      nonempty(event.Actor, "unknown"),
-		SourceIp:   event.SourceIP,
-		EventType:  event.EventType,
-		Target:     event.Target,
-		DetailJson: nonempty(event.DetailJSON, "{}"),
-		Result:     nonempty(event.Result, "unknown"),
-		ErrorCode:  event.ErrorCode,
+		Actor:      nonempty(truncateText(event.Actor, maxAuditActorBytes), "unknown"),
+		SourceIp:   truncateText(event.SourceIP, maxAuditSourceIPBytes),
+		EventType:  truncateText(event.EventType, maxAuditEventTypeBytes),
+		Target:     truncateText(event.Target, maxAuditTargetBytes),
+		DetailJson: sanitizeDetailJSON(event.DetailJSON),
+		Result:     nonempty(truncateText(event.Result, maxAuditResultBytes), "unknown"),
+		ErrorCode:  truncateText(event.ErrorCode, maxAuditErrorCodeBytes),
 	})
+}
+
+func (s *Store) Maintain(ctx context.Context, policy MaintenancePolicy) error {
+	if s == nil || s.q == nil {
+		return nil
+	}
+	now := policy.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	nowText := formatTime(now)
+	if err := s.q.DeleteExpiredAdminSessions(ctx, nowText); err != nil {
+		return err
+	}
+	if err := s.q.DeleteExpiredTokenLeases(ctx, sql.NullString{String: nowText, Valid: true}); err != nil {
+		return err
+	}
+	if err := s.q.DeleteExpiredRotateLocks(ctx, nowText); err != nil {
+		return err
+	}
+	if policy.AuditRetention > 0 {
+		if err := s.q.DeleteAuditEventsBefore(ctx, formatTime(now.Add(-policy.AuditRetention))); err != nil {
+			return err
+		}
+	}
+	if policy.MaxAuditEvents > 0 {
+		if err := s.q.PruneAuditEvents(ctx, policy.MaxAuditEvents); err != nil {
+			return err
+		}
+	}
+	if policy.LoginAttemptRetention > 0 {
+		if err := s.q.DeleteAdminLoginAttemptsBefore(ctx, formatTime(now.Add(-policy.LoginAttemptRetention))); err != nil {
+			return err
+		}
+	}
+	if policy.MaxLoginAttempts > 0 {
+		if err := s.q.PruneAdminLoginAttempts(ctx, policy.MaxLoginAttempts); err != nil {
+			return err
+		}
+	}
+	if policy.Checkpoint {
+		return s.checkpointWAL(ctx)
+	}
+	return nil
+}
+
+func (s *Store) checkpointWAL(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var busy, logFrames, checkpointedFrames int
+		if err := rows.Scan(&busy, &logFrames, &checkpointedFrames); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
 }
 
 func hashSecret(value string) string {
@@ -118,6 +200,39 @@ func defaultTime(t time.Time) time.Time {
 func nonempty(value string, fallback string) string {
 	if value == "" {
 		return fallback
+	}
+	return value
+}
+
+func sanitizeDetailJSON(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "{}"
+	}
+	if len(value) > maxAuditDetailJSONBytes {
+		return fmt.Sprintf(`{"truncated":true,"original_bytes":%d}`, len(value))
+	}
+	if json.Valid([]byte(value)) {
+		return value
+	}
+	raw, err := json.Marshal(truncateText(value, 512))
+	if err != nil {
+		return "{}"
+	}
+	return fmt.Sprintf(`{"raw":%s}`, raw)
+}
+
+func truncateText(value string, maxBytes int) string {
+	value = strings.TrimSpace(value)
+	if maxBytes <= 0 || len(value) <= maxBytes {
+		return value
+	}
+	for len(value) > maxBytes {
+		_, size := utf8.DecodeLastRuneInString(value)
+		if size <= 0 {
+			return ""
+		}
+		value = value[:len(value)-size]
 	}
 	return value
 }

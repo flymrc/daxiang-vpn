@@ -69,6 +69,31 @@ SQLite 默认路径:`/opt/zongheng/zhhub/admin.db`。表:
 - `rotate_locks`
 - `audit_events`
 
+## SQLite 容量防护
+
+admin SQLite 中只有两类表会持续追加:
+
+- `audit_events`:客户端 bootstrap/rotate 与管理员操作审计,最可能失控。
+- `admin_login_attempts`:管理员登录尝试,公网登录口被扫时可能快速增长。
+
+`zhhub` 启动时会先执行一次维护,随后默认每 60 分钟执行一次:
+
+- 删除过期 `admin_sessions`、`token_leases`、`rotate_locks`。
+- `audit_events` 默认保留 90 天,同时最多保留 50000 行。
+- `admin_login_attempts` 默认保留 7 天,同时最多保留 10000 行。
+- 执行 `PRAGMA wal_checkpoint(TRUNCATE)`,避免 `admin.db-wal` 长期膨胀。
+- 对 audit detail、actor、source IP、User-Agent、登录 username 等自由文本做长度上限,避免单行异常膨胀。
+
+可调环境变量:
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `ZHHUB_ADMIN_AUDIT_RETENTION_DAYS` | `90` | `audit_events` 时间保留窗口 |
+| `ZHHUB_ADMIN_AUDIT_MAX_ROWS` | `50000` | `audit_events` 最大行数下限防护 |
+| `ZHHUB_ADMIN_LOGIN_ATTEMPT_RETENTION_DAYS` | `7` | `admin_login_attempts` 时间保留窗口 |
+| `ZHHUB_ADMIN_LOGIN_ATTEMPT_MAX_ROWS` | `10000` | `admin_login_attempts` 最大行数下限防护 |
+| `ZHHUB_ADMIN_DB_MAINTENANCE_MINUTES` | `60` | SQLite 维护任务间隔 |
+
 ## 安全边界
 
 - Caddy 负责公网 HTTPS 入口和反向代理。
@@ -78,6 +103,7 @@ SQLite 默认路径:`/opt/zongheng/zhhub/admin.db`。表:
 - 登录失败按 username + source IP 限速。
 - API 不返回 WireGuard 私钥;token 只返回脱敏值和稳定 hash id。
 - 客户端 bootstrap/rotate 与管理员操作都会写入 `audit_events`。
+- SQLite 审计与登录尝试表有 retention + 最大行数双重上限,避免日志型表撑爆磁盘。
 
 ## 前端
 
