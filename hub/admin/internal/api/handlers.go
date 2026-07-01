@@ -143,16 +143,26 @@ func (s *Server) handleEgressExitIP(w http.ResponseWriter, r *http.Request, sc s
 		writeError(w, http.StatusNotFound, "egress_not_found", "")
 		return
 	}
-	exitIP, err := s.checkEgressExitIP(r.Context(), egress.ProxyAddr)
+	exitIP, err := s.checkEgressExitIPs(r.Context(), egress.ProxyAddr)
 	if err != nil {
 		s.audit("admin.reveal_exit_ip", sc.session.Username, requestIP(r), "egress:"+egressID, fmt.Sprintf(`{"error":%q}`, err.Error()), "error", "exit_ip_check_failed")
 		writeError(w, http.StatusBadGateway, "exit_ip_check_failed", "")
 		return
 	}
 	s.audit("admin.reveal_exit_ip", sc.session.Username, requestIP(r), "egress:"+egressID, "{}", "ok", "")
+	var ipv4 *string
+	if exitIP.IPv4 != "" {
+		ipv4 = &exitIP.IPv4
+	}
+	var ipv6 *string
+	if exitIP.IPv6 != "" {
+		ipv6 = &exitIP.IPv6
+	}
 	writeJSON(w, http.StatusOK, generated.EgressExitIPResponse{
 		EgressId:  egressID,
-		ExitIp:    exitIP,
+		ExitIp:    exitIP.Preferred,
+		Ipv4:      ipv4,
+		Ipv6:      ipv6,
 		CheckedAt: time.Now(),
 	})
 }
@@ -264,10 +274,98 @@ func (s *Server) handleRotateIP(w http.ResponseWriter, r *http.Request, sc sessi
 	})
 }
 
-func (s *Server) checkEgressExitIP(ctx context.Context, proxyAddr string) (string, error) {
+type exitIPCheckResult struct {
+	Preferred string
+	IPv4      string
+	IPv6      string
+}
+
+func (s *Server) checkEgressExitIPs(ctx context.Context, proxyAddr string) (exitIPCheckResult, error) {
+	var result exitIPCheckResult
+	var failures []string
+
+	type probe struct {
+		family string
+		url    string
+	}
+	probes := []probe{}
+	if s.cfg.ExitIPv6CheckURL != "" {
+		probes = append(probes, probe{family: "ipv6", url: s.cfg.ExitIPv6CheckURL})
+	}
+	if s.cfg.ExitIPv4CheckURL != "" {
+		probes = append(probes, probe{family: "ipv4", url: s.cfg.ExitIPv4CheckURL})
+	}
+
+	type probeResult struct {
+		family string
+		ip     string
+		err    error
+	}
+	results := make(chan probeResult, len(probes))
+	for _, current := range probes {
+		go func() {
+			ip, err := s.checkEgressExitIPURL(ctx, proxyAddr, current.url)
+			results <- probeResult{family: current.family, ip: ip, err: err}
+		}()
+	}
+	for range probes {
+		probeResult := <-results
+		if probeResult.err != nil {
+			failures = append(failures, probeResult.family+": "+probeResult.err.Error())
+			continue
+		}
+		switch probeResult.family {
+		case "ipv6":
+			result.IPv6 = probeResult.ip
+		case "ipv4":
+			result.IPv4 = probeResult.ip
+		}
+	}
+
+	if result.IPv6 != "" && net.ParseIP(strings.Trim(result.IPv6, "[]")).To4() != nil {
+		failures = append(failures, "ipv6: exit ip check returned ipv4 value")
+		result.IPv6 = ""
+	}
+	if result.IPv4 != "" && net.ParseIP(strings.Trim(result.IPv4, "[]")).To4() == nil {
+		failures = append(failures, "ipv4: exit ip check returned non-ipv4 value")
+		result.IPv4 = ""
+	}
+
+	switch {
+	case result.IPv6 != "":
+		result.Preferred = result.IPv6
+	case result.IPv4 != "":
+		result.Preferred = result.IPv4
+	case s.cfg.ExitIPCheckURL != "":
+		ip, err := s.checkEgressExitIPURL(ctx, proxyAddr, s.cfg.ExitIPCheckURL)
+		if err != nil {
+			failures = append(failures, "fallback: "+err.Error())
+		} else {
+			result.Preferred = ip
+			if strings.Contains(ip, ":") {
+				result.IPv6 = ip
+			} else {
+				result.IPv4 = ip
+			}
+		}
+	}
+	if result.Preferred == "" {
+		if len(failures) > 0 {
+			return result, errors.New(strings.Join(failures, "; "))
+		}
+		return result, fmt.Errorf("exit ip check has no configured URL")
+	}
+	return result, nil
+}
+
+func (s *Server) checkEgressExitIPURL(ctx context.Context, proxyAddr string, checkURL string) (string, error) {
 	proxyAddr = strings.TrimSpace(proxyAddr)
 	if proxyAddr == "" {
 		return "", fmt.Errorf("empty egress proxy address")
+	}
+	checkURL = strings.TrimSpace(checkURL)
+	if checkURL == "" {
+		return "", fmt.Errorf("empty exit ip check URL")
 	}
 	proxyURL := &url.URL{Scheme: "http", Host: proxyAddr}
 	transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
@@ -276,7 +374,7 @@ func (s *Server) checkEgressExitIP(ctx context.Context, proxyAddr string) (strin
 		Timeout:   s.cfg.ExitIPCheckTimeout,
 		Transport: transport,
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.cfg.ExitIPCheckURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, checkURL, nil)
 	if err != nil {
 		return "", err
 	}

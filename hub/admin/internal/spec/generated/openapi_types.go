@@ -59,6 +59,8 @@ type EgressExitIPResponse struct {
 	CheckedAt time.Time `json:"checked_at"`
 	EgressId  string    `json:"egress_id"`
 	ExitIp    string    `json:"exit_ip"`
+	Ipv4      *string   `json:"ipv4,omitempty"`
+	Ipv6      *string   `json:"ipv6,omitempty"`
 }
 
 // EgressResponse defines model for EgressResponse.

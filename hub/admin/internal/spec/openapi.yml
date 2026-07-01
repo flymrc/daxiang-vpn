@@ -410,6 +410,10 @@ components:
           type: string
         exit_ip:
           type: string
+        ipv4:
+          type: string
+        ipv6:
+          type: string
         checked_at:
           type: string
           format: date-time

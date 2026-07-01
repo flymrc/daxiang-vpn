@@ -103,7 +103,7 @@ admin SQLite 中只有两类表会持续追加:
 - 登录失败按 username + source IP 限速。
 - API 不返回 WireGuard 私钥;`/admin/api/tokens` 列表默认只返回 token 脱敏值和稳定 hash id。
 - 管理员可通过 `GET /admin/api/tokens/{token_id}/secret` 按需 reveal 单个完整 token;该请求要求已登录 session,并只在审计里记录 token hash id,不记录真实 token。
-- 管理员可通过 `GET /admin/api/egress/{egress_id}/exit-ip` 按需 reveal 当前出口公网 IP;后端会经该出口的 `proxy_addr` 访问 `ZHHUB_ADMIN_EXIT_IP_CHECK_URL`,不使用 Hub 自身公网出口。默认探测 URL 为 `https://api64.ipify.org`,优先覆盖 Android/Rakuten 更稳定的 IPv6 主路径。
+- 管理员可通过 `GET /admin/api/egress/{egress_id}/exit-ip` 按需 reveal 当前出口公网 IP;后端会经该出口的 `proxy_addr` 同时访问 `ZHHUB_ADMIN_EXIT_IPV6_CHECK_URL` 与 `ZHHUB_ADMIN_EXIT_IPV4_CHECK_URL`,不使用 Hub 自身公网出口。响应保留兼容字段 `exit_ip`,并额外返回 `ipv6`/`ipv4`;前端按双行展示,完整 IPv6 允许换行,不会省略。
 - 客户端 bootstrap/rotate 与管理员操作都会写入 `audit_events`。
 - SQLite 审计与登录尝试表有 retention + 最大行数双重上限,避免日志型表撑爆磁盘。
 

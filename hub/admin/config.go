@@ -29,6 +29,8 @@ func ConfigFromEnv() Config {
 		MaxLoginAttempts:      int64FromEnv("ZHHUB_ADMIN_LOGIN_ATTEMPT_MAX_ROWS", 10000),
 		MaintenanceInterval:   minutesFromEnv("ZHHUB_ADMIN_DB_MAINTENANCE_MINUTES", 60),
 		ExitIPCheckURL:        env("ZHHUB_ADMIN_EXIT_IP_CHECK_URL", "https://api64.ipify.org"),
+		ExitIPv4CheckURL:      env("ZHHUB_ADMIN_EXIT_IPV4_CHECK_URL", "https://api.ipify.org"),
+		ExitIPv6CheckURL:      env("ZHHUB_ADMIN_EXIT_IPV6_CHECK_URL", "https://api6.ipify.org"),
 		ExitIPCheckTimeout:    secondsFromEnv("ZHHUB_ADMIN_EXIT_IP_CHECK_TIMEOUT_SECONDS", 8),
 	}
 }

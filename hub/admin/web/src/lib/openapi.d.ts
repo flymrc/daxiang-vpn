@@ -294,6 +294,8 @@ export interface components {
         EgressExitIPResponse: {
             egress_id: string;
             exit_ip: string;
+            ipv4?: string;
+            ipv6?: string;
             /** Format: date-time */
             checked_at: string;
         };

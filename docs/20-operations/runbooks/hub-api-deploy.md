@@ -52,6 +52,8 @@ ZHHUB_ADMIN_USER=admin
 ZHHUB_ADMIN_PASSWORD_HASH=<argon2id-phc-hash>
 ZHHUB_ADMIN_REVERSE_HEALTH_URL=http://10.66.0.1:18081/debug/session-health
 ZHHUB_ADMIN_EXIT_IP_CHECK_URL=https://api64.ipify.org
+ZHHUB_ADMIN_EXIT_IPV6_CHECK_URL=https://api6.ipify.org
+ZHHUB_ADMIN_EXIT_IPV4_CHECK_URL=https://api.ipify.org
 ZHHUB_ADMIN_EXIT_IP_CHECK_TIMEOUT_SECONDS=8
 ```
 
@@ -90,6 +92,8 @@ Environment=ZHHUB_ADMIN_USER=admin
 Environment=ZHHUB_ADMIN_PASSWORD_HASH=<argon2id-phc-hash>
 Environment=ZHHUB_ADMIN_REVERSE_HEALTH_URL=http://10.66.0.1:18081/debug/session-health
 Environment=ZHHUB_ADMIN_EXIT_IP_CHECK_URL=https://api64.ipify.org
+Environment=ZHHUB_ADMIN_EXIT_IPV6_CHECK_URL=https://api6.ipify.org
+Environment=ZHHUB_ADMIN_EXIT_IPV4_CHECK_URL=https://api.ipify.org
 Environment=ZHHUB_ADMIN_EXIT_IP_CHECK_TIMEOUT_SECONDS=8
 ExecStart=/opt/zongheng/zhhub/zhhub
 Restart=always
@@ -132,7 +136,7 @@ TCP 443
 
 - `/admin/api/tokens` 只返回 `masked_token` 和稳定 hash `id`,不返回完整 token。
 - 点授权码眼睛时调用 `GET /admin/api/tokens/{token_id}/secret`,只 reveal 单个 token,并写入 `admin.reveal_token` 审计事件。
-- 点出口 IP 眼睛时调用 `GET /admin/api/egress/{egress_id}/exit-ip`,Hub 通过该出口的 `proxy_addr` 请求 `ZHHUB_ADMIN_EXIT_IP_CHECK_URL`。默认 URL 是 `https://api64.ipify.org`,超时默认 8 秒。
+- 点出口 IP 眼睛时调用 `GET /admin/api/egress/{egress_id}/exit-ip`,Hub 通过该出口的 `proxy_addr` 同时请求 `ZHHUB_ADMIN_EXIT_IPV6_CHECK_URL` 和 `ZHHUB_ADMIN_EXIT_IPV4_CHECK_URL`;默认分别为 `https://api6.ipify.org` 与 `https://api.ipify.org`,超时默认 8 秒。旧的 `ZHHUB_ADMIN_EXIT_IP_CHECK_URL=https://api64.ipify.org` 仍保留为双栈探测都失败时的兼容 fallback。
 
 不要把 reveal 响应、完整 token 或管理员密码写入日志/文档/对话。
 

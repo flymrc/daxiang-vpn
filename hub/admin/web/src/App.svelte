@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { AdminApi, ApiError } from "$lib/api";
-  import type { AuditEvent, AuthMe, EgressSummary, LeaseSummary, Overview, TokenSummary } from "$lib/api";
+  import type { AuditEvent, AuthMe, EgressExitIPResponse, EgressSummary, LeaseSummary, Overview, TokenSummary } from "$lib/api";
 
   type View = "overview" | "tokens" | "egress" | "clients" | "logs";
   type ThemeName = "深空蓝" | "石墨灰" | "午夜紫" | "浅色";
+  type ExitIPRow = { label?: string; value: string; muted?: boolean };
 
   const api = new AdminApi();
 
@@ -173,7 +174,7 @@
   let egress: EgressSummary[] = [];
   let events: AuditEvent[] = [];
   let tokenSecrets: Record<string, string> = {};
-  let exitIPSecrets: Record<string, string> = {};
+  let exitIPSecrets: Record<string, EgressExitIPResponse> = {};
   let revealingTokenID = "";
   let revealingExitIPID = "";
   let tokenPage = 1;
@@ -370,7 +371,7 @@
     revealingExitIPID = node.id;
     try {
       const result = await api.revealEgressExitIP(node.id);
-      exitIPSecrets = { ...exitIPSecrets, [node.id]: result.exit_ip };
+      exitIPSecrets = { ...exitIPSecrets, [node.id]: result };
     } catch {
       showToast("出口 IP 探测失败，请稍后再试");
     } finally {
@@ -513,11 +514,16 @@
     return typeof value === "string" ? value : null;
   }
 
-  function exitIP(node: EgressSummary, revealed: string | undefined, revealingID: string) {
-    if (revealed) return revealed;
-    if (revealingID === node.id) return "探测中...";
+  function exitIPRows(node: EgressSummary, revealed: EgressExitIPResponse | undefined, revealingID: string): ExitIPRow[] {
+    if (revealingID === node.id) return [{ value: "探测中...", muted: true }];
+    if (revealed) {
+      const rows: ExitIPRow[] = [];
+      rows.push(revealed.ipv6 ? { label: "IPv6", value: revealed.ipv6 } : { label: "IPv6", value: "暂不可用", muted: true });
+      rows.push(revealed.ipv4 ? { label: "IPv4", value: revealed.ipv4 } : { label: "IPv4", value: "暂不可用", muted: true });
+      return rows;
+    }
     const value = exitIPValue(node);
-    return value ? maskIPAddress(value) : "点击眼睛探测";
+    return [{ value: value ? maskIPAddress(value) : "点击眼睛探测", muted: !value }];
   }
 
   function maskIPAddress(value: string) {
@@ -877,10 +883,19 @@
                   <div class="fx ac gap8"><button class="btn primary" on:click={() => openRotate(node)}>换 IP</button><button class="btn" disabled>重连隧道</button><button class="btn ghost" disabled>控制台 SSH</button></div>
                 </div>
                 <div class="kv flat">
-                  <div class="kvc">
+                  <div class="kvc ipcard">
                     <div class="kvl">当前出口 IP</div>
-                    <div class="kvv secretline mono">
-                      <span class="secrettext">{exitIP(node, exitIPSecrets[node.id], revealingExitIPID)}</span>
+                    <div class="kvv secretline ipsecret mono">
+                      <div class="ipstack">
+                        {#each exitIPRows(node, exitIPSecrets[node.id], revealingExitIPID) as item}
+                          <div class={`iprow ${item.label ? "" : "single"}`}>
+                            {#if item.label}
+                              <span class="iplabel">{item.label}</span>
+                            {/if}
+                            <span class={`ipvalue ${item.muted ? "muted" : ""}`}>{item.value}</span>
+                          </div>
+                        {/each}
+                      </div>
                       <button
                         class="eyebtn"
                         type="button"
@@ -1498,6 +1513,52 @@
   .kvv .secrettext {
     min-width: 112px;
     max-width: 160px;
+  }
+
+  .ipcard {
+    grid-column: span 2;
+  }
+
+  .ipsecret {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .ipstack {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .iprow {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    align-items: baseline;
+    column-gap: 8px;
+    line-height: 1.35;
+  }
+
+  .iprow.single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .iplabel {
+    color: var(--tx3);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .ipvalue {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+    word-break: break-all;
+  }
+
+  .ipsecret .eyebtn {
+    margin-top: -2px;
   }
 
   .eyebtn {

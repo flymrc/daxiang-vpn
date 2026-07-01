@@ -158,15 +158,20 @@ func TestAdminEgressExitIPRevealUsesProxy(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Fatalf("proxy method = %s", r.Method)
 		}
-		if got := r.URL.String(); got != "http://exit-ip.test/" {
+		switch got := r.URL.String(); got {
+		case "http://ipv6.test/":
+			w.Write([]byte("2001:db8::9"))
+		case "http://ipv4.test/":
+			w.Write([]byte("203.0.113.9"))
+		default:
 			t.Fatalf("proxy request URL = %q", got)
 		}
-		w.Write([]byte("203.0.113.9"))
 	}))
 	defer proxy.Close()
 
 	server := newTestServerWithTokenStore(t, testTokenStore(strings.TrimPrefix(proxy.URL, "http://")), func(cfg *Config) {
-		cfg.ExitIPCheckURL = "http://exit-ip.test/"
+		cfg.ExitIPv6CheckURL = "http://ipv6.test/"
+		cfg.ExitIPv4CheckURL = "http://ipv4.test/"
 	})
 	cookie, _ := loginTestAdmin(t, server)
 
@@ -181,8 +186,56 @@ func TestAdminEgressExitIPRevealUsesProxy(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.ExitIp != "203.0.113.9" {
+	if got.ExitIp != "2001:db8::9" {
 		t.Fatalf("exit ip = %#v", got)
+	}
+	if got.Ipv6 == nil || *got.Ipv6 != "2001:db8::9" {
+		t.Fatalf("ipv6 = %#v", got)
+	}
+	if got.Ipv4 == nil || *got.Ipv4 != "203.0.113.9" {
+		t.Fatalf("ipv4 = %#v", got)
+	}
+}
+
+func TestAdminEgressExitIPRevealAllowsSingleFamilySuccess(t *testing.T) {
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch got := r.URL.String(); got {
+		case "http://ipv6.test/":
+			http.Error(w, "ipv6 unavailable", http.StatusBadGateway)
+		case "http://ipv4.test/":
+			w.Write([]byte("203.0.113.10"))
+		default:
+			t.Fatalf("proxy request URL = %q", got)
+		}
+	}))
+	defer proxy.Close()
+
+	server := newTestServerWithTokenStore(t, testTokenStore(strings.TrimPrefix(proxy.URL, "http://")), func(cfg *Config) {
+		cfg.ExitIPv6CheckURL = "http://ipv6.test/"
+		cfg.ExitIPv4CheckURL = "http://ipv4.test/"
+		cfg.ExitIPCheckURL = ""
+	})
+	cookie, _ := loginTestAdmin(t, server)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/egress/jp-android-01/exit-ip", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("exit ip status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var got generated.EgressExitIPResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ExitIp != "203.0.113.10" {
+		t.Fatalf("exit ip = %#v", got)
+	}
+	if got.Ipv6 != nil {
+		t.Fatalf("ipv6 should be absent on failed v6 check: %#v", got)
+	}
+	if got.Ipv4 == nil || *got.Ipv4 != "203.0.113.10" {
+		t.Fatalf("ipv4 = %#v", got)
 	}
 }
 

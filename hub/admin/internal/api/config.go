@@ -9,6 +9,8 @@ const (
 	defaultMaxLoginAttempts      = int64(10000)
 	defaultMaintenanceInterval   = time.Hour
 	defaultExitIPCheckURL        = "https://api64.ipify.org"
+	defaultExitIPv4CheckURL      = "https://api.ipify.org"
+	defaultExitIPv6CheckURL      = "https://api6.ipify.org"
 	defaultExitIPCheckTimeout    = 8 * time.Second
 )
 
@@ -30,6 +32,8 @@ type Config struct {
 	MaxLoginAttempts      int64
 	MaintenanceInterval   time.Duration
 	ExitIPCheckURL        string
+	ExitIPv4CheckURL      string
+	ExitIPv6CheckURL      string
 	ExitIPCheckTimeout    time.Duration
 }
 
@@ -51,6 +55,12 @@ func (cfg Config) withDefaults() Config {
 	}
 	if cfg.ExitIPCheckURL == "" {
 		cfg.ExitIPCheckURL = defaultExitIPCheckURL
+	}
+	if cfg.ExitIPv4CheckURL == "" {
+		cfg.ExitIPv4CheckURL = defaultExitIPv4CheckURL
+	}
+	if cfg.ExitIPv6CheckURL == "" {
+		cfg.ExitIPv6CheckURL = defaultExitIPv6CheckURL
 	}
 	if cfg.ExitIPCheckTimeout == 0 {
 		cfg.ExitIPCheckTimeout = defaultExitIPCheckTimeout
