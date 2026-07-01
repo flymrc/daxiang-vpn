@@ -84,20 +84,30 @@
 
   const themeStorageKey = "zhhub-admin-theme";
   const themeOrder: ThemeName[] = ["深空蓝", "浅色", "石墨灰", "午夜紫"];
+  const viewRoutes: Record<View, string> = {
+    overview: "overview",
+    tokens: "tokens",
+    egress: "egress",
+    clients: "clients",
+    logs: "logs",
+  };
+  const routeViews: Record<string, View> = {
+    overview: "overview",
+    tokens: "tokens",
+    egress: "egress",
+    clients: "clients",
+    leases: "clients",
+    logs: "logs",
+    events: "logs",
+  };
 
   const demoOverview: Overview = {
     hub: { public_ip: "36.50.84.68", wg_ip: "10.66.0.1", version: "zhhub v0.4.2", uptime_seconds: 18 * 86400 + 7 * 3600 },
-    stats: { token_count: 5, enabled_token_count: 4, active_lease_count: 2, egress_online_count: 1, rotate_today_count: 8 },
+    stats: { token_count: 21, enabled_token_count: 19, active_lease_count: 2, egress_online_count: 1, rotate_today_count: 8 },
     updated_at: new Date().toISOString(),
   };
 
-  const demoTokens: TokenSummary[] = [
-    { id: "tok-1", masked_token: "ZH-***01", client_name: "cn-client-01", enabled: true, status: "expiring", egress_id: "jp-android-01", egress_name: "jp-android-01", wg_address: "10.66.0.20/24", expires_at: "2026-07-01" },
-    { id: "tok-2", masked_token: "ZH-***02", client_name: "cn-client-02", enabled: true, status: "enabled", egress_id: "jp-android-01", egress_name: "jp-android-01", wg_address: "10.66.0.21/24", expires_at: "2026-09-30" },
-    { id: "tok-3", masked_token: "ZH-***03", client_name: "cn-client-03", enabled: true, status: "enabled", egress_id: "jp-android-01", egress_name: "jp-android-01", wg_address: "10.66.0.22/24", expires_at: "2026-12-31" },
-    { id: "tok-4", masked_token: "ZH-***04", client_name: "admin-innernet", enabled: true, status: "enabled", egress_id: "管理内网", egress_name: "管理内网", wg_address: "10.66.0.5/24", expires_at: null },
-    { id: "tok-5", masked_token: "ZH-***00", client_name: "legacy-00", enabled: true, status: "expired", egress_id: "mac-mini", egress_name: "mac-mini", wg_address: "10.66.0.40/24", expires_at: "2026-06-10" },
-  ];
+  const demoTokens: TokenSummary[] = buildDemoTokens();
 
   const demoLeases: LeaseSummary[] = [
     { masked_token: "ZH-***01", client_name: "cn-client-01", source_ip: "219.76.18.x", egress_id: "jp-android-01", seen_at: new Date().toISOString(), expires_at: new Date(Date.now() + 30000).toISOString() },
@@ -162,22 +172,32 @@
   let egress: EgressSummary[] = [];
   let events: AuditEvent[] = [];
 
-  onMount(async () => {
-    try {
-      me = await api.me();
-      authed = true;
-      await refreshAll();
-    } catch {
-      if (import.meta.env.DEV) {
-        me = { username: "root", csrf_token: "dev-preview", expires_at: new Date(Date.now() + 86400000).toISOString() };
+  onMount(() => {
+    view = readHashView();
+    const onHashChange = () => {
+      view = readHashView();
+    };
+    window.addEventListener("hashchange", onHashChange);
+
+    void (async () => {
+      try {
+        me = await api.me();
         authed = true;
-        loadDemoData();
-      } else {
-        authed = false;
+        await refreshAll();
+      } catch {
+        if (import.meta.env.DEV) {
+          me = { username: "root", csrf_token: "dev-preview", expires_at: new Date(Date.now() + 86400000).toISOString() };
+          authed = true;
+          loadDemoData();
+        } else {
+          authed = false;
+        }
+      } finally {
+        ready = true;
       }
-    } finally {
-      ready = true;
-    }
+    })();
+
+    return () => window.removeEventListener("hashchange", onHashChange);
   });
 
   $: themeVars = [
@@ -195,7 +215,6 @@
   $: displayEgress = egress.length > 0 ? egress : demoEgress;
   $: displayEvents = events.length > 0 ? events : demoEvents;
   $: enabledTokens = displayTokens.filter((token) => token.enabled).length;
-  $: productionEgress = displayEgress.find((node) => node.id === "jp-android-01") || displayEgress[0] || demoEgress[0];
   $: stats = [
     { label: "在线客户端", value: String(displayOverview.stats.active_lease_count || displayLeases.length), sub: `共 ${enabledTokens} 个启用授权码`, dot: "ok" },
     { label: "启用授权码", value: String(displayOverview.stats.enabled_token_count || enabledTokens), sub: `共 ${displayTokens.length} 个 token`, dot: "ok" },
@@ -263,6 +282,19 @@
     themeMenu = false;
   }
 
+  function go(next: View) {
+    view = next;
+    const nextHash = `#/${viewRoutes[next]}`;
+    if (window.location.hash !== nextHash) {
+      window.location.hash = nextHash;
+    }
+  }
+
+  function readHashView(): View {
+    const route = window.location.hash.replace(/^#\/?/, "").split(/[/?]/, 1)[0];
+    return routeViews[route] || "overview";
+  }
+
   function readSavedTheme(): ThemeName {
     try {
       const saved = localStorage.getItem(themeStorageKey) as ThemeName | null;
@@ -285,10 +317,6 @@
     window.setTimeout(() => {
       toast = "";
     }, 2800);
-  }
-
-  function openFeature(name: string) {
-    showToast(`${name} 属于后续功能，当前先对齐原型`);
   }
 
   function openRotate(id: string) {
@@ -407,6 +435,58 @@
     const day = new Date().toISOString().slice(0, 10);
     return `${day}T${hms}+09:00`;
   }
+
+  function buildDemoTokens(): TokenSummary[] {
+    return Array.from({ length: 21 }, (_, index) => {
+      const n = index + 1;
+      let status: TokenSummary["status"] = "enabled";
+      let enabled = true;
+      let egressID = "jp-android-01";
+      let egressName = "jp-android-01";
+      let expiresAt: string | null = "2026-12-31";
+      let clientName = `cn-client-${String(n).padStart(2, "0")}`;
+
+      if (n === 1) {
+        status = "expiring";
+        expiresAt = "2026-07-01";
+      } else if (n === 4) {
+        clientName = "admin-innernet";
+        egressID = "管理内网";
+        egressName = "管理内网";
+        expiresAt = null;
+      } else if (n === 20) {
+        status = "disabled";
+        enabled = false;
+        clientName = "trial-20";
+        expiresAt = "2026-09-30";
+      } else if (n === 21) {
+        status = "expired";
+        enabled = false;
+        clientName = "legacy-21";
+        egressID = "mac-mini";
+        egressName = "mac-mini";
+        expiresAt = "2026-06-10";
+      } else if (n % 7 === 0) {
+        egressID = "管理内网";
+        egressName = "管理内网";
+        expiresAt = null;
+      } else if (n <= 10) {
+        expiresAt = "2026-09-30";
+      }
+
+      return {
+        id: `tok-${n}`,
+        masked_token: `ZH-***${String(n).padStart(2, "0")}`,
+        client_name: clientName,
+        enabled,
+        status,
+        egress_id: egressID,
+        egress_name: egressName,
+        wg_address: `10.66.0.${19 + n}/24`,
+        expires_at: expiresAt,
+      };
+    });
+  }
 </script>
 
 {#if !ready}
@@ -499,31 +579,31 @@
     <div class="body fx f1">
       <aside class="side col">
         <div class="navlbl">运营</div>
-        <button class={`navitem fx ac gap10 ${navClass("overview", view)}`} on:click={() => (view = "overview")}>
+        <button class={`navitem fx ac gap10 ${navClass("overview", view)}`} on:click={() => go("overview")}>
           <svg class="nico" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
             <rect x="1.6" y="1.6" width="5" height="5" rx="1.2" /><rect x="9.4" y="1.6" width="5" height="5" rx="1.2" /><rect x="1.6" y="9.4" width="5" height="5" rx="1.2" /><rect x="9.4" y="9.4" width="5" height="5" rx="1.2" />
           </svg>
           <span class="f1">总览</span>
         </button>
-        <button class={`navitem fx ac gap10 ${navClass("tokens", view)}`} on:click={() => (view = "tokens")}>
+        <button class={`navitem fx ac gap10 ${navClass("tokens", view)}`} on:click={() => go("tokens")}>
           <svg class="nico" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
             <circle cx="5" cy="5" r="3.2" /><path d="M7.3 7.3 13 13" /><path d="M11 11l1.6-1.6" />
           </svg>
           <span class="f1">授权码</span><span class="badge mono fx ac jc">{displayTokens.length}</span>
         </button>
-        <button class={`navitem fx ac gap10 ${navClass("egress", view)}`} on:click={() => (view = "egress")}>
+        <button class={`navitem fx ac gap10 ${navClass("egress", view)}`} on:click={() => go("egress")}>
           <svg class="nico" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
             <rect x="2" y="2.2" width="12" height="5" rx="1.4" /><rect x="2" y="8.8" width="12" height="5" rx="1.4" /><circle cx="4.6" cy="4.7" r=".8" fill="currentColor" stroke="none" /><circle cx="4.6" cy="11.3" r=".8" fill="currentColor" stroke="none" />
           </svg>
           <span class="f1">出口节点</span><span class="badge mono fx ac jc">{displayEgress.length}</span>
         </button>
-        <button class={`navitem fx ac gap10 ${navClass("clients", view)}`} on:click={() => (view = "clients")}>
+        <button class={`navitem fx ac gap10 ${navClass("clients", view)}`} on:click={() => go("clients")}>
           <svg class="nico" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
             <circle cx="6" cy="5.4" r="2.4" /><path d="M2 13.2c0-2.3 1.8-3.6 4-3.6s4 1.3 4 3.6" /><circle cx="12" cy="4.8" r="1.8" /><path d="M11.4 9.8c1.7.1 2.9 1.2 2.9 3" />
           </svg>
           <span class="f1">在线客户端</span><span class="badge mono fx ac jc">{displayLeases.length}</span>
         </button>
-        <button class={`navitem fx ac gap10 ${navClass("logs", view)}`} on:click={() => (view = "logs")}>
+        <button class={`navitem fx ac gap10 ${navClass("logs", view)}`} on:click={() => go("logs")}>
           <svg class="nico" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
             <path d="M3 4h10M3 8h10M3 12h7" />
           </svg>
@@ -560,41 +640,33 @@
               </div>
             {/each}
           </div>
-          <div class="card col gap14">
-            <div class="fx ac jb"><span class="sechd">数据通路</span><span class="note">客户端 → Hub → Android 出口 → 运营商</span></div>
-            <div class="topo">
-              <div class="tnode"><div class="tn">客户端</div><div class="ta mono">zhvpn · 127.0.0.1:7890</div></div>
-              <div class="conn"><span class="clbl">WireGuard</span><span class="cline"></span><span class="clbl mono">:51820</span></div>
-              <div class="tnode"><div class="tn acc">Hub</div><div class="ta mono">{displayOverview.hub.public_ip} / {displayOverview.hub.wg_ip}</div></div>
-              <div class="conn"><span class="clbl">reverse yamux</span><span class="cline"></span><span class="clbl mono">:18081</span></div>
-              <div class="tnode"><div class="tn">jp-android-01</div><div class="ta mono">zhreverse · 10.66.0.101</div></div>
-              <div class="conn"><span class="clbl">蜂窝出口</span><span class="cline"></span><span class="clbl mono">rmnet1</span></div>
-              <div class="tnode"><div class="tn">运营商</div><div class="ta">Rakuten · 日本</div></div>
-            </div>
-          </div>
           <div class="two">
             <div class="card col gap14">
-              <div class="fx ac jb"><span class="sechd">出口节点健康</span><button class="linkbtn note acc" on:click={() => (view = "egress")}>查看全部 →</button></div>
+              <div class="fx ac jb"><span class="sechd">出口节点健康</span><button class="linkbtn note acc" on:click={() => go("egress")}>查看全部 →</button></div>
               <div class="col gap10">
-                <div class="healthrow fx ac jb">
-                  <div class="fx ac gap10">
-                    <span class="dot ok"></span>
-                    <div><div class="strong">jp-android-01</div><div class="note mono">Rakuten · 手机 IP · rmnet1</div></div>
+                {#each displayEgress as node}
+                  <div class={`healthrow fx ac jb ${node.status === "deprecated" ? "depcard" : ""}`}>
+                    <div class="fx ac gap10 min0">
+                      <span class={`dot ${dotClass(node.status)}`}></span>
+                      <div class="min0">
+                        <div class="strong truncate">{node.id}</div>
+                        <div class="note mono truncate">{node.display_name} · {node.proxy_addr}</div>
+                      </div>
+                    </div>
+                    <div class="fx ac gap16 healthmetrics">
+                      <div class="tc"><div class="note">会话</div><div class="mono strong">{node.session_count ?? 0}</div></div>
+                      <div class="tc"><div class="note">连接</div><div class="mono strong">{node.active_connections ?? 0}</div></div>
+                      {#if node.raw_health}
+                        <div class="tc"><div class="note">延迟</div><div class="mono strong">{latency(node)}</div></div>
+                      {/if}
+                      <span class={`pill ${statusPill(node.status)}`}>{statusLabel(node.status)}</span>
+                    </div>
                   </div>
-                  <div class="fx ac gap16">
-                    <div class="tc"><div class="note">延迟</div><div class="mono strong">{latency(productionEgress)}</div></div>
-                    <div class="tc"><div class="note">出口 IP</div><div class="mono strong">{exitIP(productionEgress)}</div></div>
-                    <span class={`pill ${statusPill(productionEgress.status)}`}>{statusLabel(productionEgress.status)}</span>
-                  </div>
-                </div>
-                <div class="healthrow depcard fx ac jb">
-                  <div class="fx ac gap10"><span class="dot dep"></span><div><div class="strong">mac-mini</div><div class="note mono">10.66.0.100:1080</div></div></div>
-                  <span class="pill muted">已弃用</span>
-                </div>
+                {/each}
               </div>
             </div>
             <div class="card col gap14">
-              <div class="fx ac jb"><span class="sechd">最近操作</span><button class="linkbtn note acc" on:click={() => (view = "logs")}>完整日志 →</button></div>
+              <div class="fx ac jb"><span class="sechd">最近操作</span><button class="linkbtn note acc" on:click={() => go("logs")}>完整日志 →</button></div>
               <div class="col">
                 {#each displayEvents.slice(0, 6) as event}
                   <div class="logline fx ac jb">
@@ -612,10 +684,10 @@
         {:else if view === "tokens"}
           <div class="fx ac jb">
             <div><div class="h1">授权码</div><div class="sub">{displayTokens.length} 个 · {enabledTokens} 启用 · token 即客户端登录凭证</div></div>
-            <button class="btn primary" on:click={() => openFeature("新建授权码")}><span class="plus">+</span>新建授权码</button>
+            <button class="btn primary" disabled><span class="plus">+</span>新建授权码</button>
           </div>
           <div class="fx ac gap8">
-            <button class="chip on">全部 {displayTokens.length}</button><button class="chip">启用 {enabledTokens}</button><button class="chip">已停用</button><button class="chip">已过期</button>
+            <button class="chip on" disabled>全部 {displayTokens.length}</button><button class="chip" disabled>启用 {enabledTokens}</button><button class="chip" disabled>已停用</button><button class="chip" disabled>已过期</button>
           </div>
           <div class="card flush">
             <table class="tbl">
@@ -631,7 +703,7 @@
                     <td class="mono muted">{row.wg_address}</td>
                     <td class="mono dim">{shortDate(row.expires_at)}</td>
                     <td><span class="fx ac gap8"><span class={`dot ${last.cls}`}></span><span class="dim">{last.label}</span></span></td>
-                    <td><div class="fx ac gap6 jend"><button class="btn btnxs" on:click={() => openFeature("停用 / 启用授权码")}>{row.enabled ? "停用" : "启用"}</button><button class="btn btnxs ghost" on:click={() => openFeature("编辑授权码")}>编辑</button><button class="btn btnxs ghost danger" on:click={() => openFeature("删除授权码")}>删除</button></div></td>
+                    <td><div class="fx ac gap6 jend"><button class="btn btnxs" disabled>{row.enabled ? "停用" : "启用"}</button><button class="btn btnxs ghost" disabled>编辑</button><button class="btn btnxs ghost danger" disabled>删除</button></div></td>
                   </tr>
                 {/each}
               </tbody>
@@ -653,7 +725,7 @@
                       <div class="note mono node-sub">日本手机出口 · Rakuten Mobile · zhreverse TCP/yamux</div>
                     </div>
                   </div>
-                  <div class="fx ac gap8"><button class="btn primary" on:click={() => openRotate(node.id)}>换 IP</button><button class="btn" on:click={() => openFeature("重连隧道")}>重连隧道</button><button class="btn ghost" on:click={() => openFeature("控制台 SSH")}>控制台 SSH</button></div>
+                  <div class="fx ac gap8"><button class="btn primary" on:click={() => openRotate(node.id)}>换 IP</button><button class="btn" disabled>重连隧道</button><button class="btn ghost" disabled>控制台 SSH</button></div>
                 </div>
                 <div class="kv flat">
                   <div class="kvc"><div class="kvl">当前出口 IP</div><div class="kvv mono">{exitIP(node)}</div></div>
@@ -685,7 +757,7 @@
                 {#each displayLeases as row}
                   <tr>
                     <td class="mono">{row.masked_token}</td><td class="dim">{row.client_name}</td><td class="mono dim">{row.source_ip}</td><td class="mono dim">{row.egress_id}</td><td class="mono muted">{timeOnly(row.seen_at)}</td><td><span class="fx ac gap8"><span class="dot ok"></span><span class="dim mono">{secondsAgo(row.seen_at)}</span></span></td>
-                    <td><div class="fx jend"><button class="btn btnxs danger" on:click={() => openFeature("断开会话")}>断开</button></div></td>
+                    <td><div class="fx jend"><button class="btn btnxs danger" disabled>断开</button></div></td>
                   </tr>
                 {/each}
               </tbody>
@@ -694,7 +766,7 @@
         {:else}
           <div class="fx ac jb">
             <div><div class="h1">操作日志</div><div class="sub">bootstrap 与 rotate-ip 事件 · token 已脱敏</div></div>
-            <div class="fx ac gap8"><button class="chip on">全部</button><button class="chip">bootstrap</button><button class="chip">rotate-ip</button></div>
+            <div class="fx ac gap8"><button class="chip on" disabled>全部</button><button class="chip" disabled>bootstrap</button><button class="chip" disabled>rotate-ip</button></div>
           </div>
           <div class="card flush">
             <table class="tbl">
@@ -731,7 +803,7 @@
             <div class="note">通过 zhandroid-control 触发手机出口换公网 IP。换 IP 期间出口会短暂断流。</div>
             <div class="col gap8">
               <div class="kvl">断流时长 down_seconds</div>
-              <div class="fx ac gap8"><button class="seg on mono">8s</button><button class="seg mono">15s</button><button class="seg mono">30s</button><span class="note">默认 8s · 上限 60s</span></div>
+              <div class="fx ac gap8"><button class="seg on mono" disabled>8s</button><button class="seg mono" disabled>15s</button><button class="seg mono" disabled>30s</button><span class="note">默认 8s · 上限 60s</span></div>
             </div>
             <div class="warnbox fx ac gap8"><span class="dot warn"></span>触发后 45s 内将加锁,期间重复请求会返回 busy。</div>
           </div>
@@ -1117,62 +1189,18 @@
     gap: 14px;
   }
 
-  .topo {
-    display: grid;
-    grid-template-columns: minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr);
-    align-items: center;
-    gap: 0;
-  }
-
-  .tnode {
-    border: 1px solid var(--bd2);
-    background: var(--bg1);
-    border-radius: 9px;
-    padding: 11px 13px;
-    text-align: center;
-    min-width: 0;
-  }
-
-  .tn {
-    font-weight: 600;
-    font-size: 13px;
-  }
-
-  .ta {
-    font-size: 11px;
-    color: var(--tx3);
-    margin-top: 3px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .conn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 5px;
-    padding: 0 6px;
-    min-width: 78px;
-  }
-
-  .cline {
-    height: 1.5px;
-    width: 100%;
-    background: linear-gradient(90deg,var(--bd2),var(--tx3));
-  }
-
-  .clbl {
-    font-size: 10px;
-    color: var(--tx3);
-    white-space: nowrap;
-  }
-
   .healthrow {
     padding: 11px 13px;
     border: 1px solid var(--bd2);
     border-radius: 9px;
     background: var(--bg1);
+    min-height: 62px;
+  }
+
+  .healthmetrics {
+    flex: none;
+    min-width: 242px;
+    justify-content: flex-end;
   }
 
   .depcard {
@@ -1295,6 +1323,19 @@
     background: var(--sel);
   }
 
+  .btn:disabled,
+  .chip:disabled,
+  .seg:disabled {
+    cursor: not-allowed;
+    opacity: .48;
+    filter: grayscale(.25);
+  }
+
+  .btn:disabled:hover {
+    border-color: var(--bd2);
+    background: var(--bg3);
+  }
+
   .btn.primary {
     background: var(--accent);
     border-color: transparent;
@@ -1303,6 +1344,14 @@
 
   .btn.primary:hover {
     filter: brightness(1.08);
+  }
+
+  .btn.primary:disabled,
+  .btn.primary:disabled:hover {
+    background: var(--accent);
+    border-color: transparent;
+    color: #06121f;
+    filter: grayscale(.25);
   }
 
   .btn.ghost {
@@ -1314,6 +1363,13 @@
   .btn.ghost:hover {
     color: var(--tx);
     background: var(--bg3);
+  }
+
+  .btn.ghost:disabled,
+  .btn.ghost:disabled:hover {
+    background: transparent;
+    border-color: transparent;
+    color: var(--tx2);
   }
 
   .btn.danger:hover {
@@ -1348,6 +1404,10 @@
     background: var(--sel);
     color: var(--tx);
     border-color: var(--bd2);
+  }
+
+  .chip:disabled {
+    pointer-events: none;
   }
 
   .linkbtn {
@@ -1503,6 +1563,10 @@
     background: rgba(76,141,255,.12);
   }
 
+  .seg:disabled {
+    pointer-events: none;
+  }
+
   .field {
     display: flex;
     flex-direction: column;
@@ -1586,8 +1650,9 @@
       display: none;
     }
 
-    .conn {
-      min-width: 58px;
+    .healthmetrics {
+      min-width: 178px;
+      gap: 10px;
     }
   }
 </style>
