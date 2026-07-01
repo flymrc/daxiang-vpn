@@ -71,7 +71,7 @@ zhvpn.exe login <授权码>
 
 `zhvpn.exe` 是本机唯一控制面。桌面 GUI 和后续 Python SDK 都通过 CLI 的机器接口（`--json` 等）完成登录、连接、状态、换 IP、断开；SDK 不直接调用 GUI，也不重新实现 WireGuard / sing-box / Hub bootstrap 逻辑。
 
-Hub 管理控制台由同一个 `zhhub` 二进制提供,内网监听 `127.0.0.1:18100`,公网入口由 Caddy 接管 `https://jp-proxy.ruichao.dev/admin/`,根路径 `/` 会 302 到 `/admin/`,未知路径返回 404,并已替代原 `librespeed` 测速页。
+Hub 管理控制台由同一个 `zhhub` 二进制提供,内网监听 `127.0.0.1:18100`,公网入口由 Caddy 接管 `https://jp-proxy.ruichao.dev/admin/`;根路径 `/` 和未知路径都返回 404,并已替代原 `librespeed` 测速页。
 
 客户端授权 API 正在做 P0 TLS 迁移:生产 Caddy 已提供 `https://jp-proxy.ruichao.dev/api/client/*` -> `127.0.0.1:18080` 的 HTTPS 反代,客户端默认 API base 已改为 `https://jp-proxy.ruichao.dev`。生产 Hub 已支持客户端本地生成 WireGuard 私钥、bootstrap 只上报公钥,但旧公网 `18080/tcp` 和 legacy 私钥响应仍作为老客户端迁移期兼容入口/路径保留;新客户端验证稳定后应关闭公网放行并清理 tokens 里的旧私钥字段。
 

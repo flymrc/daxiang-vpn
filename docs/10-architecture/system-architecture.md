@@ -116,7 +116,7 @@ Caddy :443 / jp-proxy.ruichao.dev
 zhhub admin 127.0.0.1:18100
 ```
 
-控制台 API 固定在 `/admin/api/*`,前端静态资源由 Go `embed` 托管在 `/admin/`。Caddy 根路径 `/` 302 到 `/admin/`,未知路径返回 404。应用内还有管理员登录、HttpOnly/Secure session cookie、CSRF token、登录限速和 SQLite 审计日志。公网只开放 Caddy 的 `80/443`;`18100/tcp` 只监听 localhost,不得直接暴露。原 Docker `librespeed` 测速页已停止并取消自动重启,由 Caddy 接管 `jp-proxy.ruichao.dev`。
+控制台 API 固定在 `/admin/api/*`,前端静态资源由 Go `embed` 托管在 `/admin/`。Caddy 根路径 `/` 和未知路径都返回 404。应用内还有管理员登录、HttpOnly/Secure session cookie、CSRF token、登录限速和 SQLite 审计日志。公网只开放 Caddy 的 `80/443`;`18100/tcp` 只监听 localhost,不得直接暴露。原 Docker `librespeed` 测速页已停止并取消自动重启,由 Caddy 接管 `jp-proxy.ruichao.dev`。
 
 ### 客户端授权 API TLS 迁移
 

@@ -133,7 +133,7 @@ curl -I https://jp-proxy.ruichao.dev/not-found-check
 - 公网入口由 Caddy 反代;控制台访问后应进入应用内管理员登录页。
 - Caddy 管理 `80/443` 自动 HTTPS;控制台上线后替代原 Librespeed 测速页。
 - 当前 DNS 仍可走 Cloudflare 代理;访问 `https://jp-proxy.ruichao.dev/admin/` 预期返回前端登录页。
-- `https://jp-proxy.ruichao.dev/` 预期 `302 Location: /admin/`;未知路径预期 `404 Not Found`,不能返回空白 200。
+- `https://jp-proxy.ruichao.dev/` 和未知路径都预期 `404 Not Found`,不能返回空白 200。
 
 > 历史状态：`80/tcp` 曾由 Docker `linuxserver/librespeed` 直接占用。2026-07-01 起该容器已停止并取消自动重启,`80/443` 交给 Caddy。
 
