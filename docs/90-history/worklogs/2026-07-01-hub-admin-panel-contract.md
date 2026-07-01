@@ -4,7 +4,7 @@
 
 ## 已完成
 
-- 新增 `hub/admin/openapi.yml` 作为管理 API 合同。
+- 新增 `hub/admin/internal/spec/openapi.yml` 作为管理 API 合同。
 - 新增 SQLite schema、sqlc queries 与生成代码。
 - 新增 Hub admin 后端:
   - `127.0.0.1:18100` 管理 listener。

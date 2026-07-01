@@ -4,21 +4,11 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"zongheng-vpn/hub/admin/internal/api"
 )
 
-type Config struct {
-	ListenAddr       string
-	DBPath           string
-	PublicHost       string
-	HubPublicIP      string
-	HubWGIP          string
-	Version          string
-	AdminUsername    string
-	AdminPasswordPHC string
-	ReverseHealthURL string
-	SessionTTL       time.Duration
-	CookieSecure     bool
-}
+type Config = api.Config
 
 func ConfigFromEnv() Config {
 	return Config{

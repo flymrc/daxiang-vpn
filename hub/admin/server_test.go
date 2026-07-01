@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	generated "zongheng-vpn/hub/admin/internal/spec/generated"
 	"zongheng-vpn/hub/internal/auth"
 )
 
@@ -105,11 +106,11 @@ func TestAdminEgressHealth(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("egress status = %d body=%s", rec.Code, rec.Body.String())
 	}
-	var got EgressResponse
+	var got generated.EgressResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Egress) != 1 || got.Egress[0].Status != Online {
+	if len(got.Egress) != 1 || got.Egress[0].Status != generated.Online {
 		t.Fatalf("egress status = %#v", got.Egress)
 	}
 	if got.Egress[0].SessionCount == nil || *got.Egress[0].SessionCount != 2 {
@@ -187,7 +188,7 @@ func newTestServer(t *testing.T, opts ...func(*Config)) *Server {
 	return server
 }
 
-func loginTestAdmin(t *testing.T, server *Server) (*http.Cookie, AuthMeResponse) {
+func loginTestAdmin(t *testing.T, server *Server) (*http.Cookie, generated.AuthMeResponse) {
 	t.Helper()
 	body := []byte(`{"username":"admin","password":"secret-password"}`)
 	req := httptest.NewRequest(http.MethodPost, "/admin/api/auth/login", bytes.NewReader(body))
@@ -197,15 +198,15 @@ func loginTestAdmin(t *testing.T, server *Server) (*http.Cookie, AuthMeResponse)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("login status = %d body=%s", rec.Code, rec.Body.String())
 	}
-	var me AuthMeResponse
+	var me generated.AuthMeResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &me); err != nil {
 		t.Fatal(err)
 	}
 	for _, cookie := range rec.Result().Cookies() {
-		if cookie.Name == sessionCookieName {
+		if cookie.Name == "zhhub_admin_session" {
 			return cookie, me
 		}
 	}
 	t.Fatal("session cookie missing")
-	return nil, AuthMeResponse{}
+	return nil, generated.AuthMeResponse{}
 }

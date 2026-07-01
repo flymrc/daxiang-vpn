@@ -1,4 +1,4 @@
-package admin
+package db
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"zongheng-vpn/hub/admin/storage"
+	generated "zongheng-vpn/hub/admin/internal/db/generated"
 	"zongheng-vpn/hub/internal/auth"
 )
 
@@ -22,7 +22,7 @@ var schemaFS embed.FS
 
 type Store struct {
 	db *sql.DB
-	q  *storage.Queries
+	q  *generated.Queries
 }
 
 func OpenStore(path string) (*Store, error) {
@@ -52,7 +52,7 @@ func OpenStore(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	return &Store{db: db, q: storage.New(db)}, nil
+	return &Store{db: db, q: generated.New(db)}, nil
 }
 
 func (s *Store) Close() error {
@@ -62,11 +62,18 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+func (s *Store) Queries() *generated.Queries {
+	if s == nil {
+		return nil
+	}
+	return s.q
+}
+
 func (s *Store) EnsureAdminUser(ctx context.Context, username string, passwordHash string, now time.Time) error {
 	if username == "" || passwordHash == "" {
 		return nil
 	}
-	return s.q.UpsertAdminUser(ctx, storage.UpsertAdminUserParams{
+	return s.q.UpsertAdminUser(ctx, generated.UpsertAdminUserParams{
 		Username:     username,
 		PasswordHash: passwordHash,
 		CreatedAt:    formatTime(now),
@@ -75,7 +82,7 @@ func (s *Store) EnsureAdminUser(ctx context.Context, username string, passwordHa
 }
 
 func (s *Store) InsertAudit(ctx context.Context, event auth.AuditEvent) error {
-	return s.q.InsertAuditEvent(ctx, storage.InsertAuditEventParams{
+	return s.q.InsertAuditEvent(ctx, generated.InsertAuditEventParams{
 		OccurredAt: formatTime(defaultTime(event.OccurredAt)),
 		Actor:      nonempty(event.Actor, "unknown"),
 		SourceIp:   event.SourceIP,

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "generate:api": "openapi-typescript ../openapi.yml -o src/lib/openapi.d.ts",
+    "generate:api": "openapi-typescript ../internal/spec/openapi.yml -o src/lib/openapi.d.ts",
     "dev": "vite dev",
     "check": "npm run generate:api && svelte-check --tsconfig ./tsconfig.json",
     "build": "npm run generate:api && vite build",

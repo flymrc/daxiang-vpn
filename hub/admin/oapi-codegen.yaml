@@ -1,4 +1,0 @@
-package: admin
-generate:
-  models: true
-output: openapi_types.gen.go

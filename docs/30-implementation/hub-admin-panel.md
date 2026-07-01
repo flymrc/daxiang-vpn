@@ -28,13 +28,34 @@ Browser
 
 公网只开放 `80/443`;`18100` 不直接开放。
 
+## 代码结构
+
+`hub/admin` 顶层只保留对 Hub 主程序公开的 facade 和前端目录:
+
+- `hub/admin/admin.go`:公开 `NewServer` 与 `Server`,内部委托给 `internal/api`。
+- `hub/admin/config.go`:公开 `Config` 与环境变量读取。
+- `hub/admin/password.go`:公开管理员密码 hash/verify helper。
+- `hub/admin/generate.go`:统一维护 OpenAPI 与 sqlc 生成命令。
+- `hub/admin/web/`:Svelte 前端源码、构建产物和 Go embed shim。
+
+后端实现放在 Go `internal` 目录下,只允许 `hub/admin` 父级树内引用:
+
+- `hub/admin/internal/api/`:HTTP admin API、登录/session/CSRF、资源 handler、聚合摘要。
+- `hub/admin/internal/db/`:SQLite schema、sqlc queries、store 封装。
+- `hub/admin/internal/db/generated/`:sqlc 生成代码,Go 包名为 `generated`。
+- `hub/admin/internal/spec/`:OpenAPI 合同与 oapi-codegen 配置。
+- `hub/admin/internal/spec/generated/`:OpenAPI 生成代码,Go 包名为 `generated`。
+- `hub/admin/internal/security/`:Argon2id PHC 密码实现。
+
+OpenAPI 和 sqlc 分别放在各自领域的 `generated` 目录下,避免两套生成代码的类型名互相冲突。
+
 ## 合同与模型
 
-- OpenAPI: `hub/admin/openapi.yml`
-- Go API types: `hub/admin/openapi_types.gen.go`
-- SQLite schema: `hub/admin/schema.sql`
-- SQL queries: `hub/admin/queries.sql`
-- sqlc output: `hub/admin/storage/`
+- OpenAPI: `hub/admin/internal/spec/openapi.yml`
+- Go API types: `hub/admin/internal/spec/generated/openapi_types.go`
+- SQLite schema: `hub/admin/internal/db/schema.sql`
+- SQL queries: `hub/admin/internal/db/queries.sql`
+- sqlc output: `hub/admin/internal/db/generated/`
 - TypeScript API types: `hub/admin/web/src/lib/openapi.d.ts`
 
 SQLite 默认路径:`/opt/zongheng/zhhub/admin.db`。表:

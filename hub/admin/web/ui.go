@@ -1,23 +1,28 @@
-package admin
+package webui
 
 import (
 	"bytes"
 	"embed"
+	"encoding/json"
 	"io/fs"
 	"net/http"
 	"strings"
 	"time"
 )
 
-//go:embed web/dist/*
+//go:embed dist/*
 var uiFS embed.FS
 
-func (s *Server) handleUI(w http.ResponseWriter, r *http.Request) {
+func Handler() http.Handler {
+	return http.HandlerFunc(handleUI)
+}
+
+func handleUI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "")
 		return
 	}
-	static, err := fs.Sub(uiFS, "web/dist")
+	static, err := fs.Sub(uiFS, "dist")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "ui_unavailable", "")
 		return
@@ -42,4 +47,13 @@ func serveUIFile(w http.ResponseWriter, r *http.Request, static fs.FS, name stri
 		return
 	}
 	http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(data))
+}
+
+func writeError(w http.ResponseWriter, status int, code string, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error":   code,
+		"message": message,
+	})
 }
