@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"><style>
+*{box-sizing:border-box}body{margin:0}
+.app{height:100vh;background:var(--bg);color:var(--tx);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:14px;--bg:#0b0e13;--bg0:#0a0d12;--bg1:#0d1117;--bg2:#0f141b;--bg3:#11161d;--sel:#121a24;--hov:#10161e;--rowh:#0c1117;--bd:#1b222c;--bd2:#232c37;--tx:#e6edf3;--tx2:#9aa7b4;--tx3:#677483;--accent:#4c8dff}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace;font-feature-settings:"tnum"}
+.dim{color:var(--tx2)}.muted{color:var(--tx3)}.acc{color:var(--accent)}
+.topbar{height:54px;padding:0 18px;border-bottom:1px solid var(--bd);background:var(--bg1);flex:none}
+.mark{width:22px;height:22px;border-radius:6px;background:var(--accent);transform:rotate(45deg);flex:none}
+.brand{font-weight:700;font-size:15px;letter-spacing:.01em}
+.vchip{font-size:11px;color:var(--tx3);border:1px solid var(--bd2);border-radius:5px;padding:1px 7px}
+.hubpill{height:30px;padding:0 12px;border:1px solid var(--bd2);background:rgba(63,185,80,.07);border-radius:8px;font-size:12.5px}
+.livedot{width:8px;height:8px;border-radius:50%;background:#3fb950;box-shadow:0 0 0 0 rgba(63,185,80,.55);animation:pp 2.2s infinite;flex:none}
+@keyframes pp{0%{box-shadow:0 0 0 0 rgba(63,185,80,.5)}70%{box-shadow:0 0 0 6px rgba(63,185,80,0)}100%{box-shadow:0 0 0 0 rgba(63,185,80,0)}}
+.iconbtn{width:30px;height:30px;border-radius:7px;border:1px solid var(--bd2);background:var(--bg3);color:var(--tx2)}
+.iconbtn:hover{color:var(--tx);border-color:var(--tx3)}
+.who{height:30px;padding:0 4px 0 10px;border-radius:8px;border:1px solid var(--bd);background:var(--bg3);font-size:12.5px}
+.av{width:22px;height:22px;border-radius:5px;background:var(--bd2);color:var(--tx2);font-size:11px;font-weight:700}
+.side{width:212px;flex:none;border-right:1px solid var(--bd);background:var(--bg0);padding:14px 12px}
+.navlbl{font-size:10.5px;letter-spacing:.09em;color:var(--tx3);font-weight:600;padding:0 8px;margin:10px 0 6px}
+.navitem{width:100%;height:36px;padding:0 11px;border-radius:8px;border:none;background:transparent;color:var(--tx2);font:inherit;font-weight:500;cursor:pointer;text-align:left}
+.navitem:hover{background:var(--hov);color:var(--tx)}
+.navitem.on{background:var(--sel);color:var(--tx);box-shadow:inset 2px 0 0 var(--accent)}
+.navitem.on .nico{color:var(--accent)}
+.nico{color:var(--tx3);flex:none}.navitem.on:hover{background:var(--sel)}
+.badge{min-width:20px;height:18px;padding:0 6px;border-radius:9px;background:var(--bd);color:var(--tx2);font-size:11px;font-weight:600}
+.navitem.on .badge{background:var(--bd2);color:var(--tx)}
+.sidefoot{border-top:1px solid var(--bd);margin-top:12px;padding-top:12px}
+.sfrow{font-size:11.5px;padding:3px 8px}
+.content{padding:22px 26px;overflow:auto}
+.h1{font-size:20px;font-weight:700;letter-spacing:.01em}
+.sub{color:var(--tx3);font-size:13px;margin-top:3px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.card{background:var(--bg2);border:1px solid var(--bd);border-radius:11px;padding:16px;box-shadow:var(--cardsh,none)}
+.themebtn{height:30px;padding:0 6px 0 11px;border-radius:8px;border:1px solid var(--bd2);background:var(--bg3);color:var(--tx2);font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;white-space:nowrap}
+.themebtn:hover{color:var(--tx);border-color:var(--tx3)}
+.sw{width:13px;height:13px;border-radius:4px;border:1px solid rgba(127,127,127,.35);flex:none}
+.tmenu{position:absolute;top:38px;right:0;width:188px;background:var(--bg2);border:1px solid var(--bd2);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,.4);padding:6px;z-index:60}
+.tmi{width:100%;height:34px;padding:0 9px;border-radius:7px;border:none;background:transparent;color:var(--tx2);font:inherit;font-size:13px;cursor:pointer;text-align:left}
+.tmi:hover{background:var(--hov);color:var(--tx)}
+.tmi.on{background:var(--sel);color:var(--tx)}
+.tmlbl{font-size:10px;letter-spacing:.08em;color:var(--tx3);font-weight:600;padding:5px 9px 3px}
+.card.flush{padding:0;overflow:hidden}
+.statlbl{font-size:12px;color:var(--tx3);font-weight:500}
+.statbig{font-size:32px;font-weight:700;line-height:1;letter-spacing:-.02em}
+.statsub{font-size:11.5px;color:var(--tx3)}
+.sechd{font-size:13px;font-weight:600;color:var(--tx)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.topo{display:grid;grid-template-columns:1fr auto 1fr auto 1fr auto 1fr;align-items:center;gap:0}
+.tnode{border:1px solid var(--bd2);background:var(--bg1);border-radius:9px;padding:11px 13px;text-align:center}
+.tnode .tn{font-weight:600;font-size:13px}.tnode .ta{font-size:11px;color:var(--tx3);margin-top:3px}
+.conn{display:flex;flex-direction:column;align-items:center;gap:5px;padding:0 6px;min-width:78px}
+.cline{height:1.5px;width:100%;background:linear-gradient(90deg,var(--bd2),var(--tx3))}
+.clbl{font-size:10px;color:var(--tx3);white-space:nowrap}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;font-weight:600;color:var(--tx3);font-size:10.5px;letter-spacing:.05em;padding:11px 15px;border-bottom:1px solid var(--bd);white-space:nowrap;text-transform:uppercase}
+.tbl td{padding:12px 15px;border-bottom:1px solid var(--bd);vertical-align:middle;white-space:nowrap}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tbody tr:hover{background:var(--rowh)}
+.dense .tbl th{padding-top:8px;padding-bottom:8px}.dense .tbl td{padding-top:8px;padding-bottom:8px}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.ok{background:#3fb950}.warn{background:#d6a531}.err{background:#f85149}.idle{background:#5b6675}.dep{background:#414b57}
+.pill{padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;display:inline-block}
+.pill.ok{color:#54c264;background:rgba(63,185,80,.13)}
+.pill.warn{color:#e0b341;background:rgba(214,165,49,.14)}
+.pill.err{color:#ff6a60;background:rgba(248,81,73,.14)}
+.pill.muted{color:var(--tx2);background:rgba(138,151,166,.12)}
+.pill.info{color:#6fb0ff;background:rgba(76,141,255,.13)}
+.pill.acc{color:#c08bff;background:rgba(168,118,255,.14)}
+.btn{height:30px;padding:0 13px;border-radius:7px;border:1px solid var(--bd2);background:var(--bg3);color:var(--tx);font:inherit;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--tx3);background:var(--sel)}
+.btn.primary{background:var(--accent);border-color:transparent;color:#06121f}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--tx2)}
+.btn.ghost:hover{color:var(--tx);background:var(--bg3)}
+.btn.danger:hover{border-color:#5a2b2b;color:#ff7a72}
+.btnxs{height:26px;padding:0 9px;font-size:12px}
+.jend{justify-content:flex-end}.gap6{gap:6px}.gap14{gap:14px}
+.chip{height:28px;padding:0 12px;border-radius:7px;border:1px solid var(--bd2);background:var(--bg2);color:var(--tx2);font-size:12.5px;font-weight:500;cursor:pointer}
+.chip.on{background:var(--sel);color:var(--tx);border-color:var(--bd2)}
+.code{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--bg0);border:1px solid var(--bd);border-radius:6px;padding:2px 8px;color:var(--tx2)}
+.kv{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--bd);border:1px solid var(--bd);border-radius:9px;overflow:hidden}
+.kvc{background:var(--bg1);padding:13px 15px}
+.kvl{font-size:11px;color:var(--tx3)}
+.kvv{font-size:14px;font-weight:600;margin-top:5px}
+.nodehd{padding:16px;border-bottom:1px solid var(--bd)}
+.depcard{opacity:.62}
+.note{font-size:12px;color:var(--tx3)}
+.ovl{position:fixed;inset:0;background:rgba(5,8,12,.66);backdrop-filter:blur(2px);z-index:50}
+.modal{width:440px;background:var(--bg2);border:1px solid var(--bd2);border-radius:13px;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+.mhd{padding:17px 19px;border-bottom:1px solid var(--bd)}
+.mbd{padding:19px}
+.mft{padding:15px 19px;border-top:1px solid var(--bd)}
+.warnbox{background:rgba(214,165,49,.09);border:1px solid rgba(214,165,49,.25);border-radius:8px;padding:11px 13px;font-size:12.5px;color:#d8bd84}
+.seg{height:30px;padding:0 12px;border:1px solid var(--bd2);background:var(--bg1);border-radius:7px;font-size:13px}
+.seg.on{border-color:var(--accent);color:var(--tx);background:rgba(76,141,255,.12)}
+.tag{font-size:10.5px;font-weight:600;letter-spacing:.04em;color:var(--tx3);border:1px solid var(--bd2);border-radius:5px;padding:1px 7px}
+.field{display:flex;flex-direction:column;gap:7px}
+.lbl{font-size:11.5px;color:var(--tx3);font-weight:600;letter-spacing:.02em}
+.inp{height:36px;padding:0 12px;border:1px solid var(--bd2);background:var(--bg1);border-radius:8px;color:var(--tx);font:inherit;font-size:13px;width:100%}
+.inp:focus{outline:none;border-color:var(--accent)}
+.inp:disabled{opacity:.5;cursor:not-allowed}
+.hint{font-size:11px;color:var(--tx3)}
+.reqmark{color:#ff6a60}
+.segrow{display:flex;gap:8px;flex-wrap:wrap}
+.tokbox{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--bg0);border:1px solid var(--bd2);border-radius:9px;padding:12px 14px}
+.tokval{font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:600;color:var(--tx);letter-spacing:.01em}
+.okring{width:40px;height:40px;border-radius:50%;background:rgba(63,185,80,.14);color:#54c264;flex:none}
+.btn.dgr{background:#e5484d;border-color:transparent;color:#fff}
+.btn.dgr:hover{filter:brightness(1.07);background:#e5484d}
+.modal.wide{width:496px}
+.toasts{position:fixed;right:20px;bottom:20px;z-index:80;display:flex;flex-direction:column;gap:10px;align-items:flex-end}
+.toast{min-width:230px;max-width:360px;background:var(--bg2);border:1px solid var(--bd2);border-radius:10px;box-shadow:0 12px 34px rgba(0,0,0,.42);padding:11px 14px;display:flex;align-items:center;gap:11px;animation:tin .22s ease}
+@keyframes tin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.tdot{width:9px;height:9px;border-radius:50%;flex:none}
+.tdot.info{background:#6fb0ff}
+.tmsg{font-size:13px;color:var(--tx);font-weight:500}
+.empty{padding:52px 20px;text-align:center}
+.eicon{width:46px;height:46px;border-radius:13px;background:var(--bg1);border:1px solid var(--bd2);color:var(--tx3);margin:0 auto 14px;display:flex;align-items:center;justify-content:center}
+.etitle{font-size:14px;font-weight:600;color:var(--tx2)}
+.esub{font-size:12.5px;color:var(--tx3);margin-top:4px}
+</style></helmet><div class="app col {{ denseClass }}" ref="{{ rootRef }}"><header class="topbar fx ac jb"><div class="fx ac gap14"><div class="fx ac gap10"><div class="mark"></div><div class="brand">纵横 Hub<span class="dim" style="font-weight:500"> 控制台</span></div></div><span class="vchip mono">zhhub v0.4.2</span></div><div class="fx ac gap14"><div class="hubpill fx ac gap8"><span class="livedot"></span><span class="dim">Hub 在线</span><span class="mono" style="color:var(--tx)">36.50.84.68</span><span class="muted">·</span><span class="mono dim">10.66.0.1</span><span class="muted">·</span><span class="muted">uptime 18d 07h</span></div></div><div class="fx ac gap10"><div class="fx ac gap6 muted" style="font-size:12px"><span class="livedot" style="width:6px;height:6px"></span>更新于 {{ updatedAgo }}</div><button class="iconbtn fx ac jc" onClick="{{ refresh }}" title="刷新"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2v3.2h-3.2"/></svg></button><div class="posrel"><button class="themebtn fx ac gap8" onClick="{{ toggleThemeMenu }}"><span class="sw" style="background:{{ themeSwatch }}"></span><span>{{ themeName }}</span><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 4.5 6 7.5 9 4.5"/></svg></button><sc-if value="{{ themeMenu }}" hint-placeholder-val="{{ false }}"><div class="tmenu"><div class="tmlbl">主题</div><sc-for list="{{ themeList }}" as="th" hint-placeholder-count="4"><button class="tmi fx ac gap10 {{ th.on }}" onClick="{{ th.pick }}"><span class="sw" style="background:{{ th.swatch }}"></span><span class="f1">{{ th.name }}</span><sc-if value="{{ th.active }}" hint-placeholder-val="{{ false }}"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="var(--accent)" stroke-width="1.8"><path d="M2.5 7.5 5.5 10.5 11.5 3.5"/></svg></sc-if></button></sc-for></div></sc-if></div><div class="who fx ac gap8"><span class="mono dim">root@hub</span><span class="av fx ac jc">R</span></div></div></header><div class="body fx f1" style="min-height:0"><aside class="side col"><div class="navlbl">运营</div><button class="navitem fx ac gap10 {{ nav.overview }}" onClick="{{ go.overview }}"><svg class="nico" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.6" y="1.6" width="5" height="5" rx="1.2"/><rect x="9.4" y="1.6" width="5" height="5" rx="1.2"/><rect x="1.6" y="9.4" width="5" height="5" rx="1.2"/><rect x="9.4" y="9.4" width="5" height="5" rx="1.2"/></svg><span class="f1">总览</span></button><button class="navitem fx ac gap10 {{ nav.tokens }}" onClick="{{ go.tokens }}"><svg class="nico" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="5" cy="5" r="3.2"/><path d="M7.3 7.3 13 13"/><path d="M11 11l1.6-1.6"/></svg><span class="f1">授权码</span><span class="badge mono fx ac jc">{{ counts.tokens }}</span></button><button class="navitem fx ac gap10 {{ nav.egress }}" onClick="{{ go.egress }}"><svg class="nico" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2.2" width="12" height="5" rx="1.4"/><rect x="2" y="8.8" width="12" height="5" rx="1.4"/><circle cx="4.6" cy="4.7" r=".8" fill="currentColor" stroke="none"/><circle cx="4.6" cy="11.3" r=".8" fill="currentColor" stroke="none"/></svg><span class="f1">出口节点</span><span class="badge mono fx ac jc">{{ counts.egress }}</span></button><button class="navitem fx ac gap10 {{ nav.clients }}" onClick="{{ go.clients }}"><svg class="nico" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="6" cy="5.4" r="2.4"/><path d="M2 13.2c0-2.3 1.8-3.6 4-3.6s4 1.3 4 3.6"/><circle cx="12" cy="4.8" r="1.8"/><path d="M11.4 9.8c1.7.1 2.9 1.2 2.9 3"/></svg><span class="f1">在线客户端</span><span class="badge mono fx ac jc">{{ counts.clients }}</span></button><button class="navitem fx ac gap10 {{ nav.logs }}" onClick="{{ go.logs }}"><svg class="nico" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M3 4h10M3 8h10M3 12h7"/></svg><span class="f1">操作日志</span></button><div class="f1"></div><div class="sidefoot col gap6"><div class="navlbl" style="margin:0 0 4px">HUB 概况</div><div class="sfrow fx ac jb"><span class="muted">授权 API</span><span class="mono dim">:18080</span></div><div class="sfrow fx ac jb"><span class="muted">WG 入口</span><span class="mono dim">:51820</span></div><div class="sfrow fx ac jb"><span class="muted">reverse 入口</span><span class="mono dim">:18081</span></div><div class="sfrow fx ac jb"><span class="muted">reverse TCP</span><span class="mono dim">:39093</span></div></div></aside><main class="content f1 col gap16" style="min-height:0"><sc-if value="{{ isOverview }}" hint-placeholder-val="{{ true }}"><div class="fx ac jb"><div><div class="h1">总览</div><div class="sub">纵横 VPN · Hub 实时状态</div></div><div class="fx ac gap10"><span class="tag">生产环境</span><button class="btn ghost btnxs" onClick="{{ refresh }}">刷新数据</button></div></div><div class="stats"><sc-for list="{{ stats }}" as="s" hint-placeholder-count="4"><div class="card col gap12"><div class="fx ac jb"><span class="statlbl">{{ s.label }}</span><span class="dot {{ s.dot }}"></span></div><div class="statbig mono">{{ s.value }}</div><div class="statsub">{{ s.sub }}</div></div></sc-for></div><div class="card col gap14"><div class="fx ac jb"><span class="sechd">数据通路</span><span class="note">客户端 → Hub → Android 出口 → 运营商</span></div><div class="topo"><div class="tnode"><div class="tn">客户端</div><div class="ta mono">zhvpn · 127.0.0.1:7890</div></div><div class="conn"><span class="clbl">WireGuard</span><span class="cline"></span><span class="clbl mono">:51820</span></div><div class="tnode"><div class="tn acc">Hub</div><div class="ta mono">36.50.84.68 / 10.66.0.1</div></div><div class="conn"><span class="clbl">reverse yamux</span><span class="cline"></span><span class="clbl mono">:18081</span></div><div class="tnode"><div class="tn">jp-android-01</div><div class="ta mono">zhreverse · 10.66.0.101</div></div><div class="conn"><span class="clbl">蜂窝出口</span><span class="cline"></span><span class="clbl mono">rmnet1</span></div><div class="tnode"><div class="tn">运营商</div><div class="ta">Rakuten · 日本</div></div></div></div><div class="two"><div class="card col gap14"><div class="fx ac jb"><span class="sechd">出口节点健康</span><a class="note acc" style="cursor:pointer" onClick="{{ go.egress }}">查看全部 →</a></div><div class="col gap10"><div class="fx ac jb" style="padding:11px 13px;border:1px solid var(--bd2);border-radius:9px;background:var(--bg1)"><div class="fx ac gap10"><span class="dot ok"></span><div><div style="font-weight:600">jp-android-01</div><div class="note mono">Rakuten · 手机 IP · rmnet1</div></div></div><div class="fx ac gap16"><div class="tc"><div class="note">延迟</div><div class="mono" style="font-weight:600">{{ egress.latency }}</div></div><div class="tc"><div class="note">出口 IP</div><div class="mono" style="font-weight:600">{{ egress.exitIP }}</div></div><span class="pill ok">在线</span></div></div><div class="fx ac jb depcard" style="padding:11px 13px;border:1px solid var(--bd);border-radius:9px"><div class="fx ac gap10"><span class="dot dep"></span><div><div style="font-weight:600">mac-mini</div><div class="note mono">10.66.0.100:1080</div></div></div><span class="pill muted">已弃用</span></div></div></div><div class="card col gap14"><div class="fx ac jb"><span class="sechd">最近操作</span><a class="note acc" style="cursor:pointer" onClick="{{ go.logs }}">完整日志 →</a></div><div class="col"><sc-for list="{{ recentLogs }}" as="l" hint-placeholder-count="6"><div class="fx ac jb" style="padding:8px 2px;border-bottom:1px solid #141a22"><div class="fx ac gap10" style="min-width:0"><span class="mono muted" style="font-size:11.5px">{{ l.time }}</span><span class="pill {{ l.evcls }}">{{ l.ev }}</span><span class="dim" style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis">{{ l.client }}</span></div><span class="pill {{ l.res.cls }}">{{ l.res.label }}</span></div></sc-for></div></div></div></sc-if><sc-if value="{{ isTokens }}" hint-placeholder-val="{{ true }}"><div class="fx ac jb"><div><div class="h1">授权码</div><div class="sub">{{ counts.tokens }} 个 · {{ counts.enabled }} 启用 · token 即客户端登录凭证</div></div><button class="btn primary" onClick="{{ openTokenForm }}"><span style="font-weight:700;margin-right:5px">+</span>新建授权码</button></div><div class="fx ac gap8"><button class="chip on">全部 {{ counts.tokens }}</button><button class="chip">启用 {{ counts.enabled }}</button><button class="chip">已停用</button><button class="chip">已过期</button></div><div class="card flush"><table class="tbl"><thead><tr><th>授权码</th><th>客户端</th><th>状态</th><th>出口</th><th>WG 地址</th><th>到期</th><th>最近活跃</th><th style="text-align:right">操作</th></tr></thead><tbody><sc-for list="{{ tokenRows }}" as="row" hint-placeholder-count="6"><tr><td class="mono" style="font-weight:500">{{ row.token }}</td><td class="dim">{{ row.client }}</td><td><span class="pill {{ row.status.cls }}">{{ row.status.label }}</span></td><td class="mono dim">{{ row.egress }}</td><td class="mono muted">{{ row.wg }}</td><td class="mono dim">{{ row.expiresLabel }}</td><td><span class="fx ac gap8"><span class="dot {{ row.lastCls }}"></span><span class="dim">{{ row.last }}</span></span></td><td><div class="fx ac gap6 jend"><button class="btn btnxs" onClick="{{ row.onToggle }}">{{ row.toggleLabel }}</button><button class="btn btnxs ghost" onClick="{{ row.onEdit }}">编辑</button><button class="btn btnxs ghost danger" onClick="{{ row.onDelete }}">删除</button></div></td></tr></sc-for></tbody></table></div></sc-if><sc-if value="{{ isEgress }}" hint-placeholder-val="{{ true }}"><div class="fx ac jb"><div><div class="h1">出口节点</div><div class="sub">基础设施侧 · Android 反向出口为当前生产路径</div></div><button class="btn ghost btnxs" onClick="{{ refresh }}">健康检查</button></div><div class="card flush"><div class="nodehd fx ac jb"><div class="fx ac gap12"><span class="dot ok" style="width:10px;height:10px"></span><div><div class="fx ac gap10"><span style="font-weight:700;font-size:16px">jp-android-01</span><span class="pill ok">在线</span><span class="tag">生产</span></div><div class="note mono" style="margin-top:3px">日本手机出口 · Rakuten Mobile · zhreverse TCP/yamux</div></div></div><div class="fx ac gap8"><button class="btn primary" onClick="{{ openRotate }}">换 IP</button><button class="btn" onClick="{{ reconnect }}">重连隧道</button><button class="btn ghost" onClick="{{ sshConsole }}">控制台 SSH</button></div></div><div class="kv" style="border:none;border-radius:0"><div class="kvc"><div class="kvl">当前出口 IP</div><div class="kvv mono">{{ egress.exitIP }}</div></div><div class="kvc"><div class="kvl">回程延迟</div><div class="kvv mono">{{ egress.latency }}</div></div><div class="kvc"><div class="kvl">隧道绑定</div><div class="kvv">wlan0 <span class="muted" style="font-weight:400;font-size:12px">→ fallback rmnet1</span></div></div><div class="kvc"><div class="kvl">换 IP 锁</div><div class="kvv fx ac gap6"><span class="dot {{ egress.lockCls }}"></span>{{ egress.lock }}</div></div><div class="kvc"><div class="kvl">运营商 / 制式</div><div class="kvv">手机 IP · rmnet1</div></div><div class="kvc"><div class="kvl">今日换 IP</div><div class="kvv mono">{{ egress.today }} 次</div></div><div class="kvc"><div class="kvl">proxy_addr</div><div class="kvv mono">10.66.0.1:18081</div></div><div class="kvc"><div class="kvl">management_addr</div><div class="kvv mono">10.66.0.101:2022</div></div></div></div><div class="card depcard fx ac jb"><div class="fx ac gap12"><span class="dot dep" style="width:10px;height:10px"></span><div><div class="fx ac gap10"><span style="font-weight:700;font-size:15px">mac-mini</span><span class="pill muted">已弃用</span></div><div class="note mono" style="margin-top:3px">Mac mini 出口 · 10.66.0.100:1080</div></div></div><div class="note" style="max-width:320px;text-align:right">2026-06-15 弃用 · 仅作历史诊断 / 管理内网对象,不再承载新流量</div></div></sc-if><sc-if value="{{ isClients }}" hint-placeholder-val="{{ true }}"><div class="fx ac jb"><div><div class="h1">在线客户端</div><div class="sub">实时租约 · lease TTL 30s · 一个 token 同时只允许一个源 IP</div></div><div class="fx ac gap6 muted" style="font-size:12px"><span class="livedot" style="width:6px;height:6px"></span>{{ counts.clients }} 个会话</div></div><sc-if value="{{ hasLeases }}" hint-placeholder-val="{{ true }}"><div class="card flush"><table class="tbl"><thead><tr><th>授权码</th><th>客户端</th><th>源 IP</th><th>出口</th><th>接入时间</th><th>心跳</th><th style="text-align:right">操作</th></tr></thead><tbody><sc-for list="{{ leaseRows }}" as="row" hint-placeholder-count="2"><tr><td class="mono">{{ row.token }}</td><td class="dim">{{ row.client }}</td><td class="mono dim">{{ row.src }}</td><td class="mono dim">{{ row.egress }}</td><td class="mono muted">{{ row.since }}</td><td><span class="fx ac gap8"><span class="dot ok"></span><span class="dim mono">{{ row.beatLabel }}</span></span></td><td><div class="fx jend"><button class="btn btnxs danger" onClick="{{ row.onDisconnect }}">断开</button></div></td></tr></sc-for></tbody></table></div></sc-if><sc-if value="{{ noLeases }}" hint-placeholder-val="{{ false }}"><div class="card"><div class="empty"><div class="eicon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8.5" cy="8" r="3"/><path d="M3 18c0-3 2.5-4.6 5.5-4.6S14 15 14 18"/><circle cx="16" cy="7" r="2.2"/><path d="M15.4 12.6c2.2.1 3.6 1.6 3.6 3.9"/></svg></div><div class="etitle">当前没有在线客户端</div><div class="esub">客户端通过 zhvpn login 接入后将在此实时显示</div></div></div></sc-if></sc-if><sc-if value="{{ isLogs }}" hint-placeholder-val="{{ true }}"><div class="fx ac jb"><div><div class="h1">操作日志</div><div class="sub">bootstrap 与 rotate-ip 事件 · token 已脱敏</div></div><div class="fx ac gap8"><button class="chip on">全部</button><button class="chip">bootstrap</button><button class="chip">rotate-ip</button></div></div><div class="card flush"><table class="tbl"><thead><tr><th>时间</th><th>事件</th><th>客户端 / token</th><th>出口</th><th>详情</th><th style="text-align:right">结果</th></tr></thead><tbody><sc-for list="{{ logRows }}" as="row" hint-placeholder-count="8"><tr><td class="mono muted">{{ row.time }}</td><td><span class="pill {{ row.evcls }}">{{ row.ev }}</span></td><td class="mono dim">{{ row.client }}</td><td class="mono muted">{{ row.egress }}</td><td class="mono muted" style="font-size:12px">{{ row.detail }}</td><td><div class="fx jend"><span class="pill {{ row.res.cls }}">{{ row.res.label }}</span></div></td></tr></sc-for></tbody></table></div></sc-if></main></div><sc-if value="{{ modalOpen }}" hint-placeholder-val="{{ false }}"><div class="ovl fx ac jc" onClick="{{ closeModal }}"><div class="modal {{ modalWide }}" onClick="{{ stop }}"><sc-if value="{{ isRotate }}" hint-placeholder-val="{{ false }}"><div class="mhd fx ac gap10"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="#e0b341" stroke-width="1.5"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2v3.2h-3.2"/></svg><span style="font-weight:700;font-size:15px">为 jp-android-01 换 IP</span></div><div class="mbd col gap14"><div class="note">通过 zhandroid-control 触发手机出口换公网 IP。换 IP 期间出口会短暂断流。</div><div class="col gap8"><div class="kvl">断流时长 down_seconds</div><div class="fx ac gap8"><button class="seg on mono">8s</button><button class="seg mono">15s</button><button class="seg mono">30s</button><span class="note">默认 8s · 上限 60s</span></div></div><div class="warnbox fx ac gap8"><span class="dot warn"></span>触发后 45s 内将加锁,期间重复请求会返回 busy。</div></div><div class="mft fx ac jend gap10"><button class="btn ghost" onClick="{{ closeModal }}">取消</button><button class="btn primary" onClick="{{ confirmRotate }}">确认换 IP</button></div></sc-if><sc-if value="{{ isTokenForm }}" hint-placeholder-val="{{ false }}"><div class="mhd fx ac jb"><span style="font-weight:700;font-size:15px">{{ formTitle }}</span><span class="tag">{{ formTag }}</span></div><div class="mbd col gap16"><div class="field"><span class="lbl">授权码 <span class="reqmark">*</span></span><input class="inp mono" value="{{ formToken }}" onChange="{{ setFormToken }}" placeholder="ZH-JP-PROD-005" disabled="{{ formTokenLocked }}"><span class="hint">客户端登录凭证 · 大写字母 / 数字 / 连字符</span></div><div class="field"><span class="lbl">客户端名称</span><input class="inp" value="{{ formClient }}" onChange="{{ setFormClient }}" placeholder="cn-client-05"></div><div class="field"><span class="lbl">绑定出口</span><div class="segrow"><button class="seg {{ segEgressA }}" onClick="{{ pickEgressA }}">jp-android-01</button><button class="seg {{ segEgressB }}" onClick="{{ pickEgressB }}">管理内网</button></div></div><div class="two" style="gap:16px"><div class="field"><span class="lbl">到期方式</span><div class="segrow"><button class="seg {{ segDate }}" onClick="{{ pickDated }}">设定日期</button><button class="seg {{ segPerm }}" onClick="{{ pickPerm }}">永久</button></div></div><div class="field"><span class="lbl">到期日期</span><input class="inp mono" type="date" value="{{ formExpires }}" onChange="{{ setFormExpires }}" disabled="{{ formPermanent }}"></div></div><div class="field"><span class="lbl">初始状态</span><div class="segrow"><button class="seg {{ segOn }}" onClick="{{ pickEnabled }}">启用</button><button class="seg {{ segOff }}" onClick="{{ pickDisabled }}">停用</button></div></div></div><div class="mft fx ac jend gap10"><button class="btn ghost" onClick="{{ closeModal }}">取消</button><button class="btn primary" onClick="{{ saveToken }}">{{ formSubmit }}</button></div></sc-if><sc-if value="{{ isTokenCreated }}" hint-placeholder-val="{{ false }}"><div class="mbd col gap16" style="padding-top:22px"><div class="fx ac gap12"><span class="okring fx ac jc"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 8 14.5 16 5.5"/></svg></span><div><div style="font-weight:700;font-size:15px">授权码已创建</div><div class="note">复制并发送给客户端 · 用于 zhvpn login</div></div></div><div class="tokbox"><span class="tokval">{{ createdToken }}</span><button class="btn" onClick="{{ copyToken }}">{{ copyLabel }}</button></div><div class="warnbox fx ac gap8"><span class="dot" style="background:#6fb0ff"></span>{{ createdMeta }}</div></div><div class="mft fx ac jend gap10"><button class="btn primary" onClick="{{ closeModal }}">完成</button></div></sc-if><sc-if value="{{ isConfirm }}" hint-placeholder-val="{{ false }}"><div class="mhd fx ac gap10"><span class="okring fx ac jc" style="background:rgba(214,165,49,.14);color:#e0b341"><svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 18.2 17.2H1.8z"/><path d="M10 8.4v3.4"/><circle cx="10" cy="14.4" r=".5" fill="currentColor" stroke="none"/></svg></span><span style="font-weight:700;font-size:15px">{{ confirmTitle }}</span></div><div class="mbd"><div class="note" style="font-size:13px;line-height:1.65">{{ confirmBody }}</div></div><div class="mft fx ac jend gap10"><button class="btn ghost" onClick="{{ closeModal }}">取消</button><button class="btn {{ confirmBtnCls }}" onClick="{{ doConfirm }}">{{ confirmLabel }}</button></div></sc-if></div></div></sc-if><div class="toasts"><sc-for list="{{ toasts }}" as="t" hint-placeholder-count="0"><div class="toast"><span class="tdot {{ t.cls }}"></span><span class="tmsg f1">{{ t.msg }}</span></div></sc-for></div></div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1320,&quot;height&quot;:860},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#4c8dff&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;外观&quot;,&quot;options&quot;:[&quot;#4c8dff&quot;,&quot;#36c5a8&quot;,&quot;#d6a531&quot;,&quot;#a876ff&quot;]},&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;compact&quot;,&quot;options&quot;:[&quot;compact&quot;,&quot;comfortable&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;外观&quot;},&quot;maskSensitive&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;安全&quot;}}">
+class Component extends DCLogic {
+  state = {
+    view: 'overview',
+    theme: null, themeMenu: false,
+    clock: 0, lastRefresh: 0,
+    modal: null, form: null, toasts: [], copied: false,
+    rotateLock: 0, exitIP: '153.246.142.77', latency: 42, todayRotate: 8,
+    tokens: [
+      { token: 'ZH-JP-TEST-001', client: 'cn-client-01', enabled: true, expires: '2026-07-01', egress: 'jp-android-01', wg: '10.66.0.20/24', last: '在线', lastState: 'ok' },
+      { token: 'ZH-JP-PROD-002', client: 'cn-client-02', enabled: true, expires: '2026-09-30', egress: 'jp-android-01', wg: '10.66.0.21/24', last: '3 分钟前', lastState: 'idle' },
+      { token: 'ZH-JP-PROD-003', client: 'cn-client-03', enabled: true, expires: '2026-12-31', egress: 'jp-android-01', wg: '10.66.0.22/24', last: '2 小时前', lastState: 'idle' },
+      { token: 'ZH-ADMIN-001', client: 'admin-innernet', enabled: true, expires: '', egress: '管理内网', wg: '10.66.0.5/24', last: '在线', lastState: 'ok' },
+      { token: 'ZH-JP-TRIAL-004', client: 'trial-04', enabled: false, expires: '2026-06-20', egress: 'jp-android-01', wg: '10.66.0.31/24', last: '6 天前', lastState: 'idle' },
+      { token: 'ZH-JP-OLD-000', client: 'legacy-00', enabled: true, expires: '2026-06-10', egress: 'mac-mini', wg: '10.66.0.40/24', last: '已过期', lastState: 'err' },
+    ],
+    leases: [
+      { token: 'ZH-JP-TEST-001', client: 'cn-client-01', src: '219.76.18.x', egress: 'jp-android-01', since: '14:22:10', beat: 4 },
+      { token: 'ZH-ADMIN-001', client: 'admin-innernet', src: '10.66.0.5', egress: '管理内网', since: '09:01:12', beat: 2 },
+    ],
+    logs: [
+      { time: '14:38:02', ev: 'rotate-ip', evcls: 'pill acc', client: 'cn-client-01', egress: 'jp-android-01', detail: 'down_seconds=8', res: { cls: 'ok', label: 'triggered' } },
+      { time: '14:37:51', ev: 'rotate-ip', evcls: 'pill acc', client: 'cn-client-03', egress: 'jp-android-01', detail: 'busy · retry_after=12s', res: { cls: 'warn', label: 'busy' } },
+      { time: '14:22:10', ev: 'bootstrap', evcls: 'pill info', client: 'cn-client-01', egress: 'jp-android-01', detail: 'src=219.76.18.x', res: { cls: 'ok', label: '通过' } },
+      { time: '14:09:33', ev: 'bootstrap', evcls: 'pill info', client: 'ZH-JP-***04', egress: 'jp-android-01', detail: 'token_in_use · src=180.12.x', res: { cls: 'warn', label: '拒绝' } },
+      { time: '13:55:02', ev: 'bootstrap', evcls: 'pill info', client: 'ZH-***000', egress: '—', detail: 'invalid_token · src=45.83.x', res: { cls: 'err', label: '拒绝' } },
+      { time: '13:40:18', ev: 'rotate-ip', evcls: 'pill acc', client: 'cn-client-01', egress: 'jp-android-01', detail: 'down_seconds=8', res: { cls: 'ok', label: 'triggered' } },
+      { time: '09:01:12', ev: 'bootstrap', evcls: 'pill info', client: 'admin-innernet', egress: '管理内网', detail: 'src=10.66.0.5', res: { cls: 'ok', label: '通过' } },
+      { time: '08:30:00', ev: 'rotate-ip', evcls: 'pill acc', client: 'cn-client-02', egress: 'jp-android-01', detail: 'down_seconds=8', res: { cls: 'ok', label: 'triggered' } },
+    ],
+  };
+
+  componentDidMount() {
+    this._timer = setInterval(() => this.setState(s => ({
+      clock: s.clock + 1,
+      rotateLock: s.rotateLock > 0 ? s.rotateLock - 1 : 0,
+    })), 1000);
+    this.applyTheme();
+  }
+  componentDidUpdate() { this.applyTheme(); }
+  componentWillUnmount() { clearInterval(this._timer); }
+
+  applyTheme() {
+    if (!this._root) return;
+    const themes = {
+      '深空蓝': { bg:'#0b0e13', bg0:'#0a0d12', bg1:'#0d1117', bg2:'#0f141b', bg3:'#11161d', sel:'#121a24', hov:'#10161e', rowh:'#0c1117', bd:'#1b222c', bd2:'#232c37', tx:'#e6edf3', tx2:'#9aa7b4', tx3:'#677483', cardsh:'none' },
+      '石墨灰': { bg:'#0e0f11', bg0:'#0b0c0e', bg1:'#121316', bg2:'#16181b', bg3:'#1a1d21', sel:'#1e2228', hov:'#181a1e', rowh:'#141518', bd:'#23262b', bd2:'#2e3238', tx:'#eceef0', tx2:'#a3a8af', tx3:'#6c7178', cardsh:'none' },
+      '午夜紫': { bg:'#0d0b14', bg0:'#0b0913', bg1:'#100d1a', bg2:'#14111f', bg3:'#181426', sel:'#1c1730', hov:'#15111f', rowh:'#100d1a', bd:'#241f33', bd2:'#2f2942', tx:'#ece8f5', tx2:'#a79fbd', tx3:'#6f6786', cardsh:'none' },
+      '浅色': { bg:'#e9ebf0', bg0:'#ffffff', bg1:'#ffffff', bg2:'#ffffff', bg3:'#eef1f5', sel:'#e8f0fd', hov:'#f0f3f8', rowh:'#f5f7fb', bd:'#e3e7ec', bd2:'#d2d8e0', tx:'#16202e', tx2:'#566273', tx3:'#8893a1', cardsh:'0 1px 2px rgba(16,24,40,.05), 0 4px 12px rgba(16,24,40,.07)' },
+    };
+    const name = this.state.theme || this.props.theme || '深空蓝';
+    const t = themes[name] || themes['深空蓝'];
+    const r = this._root.style;
+    for (const k in t) r.setProperty('--' + k, t[k]);
+    r.setProperty('--accent', this.props.accent || '#4c8dff');
+  }
+
+  status(t) {
+    if (!t.enabled) return { cls: 'muted', label: '已停用' };
+    if (t.expires) {
+      const days = (Date.parse(t.expires) - Date.parse('2026-06-30')) / 86400000;
+      if (days < 0) return { cls: 'err', label: '已过期' };
+      if (days <= 3) return { cls: 'warn', label: '即将到期' };
+    }
+    return { cls: 'ok', label: '启用' };
+  }
+
+  nowHMS() {
+    const d = new Date();
+    return [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, '0')).join(':');
+  }
+
+  toggle(tok) {
+    this.setState(s => ({ tokens: s.tokens.map(t => t.token === tok ? { ...t, enabled: !t.enabled } : t) }));
+  }
+  disconnect(tok) {
+    this.setState(s => ({ leases: s.leases.filter(l => l.token !== tok) }));
+  }
+  confirmRotate() {
+    const newIP = '153.246.' + (100 + Math.floor(Math.random() * 150)) + '.' + (10 + Math.floor(Math.random() * 240));
+    const entry = { time: this.nowHMS(), ev: 'rotate-ip', evcls: 'pill acc', client: 'cn-client-01', egress: 'jp-android-01', detail: 'down_seconds=8 · manual', res: { cls: 'ok', label: 'triggered' } };
+    this.setState(s => ({ modal: null, rotateLock: 53, todayRotate: s.todayRotate + 1, exitIP: newIP, latency: 38 + Math.floor(Math.random() * 14), logs: [entry, ...s.logs] }));
+    this.pushToast('换 IP 已触发 · down_seconds=8', 'ok');
+  }
+
+  pushToast(msg, cls) {
+    const id = (this._tid = (this._tid || 0) + 1);
+    this.setState(s => ({ toasts: [...s.toasts, { id, msg, cls: cls || 'ok' }] }));
+    setTimeout(() => this.setState(s => ({ toasts: s.toasts.filter(t => t.id !== id) })), 3200);
+  }
+  openTokenForm(t) {
+    if (t) {
+      this.setState({ modal: { type: 'tokenForm', edit: true }, form: { token: t.token, client: t.client, egress: t.egress === '管理内网' ? '管理内网' : 'jp-android-01', permanent: !t.expires, expires: t.expires || '2026-12-31', enabled: t.enabled, locked: true, orig: t.token } });
+    } else {
+      const n = String(this.state.tokens.length + 1).padStart(3, '0');
+      this.setState({ modal: { type: 'tokenForm', edit: false }, form: { token: 'ZH-JP-PROD-' + n, client: '', egress: 'jp-android-01', permanent: false, expires: '2026-12-31', enabled: true, locked: false, orig: null } });
+    }
+  }
+  setForm(patch) { this.setState(s => ({ form: { ...s.form, ...patch } })); }
+  saveToken() {
+    const f = this.state.form;
+    if (!f.token || !f.token.trim()) { this.pushToast('授权码不能为空', 'err'); return; }
+    const expires = f.permanent ? '' : f.expires;
+    const tok = f.token.trim();
+    if (f.orig) {
+      this.setState(s => ({ tokens: s.tokens.map(t => t.token === f.orig ? { ...t, token: tok, client: (f.client || '').trim(), egress: f.egress, expires, enabled: f.enabled } : t), modal: null }));
+      this.pushToast('已保存 ' + tok, 'ok');
+    } else {
+      const nt = { token: tok, client: (f.client || '').trim() || '(未命名)', enabled: f.enabled, expires, egress: f.egress, wg: '10.66.0.' + (23 + this.state.tokens.length) + '/24', last: '未接入', lastState: 'idle' };
+      this.setState(s => ({ tokens: [...s.tokens, nt], modal: { type: 'tokenCreated', token: nt.token, client: nt.client, egress: f.egress, expires: f.permanent ? '永久有效' : ('到期 ' + expires) } }));
+      this.pushToast('已创建 ' + nt.token, 'ok');
+    }
+  }
+  copyToken() {
+    const tok = this.state.modal && this.state.modal.token;
+    if (tok) {
+      try {
+        const p = navigator.clipboard && navigator.clipboard.writeText(tok);
+        if (p && p.catch) p.catch(() => {});
+      } catch (e) {}
+    }
+    this.setState({ copied: true });
+    this.pushToast('已复制到剪贴板', 'ok');
+    setTimeout(() => this.setState({ copied: false }), 1600);
+  }
+  askConfirm(cfg) { this.setState({ modal: { type: 'confirm', ...cfg } }); }
+  askDeleteToken(t) {
+    this.askConfirm({ title: '删除授权码', body: '确认删除 ' + t.token + '(' + t.client + ')?此操作不可撤销,该客户端将立即无法登录,任何在线会话会被中断。', label: '删除', btn: 'dgr', action: () => this.doDeleteToken(t.token) });
+  }
+  doDeleteToken(tok) {
+    this.setState(s => ({ tokens: s.tokens.filter(t => t.token !== tok), leases: s.leases.filter(l => l.token !== tok), modal: null }));
+    this.pushToast('已删除 ' + tok, 'ok');
+  }
+  askDisconnect(l) {
+    this.askConfirm({ title: '断开会话', body: '断开 ' + l.client + '(' + l.token + ')的当前会话?客户端可立即重新登录,不影响授权码本身。', label: '断开', btn: 'dgr', action: () => this.doDisconnect(l.token) });
+  }
+  doDisconnect(tok) {
+    this.setState(s => ({ leases: s.leases.filter(l => l.token !== tok), modal: null }));
+    this.pushToast('已断开会话 · ' + tok, 'ok');
+  }
+  reconnectTunnel() {
+    this.pushToast('正在重连隧道…', 'info');
+    setTimeout(() => this.pushToast('隧道已重连 · jp-android-01', 'ok'), 1400);
+  }
+  sshConsole() { this.pushToast('已打开 SSH 会话 · 10.66.0.101:2022', 'info'); }
+
+  renderVals() {
+    const { view, tokens, leases, logs, clock, lastRefresh, rotateLock } = this.state;
+    const mask = this.props.maskSensitive ?? true;
+    const enabled = tokens.filter(t => t.enabled).length;
+    const maskIP = mask ? this.state.exitIP.replace(/\.\d+\.\d+$/, '.•••.••') : this.state.exitIP;
+    const ago = clock - lastRefresh;
+
+    const stats = [
+      { label: '在线客户端', value: String(leases.length), sub: `共 ${enabled} 个启用授权码`, dot: 'ok' },
+      { label: '启用授权码', value: String(enabled), sub: `共 ${tokens.length} 个 token`, dot: 'ok' },
+      { label: '出口在线', value: '1', sub: '1 生产 · 1 已弃用', dot: 'ok' },
+      { label: '今日换 IP', value: String(this.state.todayRotate), sub: rotateLock > 0 ? `锁 · 冷却 ${rotateLock}s` : '换 IP 锁 · 空闲', dot: rotateLock > 0 ? 'warn' : 'idle' },
+    ];
+
+    const tokenRows = tokens.map(t => ({
+      token: t.token, client: t.client, wg: t.wg, egress: t.egress,
+      status: this.status(t),
+      expiresLabel: t.expires || '永久',
+      last: t.last, lastCls: t.lastState,
+      canRotate: t.enabled && t.egress === 'jp-android-01',
+      toggleLabel: t.enabled ? '停用' : '启用',
+      onToggle: () => this.toggle(t.token),
+      onEdit: () => this.openTokenForm(t),
+      onDelete: () => this.askDeleteToken(t),
+    }));
+
+    const leaseRows = leases.map(l => ({ ...l, beatLabel: l.beat + 's 前', onDisconnect: () => this.askDisconnect(l) }));
+
+    const recentLogs = logs.slice(0, 6);
+
+    const swatches = { '深空蓝': '#0d1117', '石墨灰': '#16181b', '午夜紫': '#14111f', '浅色': '#ffffff' };
+    const curTheme = this.state.theme || this.props.theme || '深空蓝';
+    const themeList = ['深空蓝', '石墨灰', '午夜紫', '浅色'].map(n => ({
+      name: n, swatch: swatches[n], active: n === curTheme, on: n === curTheme ? 'on' : '',
+      pick: () => this.setState({ theme: n, themeMenu: false }),
+    }));
+
+    const m = this.state.modal || {};
+    const f = this.state.form || {};
+
+    return {
+      denseClass: (this.props.density === 'comfortable') ? '' : 'dense',
+      themeName: curTheme, themeSwatch: swatches[curTheme], themeList,
+      themeMenu: this.state.themeMenu,
+      toggleThemeMenu: () => this.setState(s => ({ themeMenu: !s.themeMenu })),
+      rootRef: (el) => { this._root = el; this.applyTheme(); },
+      updatedAgo: ago <= 0 ? '刚刚' : `${ago} 秒前`,
+      nav: { overview: view === 'overview' ? 'on' : '', tokens: view === 'tokens' ? 'on' : '', egress: view === 'egress' ? 'on' : '', clients: view === 'clients' ? 'on' : '', logs: view === 'logs' ? 'on' : '' },
+      go: {
+        overview: () => this.setState({ view: 'overview' }),
+        tokens: () => this.setState({ view: 'tokens' }),
+        egress: () => this.setState({ view: 'egress' }),
+        clients: () => this.setState({ view: 'clients' }),
+        logs: () => this.setState({ view: 'logs' }),
+      },
+      counts: { tokens: tokens.length, enabled, egress: 2, clients: leases.length },
+      isOverview: view === 'overview', isTokens: view === 'tokens', isEgress: view === 'egress', isClients: view === 'clients', isLogs: view === 'logs',
+      stats, tokenRows, leaseRows, logRows: logs, recentLogs,
+      egress: { exitIP: maskIP, latency: this.state.latency + ' ms', today: this.state.todayRotate, lock: rotateLock > 0 ? `冷却中 ${rotateLock}s` : '空闲', lockCls: rotateLock > 0 ? 'warn' : 'idle' },
+      hasLeases: leases.length > 0, noLeases: leases.length === 0,
+      modalOpen: !!this.state.modal,
+      modalWide: m.type === 'tokenForm' ? 'wide' : '',
+      isRotate: m.type === 'rotate', isTokenForm: m.type === 'tokenForm', isTokenCreated: m.type === 'tokenCreated', isConfirm: m.type === 'confirm',
+      formTitle: m.edit ? '编辑授权码' : '新建授权码', formTag: m.edit ? '编辑' : '新建', formSubmit: m.edit ? '保存修改' : '创建授权码',
+      formToken: f.token || '', formTokenLocked: !!f.locked, formClient: f.client || '', formExpires: f.expires || '', formPermanent: !!f.permanent,
+      segEgressA: f.egress === 'jp-android-01' ? 'on' : '', segEgressB: f.egress === '管理内网' ? 'on' : '',
+      segDate: !f.permanent ? 'on' : '', segPerm: f.permanent ? 'on' : '',
+      segOn: f.enabled ? 'on' : '', segOff: !f.enabled ? 'on' : '',
+      setFormToken: (e) => this.setForm({ token: e.target.value }),
+      setFormClient: (e) => this.setForm({ client: e.target.value }),
+      setFormExpires: (e) => this.setForm({ expires: e.target.value }),
+      pickEgressA: () => this.setForm({ egress: 'jp-android-01' }), pickEgressB: () => this.setForm({ egress: '管理内网' }),
+      pickDated: () => this.setForm({ permanent: false }), pickPerm: () => this.setForm({ permanent: true }),
+      pickEnabled: () => this.setForm({ enabled: true }), pickDisabled: () => this.setForm({ enabled: false }),
+      saveToken: () => this.saveToken(), openTokenForm: () => this.openTokenForm(null),
+      createdToken: m.token || '', createdMeta: m.type === 'tokenCreated' ? ('客户端 ' + m.client + ' · 绑定 ' + m.egress + ' · ' + m.expires) : '',
+      copyLabel: this.state.copied ? '已复制' : '复制', copyToken: () => this.copyToken(),
+      confirmTitle: m.title || '', confirmBody: m.body || '', confirmLabel: m.label || '确认', confirmBtnCls: m.btn === 'dgr' ? 'dgr' : 'primary',
+      doConfirm: () => { if (m.action) m.action(); },
+      toasts: this.state.toasts,
+      reconnect: () => this.reconnectTunnel(), sshConsole: () => this.sshConsole(),
+      openRotate: () => this.setState({ modal: { type: 'rotate', node: 'jp-android-01' } }),
+      closeModal: () => this.setState({ modal: null }),
+      confirmRotate: () => this.confirmRotate(),
+      refresh: () => this.setState(s => ({ lastRefresh: s.clock, latency: 38 + Math.floor(Math.random() * 12) })),
+      stop: (e) => e.stopPropagation(),
+    };
+  }
+}
+</script>
+</body>
+</html>

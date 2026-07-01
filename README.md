@@ -13,7 +13,7 @@ clients/              客户端(终端用户侧)
   cli/                CLI 客户端（原 frontend/zhvpn）
   desktop-gui/        Windows 桌面 GUI 客户端（Tauri，调用 CLI sidecar）
 
-hub/                  Hub 服务端（授权 API，原 backend/zhhub）
+hub/                  Hub 服务端（授权 API + 管理控制台，原 backend/zhhub）
 
 egress/               出口节点(基础设施侧，非终端客户端)
   reverse/            Android 反向 TCP/yamux 出口数据面（zhreverse，当前生产路径）
@@ -49,6 +49,10 @@ clients/cli/build.ps1
 # macOS CLI
 ./clients/cli/build-macos.sh
 # Hub 服务端
+pushd hub/admin/web
+npm ci
+npm run build:embed
+popd
 go build -o dist/hub ./hub
 # 安卓出口代理（arm64）
 $env:GOOS="linux"; $env:GOARCH="arm64"; go build -o dist/reverse/zhreverse-linux-arm64 ./egress/reverse
@@ -95,6 +99,7 @@ zhvpn.exe rotate-ip      # Android 手机出口换公网 IP
 - [当前 MVP 计划](docs/00-overview/mvp-plan.md)
 - [总体架构](docs/10-architecture/system-architecture.md)
 - [出口方案选型](docs/10-architecture/egress-strategy.md)
+- [Hub 控制面板实现方案](docs/30-implementation/hub-admin-panel.md)
 - [运维诊断命令手册](docs/20-operations/runbooks/diagnostics.md)
 - [Android 出口远程控制操作手册](docs/20-operations/runbooks/android-remote-control.md)
 - [服务器访问与当前状态](docs/20-operations/runbooks/server-access.md)

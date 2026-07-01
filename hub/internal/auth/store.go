@@ -23,6 +23,11 @@ type TokenRecord struct {
 	WireGuard  WireGuard  `yaml:"wireguard"`
 }
 
+type TokenSnapshot struct {
+	Token  string
+	Record TokenRecord
+}
+
 type Hub struct {
 	Endpoint  string `yaml:"endpoint" json:"endpoint"`
 	PublicKey string `yaml:"public_key" json:"public_key"`
@@ -78,6 +83,35 @@ func (s *TokenStore) Resolve(token string, now time.Time) (TokenRecord, bool) {
 	}
 	record.ApplyDefaults()
 	return record, true
+}
+
+func (s *TokenStore) Snapshot() []TokenSnapshot {
+	if s == nil {
+		return nil
+	}
+	items := make([]TokenSnapshot, 0, len(s.Tokens))
+	for token, record := range s.Tokens {
+		record.ApplyDefaults()
+		items = append(items, TokenSnapshot{
+			Token:  token,
+			Record: record,
+		})
+	}
+	return items
+}
+
+func (s *TokenStore) EgressByName(name string) (Egress, bool) {
+	name = strings.TrimSpace(name)
+	if s == nil || name == "" {
+		return Egress{}, false
+	}
+	for _, record := range s.Tokens {
+		record.ApplyDefaults()
+		if record.Egress.Name == name {
+			return record.Egress, true
+		}
+	}
+	return Egress{}, false
 }
 
 func (r *TokenRecord) ApplyDefaults() {

@@ -6,6 +6,10 @@
 
 ```powershell
 cd c:\Users\xuotq\zongheng-vpn
+pushd hub/admin/web
+npm ci
+npm run build:embed
+popd
 $env:GOOS="linux"
 $env:GOARCH="amd64"
 go build -o dist/linux-amd64/zhhub ./hub
@@ -25,6 +29,7 @@ Remove-Item Env:\GOOS, Env:\GOARCH
 ```text
 /opt/zongheng/zhhub/zhhub
 /opt/zongheng/zhhub/tokens.yaml
+/opt/zongheng/zhhub/admin.db
 ```
 
 > 2026-06-11 已完成 `dxhub` → `zhhub` 迁移:生产 unit 为 `zhhub.service`,二进制与 tokens 在 `/opt/zongheng/zhhub/`,环境变量全部 `ZHHUB_*`,控制面 key `/root/.ssh/zhandroid_control_hub`,监听 `0.0.0.0:18080`。旧 dx 服务 / 目录 / key 已归档到 Hub `/root/dx-attic-20260611/`(可回滚)。详见 [2026-06-11-dxhub-to-zhhub-cutover.md](../../90-history/worklogs/2026-06-11-dxhub-to-zhhub-cutover.md)。
@@ -39,9 +44,24 @@ ZHHUB_ANDROID_CONTROL_KNOWN_HOSTS=/root/.ssh/zhandroid_control_known_hosts
 ZHHUB_ANDROID_CONTROL_HOST_KEY_POLICY=accept-new
 ZHHUB_ANDROID_CARRIER_CACHE_SECONDS=300
 ZHHUB_TOKEN_LEASE_SECONDS=30
+ZHHUB_ADMIN_ENABLED=1
+ZHHUB_ADMIN_LISTEN=127.0.0.1:18100
+ZHHUB_ADMIN_DB=/opt/zongheng/zhhub/admin.db
+ZHHUB_ADMIN_PUBLIC_HOST=panel.jp-proxy.ruichao.dev
+ZHHUB_ADMIN_USER=admin
+ZHHUB_ADMIN_PASSWORD_HASH=<argon2id-phc-hash>
+ZHHUB_ADMIN_REVERSE_HEALTH_URL=http://10.66.0.1:18081/debug/session-health
 ```
 
 `ZHHUB_ANDROID_CARRIER_CACHE_SECONDS` 控制 bootstrap 响应里 Android 运营商名的控制面 SSH 探测缓存,默认 300 秒;设为 `0` 可禁用动态探测并使用 token 配置里的显示名。Hub 控制面 SSH 默认用独立 known_hosts 文件和 `accept-new` 策略,首次连接自动记录主机 key,后续若主机 key 变化会阻止连接;紧急回滚可临时把 `ZHHUB_ANDROID_CONTROL_HOST_KEY_POLICY` 设为 `no`。
+
+生成管理员密码 hash:
+
+```powershell
+go run ./hub/cmd/zhhub-admin-hash "change-this-password"
+```
+
+把输出写入 systemd 的 `ZHHUB_ADMIN_PASSWORD_HASH`,不要把明文或 hash 提交到公开仓库。
 
 ## systemd 服务
 
@@ -60,6 +80,13 @@ Environment=ZHHUB_ANDROID_CONTROL_KNOWN_HOSTS=/root/.ssh/zhandroid_control_known
 Environment=ZHHUB_ANDROID_CONTROL_HOST_KEY_POLICY=accept-new
 Environment=ZHHUB_ANDROID_CARRIER_CACHE_SECONDS=300
 Environment=ZHHUB_TOKEN_LEASE_SECONDS=30
+Environment=ZHHUB_ADMIN_ENABLED=1
+Environment=ZHHUB_ADMIN_LISTEN=127.0.0.1:18100
+Environment=ZHHUB_ADMIN_DB=/opt/zongheng/zhhub/admin.db
+Environment=ZHHUB_ADMIN_PUBLIC_HOST=panel.jp-proxy.ruichao.dev
+Environment=ZHHUB_ADMIN_USER=admin
+Environment=ZHHUB_ADMIN_PASSWORD_HASH=<argon2id-phc-hash>
+Environment=ZHHUB_ADMIN_REVERSE_HEALTH_URL=http://10.66.0.1:18081/debug/session-health
 ExecStart=/opt/zongheng/zhhub/zhhub
 Restart=always
 RestartSec=3
@@ -88,14 +115,58 @@ Hub 需要开放：
 
 ```text
 TCP 18080
+TCP 80
+TCP 443
 ```
 
-当前 MVP 先用 HTTP。正式生产建议加 HTTPS 或反向代理。
+`18100/tcp` 不开放给公网,只监听 `127.0.0.1`。`80/443` 由 Caddy 使用,用于 `panel.jp-proxy.ruichao.dev` 自动 HTTPS 和反向代理。
+
+## Caddy 与 Librespeed
+
+控制台公网入口由 Caddy 负责,不使用 Dokku。Caddy 自动签发/续期证书,并通过 `basic_auth` 提供第一层门禁。示例 Caddyfile:
+
+```caddyfile
+panel.jp-proxy.ruichao.dev {
+  basic_auth {
+    admin <caddy-bcrypt-hash>
+  }
+  reverse_proxy 127.0.0.1:18100
+}
+
+:80 {
+  reverse_proxy 127.0.0.1:18000
+}
+```
+
+生成 Caddy Basic Auth hash:
+
+```bash
+caddy hash-password --plaintext 'change-this-basic-auth-password'
+```
+
+现有 `linuxserver/librespeed` 不能继续占用公网 `80/tcp`;部署控制台前应先记录现有容器参数,再迁移到本机端口:
+
+```bash
+docker inspect librespeed > /root/librespeed.inspect.before-admin-panel.json
+docker stop librespeed
+docker rm librespeed
+# 按 inspect 中的 volume/env 重新启动,端口改为:
+# -p 127.0.0.1:18000:80
+```
+
+更新 Caddy 配置前必须验证:
+
+```bash
+caddy validate --config /etc/caddy/Caddyfile
+systemctl reload caddy
+```
 
 ## 验证
 
 ```bash
 curl http://127.0.0.1:18080/healthz
+curl http://127.0.0.1:18100/admin/api/health
+curl -I https://panel.jp-proxy.ruichao.dev/admin/
 ```
 
 预期：

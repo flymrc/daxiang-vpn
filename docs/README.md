@@ -66,6 +66,7 @@ Android 控制面仍保留 WireGuard App:`jp-android-01` 使用 `10.66.0.101`,Hu
 - [Android 出口节点实现](30-implementation/android-egress-agent.md)
 - [Android 出口极致加速研究](30-implementation/android-egress-performance-acceleration.md)
 - [Hub 授权 API MVP](30-implementation/auth-api-mvp.md)
+- [Hub 控制面板实现方案](30-implementation/hub-admin-panel.md)
 - [CLI MVP 实现](30-implementation/cli-mvp-implementation.md)
 - [zhvpn.exe 实现](30-implementation/zhvpn-exe-implementation.md)
 - [zhvpn.exe 本地单例实现计划](30-implementation/client-singleton-plan.md)

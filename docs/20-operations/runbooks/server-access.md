@@ -23,10 +23,12 @@ ssh root@36.50.84.68
 ## Hub 授权 API 服务（zhhub）
 
 - 服务：`zhhub.service`（2026-06-11 从旧 `dxhub.service` 迁移完成，dx→zh 收尾）。
-- 二进制 / tokens：`/opt/zongheng/zhhub/zhhub`、`/opt/zongheng/zhhub/tokens.yaml`。
-- 监听：`0.0.0.0:18080`（HTTP）；提供 `/healthz`、`/api/client/bootstrap`、`/api/client/rotate-ip`。
-- 关键 env：`ZHHUB_TOKENS`、`ZHHUB_LISTEN`、`ZHHUB_ANDROID_CONTROL_KEY=/root/.ssh/zhandroid_control_hub`、`ZHHUB_ANDROID_CONTROL_KNOWN_HOSTS=/root/.ssh/zhandroid_control_known_hosts`、`ZHHUB_ANDROID_CARRIER_CACHE_SECONDS=300`、`ZHHUB_TOKEN_LEASE_SECONDS=30`。
+- 二进制 / tokens / admin DB：`/opt/zongheng/zhhub/zhhub`、`/opt/zongheng/zhhub/tokens.yaml`、`/opt/zongheng/zhhub/admin.db`。
+- 客户端 API 监听：`0.0.0.0:18080`（HTTP）；提供 `/healthz`、`/api/client/bootstrap`、`/api/client/rotate-ip`。
+- 管理控制台监听：`127.0.0.1:18100`；Caddy 对公网提供 `https://panel.jp-proxy.ruichao.dev/admin/` 并反代到本地 listener。
+- 关键 env：`ZHHUB_TOKENS`、`ZHHUB_LISTEN`、`ZHHUB_ADMIN_LISTEN=127.0.0.1:18100`、`ZHHUB_ADMIN_DB=/opt/zongheng/zhhub/admin.db`、`ZHHUB_ADMIN_PASSWORD_HASH`、`ZHHUB_ANDROID_CONTROL_KEY=/root/.ssh/zhandroid_control_hub`、`ZHHUB_ANDROID_CONTROL_KNOWN_HOSTS=/root/.ssh/zhandroid_control_known_hosts`、`ZHHUB_ANDROID_CARRIER_CACHE_SECONDS=300`、`ZHHUB_TOKEN_LEASE_SECONDS=30`。
 - 一键换 IP 依赖 `ZHHUB_ANDROID_CONTROL_KEY` 指向的私钥能登手机控制面 `10.66.0.101:2022`。
+- 管理控制台首层公网门禁由 Caddy `basic_auth` 负责;应用内再用 Argon2id 管理员密码登录。明文密码和 hash 不写入文档。
 - 旧 dx 服务 / 目录 / key 已归档到 Hub `/root/dx-attic-20260611/`（可回滚，确认稳定后再彻底删）。
 
 ## 日本 Mac 出口节点（Deprecated）

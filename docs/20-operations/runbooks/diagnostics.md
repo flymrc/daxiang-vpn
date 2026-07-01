@@ -111,7 +111,27 @@ cat /opt/jp-gateway/wireguard/wg0.conf     # 源配置（事实来源）
 cat /etc/wireguard/wg0.conf                # 运行时配置
 ```
 
-> 注意：`80/tcp` 被 Docker 的 `linuxserver/librespeed` 占用，属正常，不是异常。
+### 1.7 Hub 管理控制台
+
+控制台部署后应由 Caddy 对公网提供 HTTPS,`zhhub` 本身只监听 localhost:
+
+```bash
+systemctl status zhhub.service
+ss -ltnp | grep -E ':(18080|18100)\b'
+curl -s http://127.0.0.1:18100/admin/api/health
+systemctl status caddy
+caddy validate --config /etc/caddy/Caddyfile
+curl -I https://panel.jp-proxy.ruichao.dev/admin/
+```
+
+正常判断:
+
+- `127.0.0.1:18100` 有监听,但公网不应直连 `18100/tcp`。
+- `/admin/api/health` 返回 `{"status":"ok"}`。
+- 公网入口先被 Caddy `basic_auth` 拦截;通过后还需要应用内管理员登录。
+- Caddy 管理 `80/443` 自动 HTTPS;Librespeed 应迁到 `127.0.0.1:18000` 后由 Caddy 反代。
+
+> 历史状态：`80/tcp` 曾由 Docker `linuxserver/librespeed` 直接占用。启用控制台公网 HTTPS 后,`80/443` 应交给 Caddy。
 
 ---
 

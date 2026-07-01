@@ -1,4 +1,6 @@
 dist/
+!hub/admin/web/dist/
+!hub/admin/web/dist/**
 local/
 hub/config/tokens.yaml
 docs/ops/SERVER_ACCESS.md

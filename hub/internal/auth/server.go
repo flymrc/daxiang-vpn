@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -28,6 +29,7 @@ type Server struct {
 	carrierCacheMu  sync.Mutex
 	carrierCacheTTL time.Duration
 	carrierProbe    func(string) string
+	auditSink       func(AuditEvent)
 }
 
 type tokenLease struct {
@@ -44,6 +46,44 @@ type carrierCacheEntry struct {
 	value     string
 	expiresAt time.Time
 }
+
+type AuditEvent struct {
+	OccurredAt time.Time
+	Actor      string
+	SourceIP   string
+	EventType  string
+	Target     string
+	DetailJSON string
+	Result     string
+	ErrorCode  string
+}
+
+type TokenLeaseSnapshot struct {
+	Token     string
+	SourceIP  string
+	SeenAt    time.Time
+	ExpiresAt time.Time
+}
+
+type RotateLockSnapshot struct {
+	Egress    string
+	StartedAt time.Time
+	Until     time.Time
+}
+
+type RotateEgressResult struct {
+	Status            string
+	Egress            string
+	DownSeconds       int
+	RetryAfterSeconds int
+	LockUntil         time.Time
+}
+
+var (
+	ErrInvalidDownSeconds = errors.New("invalid_down_seconds")
+	ErrUnsupportedEgress  = errors.New("unsupported_egress")
+	ErrRotateBusy         = errors.New("rotate_busy")
+)
 
 type bootstrapRequest struct {
 	Token string `json:"token"`
@@ -94,6 +134,14 @@ func (s *Server) Health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (s *Server) SetAuditSink(sink func(AuditEvent)) {
+	s.auditSink = sink
+}
+
+func (s *Server) SetRotateTrigger(trigger func(string, int) error) {
+	s.triggerRotateIP = trigger
+}
+
 func (s *Server) Bootstrap(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method_not_allowed"})
@@ -109,17 +157,46 @@ func (s *Server) Bootstrap(w http.ResponseWriter, r *http.Request) {
 	record, ok := s.store.Resolve(req.Token, time.Now())
 	if !ok {
 		log.Printf("bootstrap 拒绝 src=%s token=%q reason=invalid_token", clientIP(r), maskToken(req.Token))
+		s.audit(AuditEvent{
+			OccurredAt: time.Now(),
+			Actor:      maskToken(req.Token),
+			SourceIP:   clientIP(r),
+			EventType:  "client.bootstrap",
+			Target:     "token:" + maskToken(req.Token),
+			DetailJSON: `{"reason":"invalid_token"}`,
+			Result:     "denied",
+			ErrorCode:  "invalid_token",
+		})
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_token"})
 		return
 	}
 	src := clientIP(r)
 	if !s.claimToken(req.Token, src, time.Now()) {
 		log.Printf("bootstrap 拒绝 src=%s token=%q client=%s reason=token_in_use", src, maskToken(req.Token), record.ClientName)
+		s.audit(AuditEvent{
+			OccurredAt: time.Now(),
+			Actor:      record.ClientName,
+			SourceIP:   src,
+			EventType:  "client.bootstrap",
+			Target:     "token:" + maskToken(req.Token),
+			DetailJSON: `{"reason":"token_in_use"}`,
+			Result:     "denied",
+			ErrorCode:  "token_in_use",
+		})
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "token_in_use"})
 		return
 	}
 
 	log.Printf("bootstrap 通过 src=%s token=%q client=%s egress=%s", src, maskToken(req.Token), record.ClientName, record.Egress.Name)
+	s.audit(AuditEvent{
+		OccurredAt: time.Now(),
+		Actor:      record.ClientName,
+		SourceIP:   src,
+		EventType:  "client.bootstrap",
+		Target:     "token:" + maskToken(req.Token),
+		DetailJSON: fmt.Sprintf(`{"egress":%q}`, record.Egress.Name),
+		Result:     "ok",
+	})
 	writeJSON(w, http.StatusOK, bootstrapResponse{
 		Client:     clientResponse{Name: record.ClientName},
 		Hub:        record.Hub,
@@ -247,6 +324,52 @@ func (s *Server) claimToken(token string, sourceIP string, now time.Time) bool {
 	return true
 }
 
+func (s *Server) TokenLeasesSnapshot(now time.Time) []TokenLeaseSnapshot {
+	if s == nil {
+		return nil
+	}
+	s.tokenLeasesMu.Lock()
+	defer s.tokenLeasesMu.Unlock()
+
+	leases := make([]TokenLeaseSnapshot, 0, len(s.tokenLeases))
+	for token, lease := range s.tokenLeases {
+		expiresAt := time.Time{}
+		if s.tokenLeaseTTL > 0 {
+			expiresAt = lease.seenAt.Add(s.tokenLeaseTTL)
+			if now.After(expiresAt) {
+				continue
+			}
+		}
+		leases = append(leases, TokenLeaseSnapshot{
+			Token:     token,
+			SourceIP:  lease.sourceIP,
+			SeenAt:    lease.seenAt,
+			ExpiresAt: expiresAt,
+		})
+	}
+	return leases
+}
+
+func (s *Server) RotateLocksSnapshot(now time.Time) []RotateLockSnapshot {
+	if s == nil {
+		return nil
+	}
+	s.rotateLocksMu.Lock()
+	defer s.rotateLocksMu.Unlock()
+
+	locks := make([]RotateLockSnapshot, 0, len(s.rotateLocks))
+	for egress, lock := range s.rotateLocks {
+		if now.Before(lock.until) {
+			locks = append(locks, RotateLockSnapshot{
+				Egress:    egress,
+				StartedAt: lock.startedAt,
+				Until:     lock.until,
+			})
+		}
+	}
+	return locks
+}
+
 func tokenLeaseTTLFromEnv() time.Duration {
 	text := strings.TrimSpace(os.Getenv("ZHHUB_TOKEN_LEASE_SECONDS"))
 	if text == "" {
@@ -301,6 +424,16 @@ func (s *Server) RotateIP(w http.ResponseWriter, r *http.Request) {
 		req.DownSeconds = 8
 	}
 	if req.DownSeconds < 1 || req.DownSeconds > rotateDownSecondsMax {
+		s.audit(AuditEvent{
+			OccurredAt: time.Now(),
+			Actor:      maskToken(req.Token),
+			SourceIP:   clientIP(r),
+			EventType:  "client.rotate_ip",
+			Target:     "egress:unknown",
+			DetailJSON: fmt.Sprintf(`{"down_seconds":%d}`, req.DownSeconds),
+			Result:     "denied",
+			ErrorCode:  "invalid_down_seconds",
+		})
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_down_seconds"})
 		return
 	}
@@ -308,45 +441,130 @@ func (s *Server) RotateIP(w http.ResponseWriter, r *http.Request) {
 	record, ok := s.store.Resolve(req.Token, time.Now())
 	if !ok {
 		log.Printf("rotate-ip 拒绝 src=%s token=%q reason=invalid_token", clientIP(r), maskToken(req.Token))
+		s.audit(AuditEvent{
+			OccurredAt: time.Now(),
+			Actor:      maskToken(req.Token),
+			SourceIP:   clientIP(r),
+			EventType:  "client.rotate_ip",
+			Target:     "egress:unknown",
+			DetailJSON: `{"reason":"invalid_token"}`,
+			Result:     "denied",
+			ErrorCode:  "invalid_token",
+		})
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_token"})
 		return
 	}
-	if record.Egress.Name != "jp-android-01" {
+	result, err := s.RotateEgress(record.Egress, req.DownSeconds)
+	if errors.Is(err, ErrUnsupportedEgress) {
 		log.Printf("rotate-ip 拒绝 src=%s token=%q client=%s egress=%s reason=unsupported_egress", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name)
+		s.audit(AuditEvent{
+			OccurredAt: time.Now(),
+			Actor:      record.ClientName,
+			SourceIP:   clientIP(r),
+			EventType:  "client.rotate_ip",
+			Target:     "egress:" + record.Egress.Name,
+			DetailJSON: `{"reason":"unsupported_egress"}`,
+			Result:     "denied",
+			ErrorCode:  "unsupported_egress",
+		})
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported_egress"})
 		return
 	}
-
-	lock, retryAfterSeconds, ok := s.tryBeginRotate(record.Egress.Name, req.DownSeconds, time.Now())
-	if !ok {
-		log.Printf("rotate-ip 跳过 src=%s token=%q client=%s egress=%s reason=busy retry_after_seconds=%d", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name, retryAfterSeconds)
+	if errors.Is(err, ErrRotateBusy) {
+		log.Printf("rotate-ip 跳过 src=%s token=%q client=%s egress=%s reason=busy retry_after_seconds=%d", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name, result.RetryAfterSeconds)
+		s.audit(AuditEvent{
+			OccurredAt: time.Now(),
+			Actor:      record.ClientName,
+			SourceIP:   clientIP(r),
+			EventType:  "client.rotate_ip",
+			Target:     "egress:" + record.Egress.Name,
+			DetailJSON: fmt.Sprintf(`{"down_seconds":%d,"retry_after_seconds":%d}`, req.DownSeconds, result.RetryAfterSeconds),
+			Result:     "busy",
+			ErrorCode:  "rotate_busy",
+		})
 		writeJSON(w, http.StatusConflict, rotateIPResponse{
 			Status:            "busy",
 			Egress:            record.Egress.Name,
 			DownSeconds:       req.DownSeconds,
 			Message:           "换 IP 正在进行中，请稍后再试",
-			RetryAfterSeconds: retryAfterSeconds,
+			RetryAfterSeconds: result.RetryAfterSeconds,
 		})
 		return
+	}
+	if err != nil {
+		log.Printf("rotate-ip 失败 src=%s token=%q client=%s egress=%s err=%v", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name, err)
+		s.audit(AuditEvent{
+			OccurredAt: time.Now(),
+			Actor:      record.ClientName,
+			SourceIP:   clientIP(r),
+			EventType:  "client.rotate_ip",
+			Target:     "egress:" + record.Egress.Name,
+			DetailJSON: fmt.Sprintf(`{"down_seconds":%d}`, req.DownSeconds),
+			Result:     "error",
+			ErrorCode:  "control_failed",
+		})
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "control_failed"})
+		return
+	}
+
+	log.Printf("rotate-ip 触发 src=%s token=%q client=%s egress=%s down_seconds=%d lock_until=%s", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name, req.DownSeconds, result.LockUntil.Format(time.RFC3339))
+	s.audit(AuditEvent{
+		OccurredAt: time.Now(),
+		Actor:      record.ClientName,
+		SourceIP:   clientIP(r),
+		EventType:  "client.rotate_ip",
+		Target:     "egress:" + record.Egress.Name,
+		DetailJSON: fmt.Sprintf(`{"down_seconds":%d,"lock_until":%q}`, req.DownSeconds, result.LockUntil.Format(time.RFC3339)),
+		Result:     "ok",
+	})
+	writeJSON(w, http.StatusOK, rotateIPResponse{
+		Status:      "triggered",
+		Egress:      record.Egress.Name,
+		DownSeconds: req.DownSeconds,
+	})
+}
+
+func (s *Server) RotateEgress(egress Egress, downSeconds int) (RotateEgressResult, error) {
+	if downSeconds == 0 {
+		downSeconds = 8
+	}
+	if downSeconds < 1 || downSeconds > rotateDownSecondsMax {
+		return RotateEgressResult{DownSeconds: downSeconds}, ErrInvalidDownSeconds
+	}
+	if egress.Name != "jp-android-01" {
+		return RotateEgressResult{Egress: egress.Name, DownSeconds: downSeconds}, ErrUnsupportedEgress
+	}
+
+	lock, retryAfterSeconds, ok := s.tryBeginRotate(egress.Name, downSeconds, time.Now())
+	if !ok {
+		return RotateEgressResult{
+			Status:            "busy",
+			Egress:            egress.Name,
+			DownSeconds:       downSeconds,
+			RetryAfterSeconds: retryAfterSeconds,
+			LockUntil:         lock.until,
+		}, ErrRotateBusy
 	}
 
 	trigger := s.triggerRotateIP
 	if trigger == nil {
 		trigger = triggerAndroidRotateIP
 	}
-	if err := trigger(record.Egress.ManagementAddr, req.DownSeconds); err != nil {
-		s.releaseRotate(record.Egress.Name, lock)
-		log.Printf("rotate-ip 失败 src=%s token=%q client=%s egress=%s err=%v", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name, err)
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "control_failed"})
-		return
+	if err := trigger(egress.ManagementAddr, downSeconds); err != nil {
+		s.releaseRotate(egress.Name, lock)
+		return RotateEgressResult{
+			Status:      "error",
+			Egress:      egress.Name,
+			DownSeconds: downSeconds,
+		}, err
 	}
 
-	log.Printf("rotate-ip 触发 src=%s token=%q client=%s egress=%s down_seconds=%d lock_until=%s", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name, req.DownSeconds, lock.until.Format(time.RFC3339))
-	writeJSON(w, http.StatusOK, rotateIPResponse{
+	return RotateEgressResult{
 		Status:      "triggered",
-		Egress:      record.Egress.Name,
-		DownSeconds: req.DownSeconds,
-	})
+		Egress:      egress.Name,
+		DownSeconds: downSeconds,
+		LockUntil:   lock.until,
+	}, nil
 }
 
 func (s *Server) tryBeginRotate(egress string, downSeconds int, now time.Time) (rotateLock, int, bool) {
@@ -506,4 +724,14 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+func (s *Server) audit(event AuditEvent) {
+	if s == nil || s.auditSink == nil {
+		return
+	}
+	if event.OccurredAt.IsZero() {
+		event.OccurredAt = time.Now()
+	}
+	s.auditSink(event)
 }
