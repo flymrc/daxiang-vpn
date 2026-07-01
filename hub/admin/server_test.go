@@ -117,6 +117,25 @@ func TestAdminEgressHealth(t *testing.T) {
 	}
 }
 
+func TestAdminUIServesIndexWithoutRedirect(t *testing.T) {
+	server := newTestServer(t)
+
+	for _, path := range []string{"/admin/", "/admin/tokens"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		server.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s status = %d location=%q body=%s", path, rec.Code, rec.Header().Get("Location"), rec.Body.String())
+		}
+		if got := rec.Header().Get("Location"); got != "" {
+			t.Fatalf("%s unexpected redirect location %q", path, got)
+		}
+		if !strings.Contains(rec.Body.String(), `<div id="app"></div>`) {
+			t.Fatalf("%s did not serve app index", path)
+		}
+	}
+}
+
 func newTestServer(t *testing.T, opts ...func(*Config)) *Server {
 	t.Helper()
 	passwordHash, err := HashPassword("secret-password")

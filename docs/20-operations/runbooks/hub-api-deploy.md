@@ -135,21 +135,13 @@ jp-proxy.ruichao.dev A 36.50.84.68
 
 ## Caddy 与 Librespeed
 
-控制台公网入口由 Caddy 负责,不使用 Dokku。Caddy 自动签发/续期证书,并通过 `basic_auth` 提供第一层门禁。示例 Caddyfile:
+控制台公网入口由 Caddy 负责,不使用 Dokku。Caddy 自动签发/续期证书并反代到本机 admin listener。示例 Caddyfile:
 
 ```caddyfile
 jp-proxy.ruichao.dev {
-  basic_auth {
-    admin <caddy-bcrypt-hash>
-  }
+  encode gzip zstd
   reverse_proxy 127.0.0.1:18100
 }
-```
-
-生成 Caddy Basic Auth hash:
-
-```bash
-caddy hash-password --plaintext 'change-this-basic-auth-password'
 ```
 
 现有 `linuxserver/librespeed` 不能继续占用公网 `80/tcp`;控制台上线将直接替代原测速页。部署前先记录现有容器参数,再取消自动重启并停止容器,方便必要时回滚:

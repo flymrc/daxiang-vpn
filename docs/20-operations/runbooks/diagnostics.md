@@ -128,9 +128,9 @@ curl -I https://jp-proxy.ruichao.dev/admin/
 
 - `127.0.0.1:18100` 有监听,但公网不应直连 `18100/tcp`。
 - `/admin/api/health` 返回 `{"status":"ok"}`。
-- 公网入口先被 Caddy `basic_auth` 拦截;通过后还需要应用内管理员登录。
+- 公网入口由 Caddy 反代;控制台访问后应进入应用内管理员登录页。
 - Caddy 管理 `80/443` 自动 HTTPS;控制台上线后替代原 Librespeed 测速页。
-- 当前 DNS 仍可走 Cloudflare 代理;无 Basic Auth 访问 `https://jp-proxy.ruichao.dev/admin/` 预期返回 `401 Unauthorized`。
+- 当前 DNS 仍可走 Cloudflare 代理;访问 `https://jp-proxy.ruichao.dev/admin/` 预期返回前端登录页。
 
 > 历史状态：`80/tcp` 曾由 Docker `linuxserver/librespeed` 直接占用。2026-07-01 起该容器已停止并取消自动重启,`80/443` 交给 Caddy。
 

@@ -1,10 +1,12 @@
 package admin
 
 import (
+	"bytes"
 	"embed"
 	"io/fs"
 	"net/http"
 	"strings"
+	"time"
 )
 
 //go:embed web/dist/*
@@ -22,13 +24,22 @@ func (s *Server) handleUI(w http.ResponseWriter, r *http.Request) {
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/admin/")
 	if path == "" {
-		path = "index.html"
+		serveUIFile(w, r, static, "index.html")
+		return
 	}
-	if _, err := static.Open(path); err != nil {
-		r.URL.Path = "/index.html"
-		http.FileServer(http.FS(static)).ServeHTTP(w, r)
+	if info, err := fs.Stat(static, path); err != nil || info.IsDir() {
+		serveUIFile(w, r, static, "index.html")
 		return
 	}
 	r.URL.Path = "/" + path
 	http.FileServer(http.FS(static)).ServeHTTP(w, r)
+}
+
+func serveUIFile(w http.ResponseWriter, r *http.Request, static fs.FS, name string) {
+	data, err := fs.ReadFile(static, name)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "ui_unavailable", "")
+		return
+	}
+	http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(data))
 }

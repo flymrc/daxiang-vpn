@@ -25,11 +25,12 @@
 
 首轮提交后继续完成了生产部署:
 
-- 生成 Caddy Basic Auth 与应用内 admin 两套随机口令;明文只保存到本机 `~/.zhhub/hub-admin-credentials-20260701.txt` 和 Hub `/root/hub-admin-credentials-20260701.txt`。
+- 生成应用内 admin 随机口令;明文只保存到本机 `~/.zhhub/hub-admin-credentials-20260701.txt` 和 Hub `/root/hub-admin-credentials-20260701.txt`。
 - 备份旧 `/opt/zongheng/zhhub/zhhub` 与 `zhhub.service`,替换为带 admin 面板的新二进制。
 - 新增 systemd drop-in `20-admin-panel.conf`,启用 `127.0.0.1:18100` admin listener。
 - 备份 `librespeed` inspect,将容器 `restart` 改为 `no` 并停止,容器保留用于回滚。
-- 安装 Caddy,开放 UFW `80/tcp` 与 `443/tcp`,配置 `jp-proxy.ruichao.dev` 反代到 `127.0.0.1:18100`。
+- 安装 Caddy,开放 UFW `80/tcp` 与 `443/tcp`,配置 `jp-proxy.ruichao.dev` 反代到 `127.0.0.1:18100`;随后按最新决策移除 Caddy Basic Auth,只保留应用内登录。
+- 移除 Basic Auth 后轮换应用内 admin 密码,凭据文件只保留 `app_admin_*` 项。
 - Caddy 通过 HTTP-01 成功签发 `jp-proxy.ruichao.dev` 证书;当前 DNS 仍走 Cloudflare 代理,但源站 `80/443` 已由 Caddy 接管。
 
 ## 验证
@@ -44,4 +45,5 @@
 - Python Playwright 验证 `换 IP` 保持启用,未实现的 `重连隧道`、`控制台 SSH`、token 操作和断开会话按钮为 disabled。
 - 总览移除静态“数据通路”拓扑卡,出口健康改为按出口节点列表渲染,避免多出口场景下误导。
 - 控制台公网域名收敛为 `jp-proxy.ruichao.dev`,用于直接替代原测速页入口。
-- 部署后验证: `zhhub` 和 `caddy` 均 active;`127.0.0.1:18100/admin/api/health` 返回 ok;公网 `https://jp-proxy.ruichao.dev/admin/` 未带 Basic Auth 返回 401;带 Basic Auth 后应用登录和 `/admin/api/auth/me` 返回 200;公网 `18100/tcp` 不可达;`librespeed` 为 exited 且 `restart=no`。
+- 部署后验证: `zhhub` 和 `caddy` 均 active;`127.0.0.1:18100/admin/api/health` 返回 ok;公网 `https://jp-proxy.ruichao.dev/admin/` 返回前端登录页;应用登录和 `/admin/api/auth/me` 返回 200;公网 `18100/tcp` 不可达;`librespeed` 为 exited 且 `restart=no`。
+- 修复 `/admin/` 前端入口重定向循环:Go `http.FileServer` 会把 `/index.html` 规范化为 `./`,导致浏览器 `ERR_TOO_MANY_REDIRECTS`;现在 `/admin/` 和 SPA 子路径直接返回嵌入的 `index.html`。

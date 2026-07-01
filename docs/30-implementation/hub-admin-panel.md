@@ -6,7 +6,7 @@ Hub 控制面板用于运维查看和少量安全操作,不是终端用户客户
 
 - 总览、授权码、在线租约、出口节点、操作日志。
 - Android `jp-android-01` 换 IP。
-- 双层门禁:Caddy `basic_auth` + 应用内管理员登录。
+- Caddy 负责 HTTPS 和反代;应用内管理员登录负责控制台门禁。
 - OpenAPI 合同、SQLite model、Go/TypeScript codegen。
 
 v1 不做 token 创建/删除,也不自动改 WireGuard peer 配置。
@@ -16,7 +16,7 @@ v1 不做 token 创建/删除,也不自动改 WireGuard peer 配置。
 ```text
 Browser
   -> HTTPS jp-proxy.ruichao.dev
-  -> Caddy basic_auth
+  -> Caddy reverse_proxy
   -> reverse_proxy 127.0.0.1:18100
   -> zhhub admin /admin/
 ```
@@ -50,7 +50,7 @@ SQLite 默认路径:`/opt/zongheng/zhhub/admin.db`。表:
 
 ## 安全边界
 
-- Caddy `basic_auth` 是公网第一层门禁。
+- Caddy 负责公网 HTTPS 入口和反向代理。
 - 应用登录使用 Argon2id PHC hash,由 `ZHHUB_ADMIN_PASSWORD_HASH` 注入。
 - session cookie 为 HttpOnly + Secure + SameSite Strict。
 - 非 GET admin API 要求 `X-CSRF-Token`。
