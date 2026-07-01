@@ -30,7 +30,8 @@ ssh -i ~/.ssh/zongheng_server root@36.50.84.68
 - 客户端 API 监听：`0.0.0.0:18080`（HTTP 后端）；提供 `/healthz`、`/api/client/bootstrap`、`/api/client/rotate-ip`。公网 HTTPS 入口是 Caddy `https://jp-proxy.ruichao.dev/api/client/*`;公网 `18080/tcp` 仅作老客户端迁移期兼容,新客户端验证稳定后应从 ufw 收口。
 - WireGuard 客户端密钥迁移：2026-07-01 生产 `zhhub` 已支持客户端上报 `wireguard_public_key`,并用 `wg set wg0 peer <public_key> allowed-ips <client_ip>/32` 应用 peer;新协议响应不再下发 `wireguard.private_key`。老客户端未上报公钥时仍走 legacy 私钥响应,待新客户端分发后清理 tokens。
 - P0-2 上线备份：`/root/zongheng-backups/20260701091751-p0-local-wg-key`；对应 `zhhub` SHA256 `33e6b88b281b04cd3e0430d16ae3be7becbd0452f3a087fce4e0f5cd355f9e7d`。
-- admin SQLite 容量防护上线备份：`/root/zongheng-backups/20260701125316-admin-sqlite-retention`；当前 `zhhub` SHA256 `aff3855a6ae5bfd53fc62dc2342ba397d84c7444dde47d0da550735d92b6baf2`。
+- admin SQLite 容量防护上线备份：`/root/zongheng-backups/20260701125316-admin-sqlite-retention`；对应 `zhhub` SHA256 `aff3855a6ae5bfd53fc62dc2342ba397d84c7444dde47d0da550735d92b6baf2`。
+- admin 换 IP 锁 UI 上线备份：`/root/zongheng-backups/20260701131306-admin-rotate-lock-ui`；当前 `zhhub` SHA256 `6e33908ed10e54326e1f23cb958b524af3e8bee7e83e891ba661582fb61da1d3`。
 - 管理控制台监听：`127.0.0.1:18100`；Caddy 对公网提供 `https://jp-proxy.ruichao.dev/admin/` 并反代到本地 listener,根路径 `/` 和未知路径都返回 404。
 - 关键 env：`ZHHUB_TOKENS`、`ZHHUB_LISTEN`、`ZHHUB_ADMIN_LISTEN=127.0.0.1:18100`、`ZHHUB_ADMIN_DB=/opt/zongheng/zhhub/admin.db`、`ZHHUB_ADMIN_PASSWORD_HASH`、`ZHHUB_ADMIN_AUDIT_RETENTION_DAYS=90`、`ZHHUB_ADMIN_AUDIT_MAX_ROWS=50000`、`ZHHUB_ADMIN_LOGIN_ATTEMPT_RETENTION_DAYS=7`、`ZHHUB_ADMIN_LOGIN_ATTEMPT_MAX_ROWS=10000`、`ZHHUB_ADMIN_DB_MAINTENANCE_MINUTES=60`、`ZHHUB_ANDROID_CONTROL_KEY=/root/.ssh/zhandroid_control_hub`、`ZHHUB_ANDROID_CONTROL_KNOWN_HOSTS=/root/.ssh/zhandroid_control_known_hosts`、`ZHHUB_ANDROID_CARRIER_CACHE_SECONDS=300`、`ZHHUB_TOKEN_LEASE_SECONDS=30`。
 - 一键换 IP 依赖 `ZHHUB_ANDROID_CONTROL_KEY` 指向的私钥能登手机控制面 `10.66.0.101:2022`。

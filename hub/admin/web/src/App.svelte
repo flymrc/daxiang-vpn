@@ -319,8 +319,14 @@
     }, 2800);
   }
 
-  function openRotate(id: string) {
-    rotateTarget = id;
+  function openRotate(node: EgressSummary) {
+    const lockedUntil = activeRotateLockUntil(node);
+    if (lockedUntil) {
+      showToast(`换 IP 正在进行中，${remainingRetryText(lockedUntil)}`);
+      void refreshAll();
+      return;
+    }
+    rotateTarget = node.id;
     modal = "rotate";
   }
 
@@ -389,6 +395,22 @@
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return value;
     return parsed.toLocaleString();
+  }
+
+  function activeRotateLockUntil(node: EgressSummary) {
+    const value = node.rotate_lock_until;
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.getTime() > Date.now() ? value : null;
+  }
+
+  function remainingRetryText(value: string) {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "请稍后再试";
+    const seconds = Math.max(1, Math.ceil((parsed.getTime() - Date.now()) / 1000));
+    if (seconds < 60) return `约 ${seconds} 秒后可再试`;
+    return `约 ${Math.ceil(seconds / 60)} 分钟后可再试`;
   }
 
   function timeOnly(value?: string | null) {
@@ -725,7 +747,7 @@
                       <div class="note mono node-sub">日本手机出口 · Rakuten Mobile · zhreverse TCP/yamux</div>
                     </div>
                   </div>
-                  <div class="fx ac gap8"><button class="btn primary" on:click={() => openRotate(node.id)}>换 IP</button><button class="btn" disabled>重连隧道</button><button class="btn ghost" disabled>控制台 SSH</button></div>
+                  <div class="fx ac gap8"><button class="btn primary" on:click={() => openRotate(node)}>换 IP</button><button class="btn" disabled>重连隧道</button><button class="btn ghost" disabled>控制台 SSH</button></div>
                 </div>
                 <div class="kv flat">
                   <div class="kvc"><div class="kvl">当前出口 IP</div><div class="kvv mono">{exitIP(node)}</div></div>
