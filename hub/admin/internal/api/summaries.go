@@ -17,6 +17,14 @@ import (
 
 func (s *Server) tokenSummaries() []generated.TokenSummary {
 	now := time.Now()
+	lastActive := map[string]time.Time{}
+	if s.clientAuth != nil {
+		for _, lease := range s.clientAuth.TokenLeasesSnapshot(now) {
+			if !lease.SeenAt.IsZero() {
+				lastActive[lease.Token] = lease.SeenAt
+			}
+		}
+	}
 	snapshots := s.tokens.Snapshot()
 	rows := make([]generated.TokenSummary, 0, len(snapshots))
 	for _, item := range snapshots {
@@ -27,16 +35,21 @@ func (s *Server) tokenSummaries() []generated.TokenSummary {
 			value := record.ExpiresAt
 			expires = &value
 		}
+		var lastActiveAt *time.Time
+		if seenAt, ok := lastActive[item.Token]; ok {
+			lastActiveAt = &seenAt
+		}
 		rows = append(rows, generated.TokenSummary{
-			Id:          tokenID(item.Token),
-			MaskedToken: maskToken(item.Token),
-			ClientName:  record.ClientName,
-			Enabled:     record.Enabled,
-			Status:      status,
-			EgressId:    record.Egress.Name,
-			EgressName:  record.Egress.DisplayName,
-			WgAddress:   record.WireGuard.Address,
-			ExpiresAt:   expires,
+			Id:           tokenID(item.Token),
+			MaskedToken:  maskToken(item.Token),
+			ClientName:   record.ClientName,
+			Enabled:      record.Enabled,
+			Status:       status,
+			EgressId:     record.Egress.Name,
+			EgressName:   record.Egress.DisplayName,
+			WgAddress:    record.WireGuard.Address,
+			ExpiresAt:    expires,
+			LastActiveAt: lastActiveAt,
 		})
 	}
 	sort.Slice(rows, func(i, j int) bool {

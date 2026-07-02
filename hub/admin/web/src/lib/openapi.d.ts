@@ -252,6 +252,8 @@ export interface components {
             egress_name: string;
             wg_address: string;
             expires_at: string | null;
+            /** Format: date-time */
+            last_active_at: string | null;
         };
         TokenSecretResponse: {
             id: string;

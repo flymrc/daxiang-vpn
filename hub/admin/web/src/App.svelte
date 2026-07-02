@@ -6,6 +6,8 @@
   type View = "overview" | "tokens" | "egress" | "clients" | "logs";
   type ThemeName = "深空蓝" | "石墨灰" | "午夜紫" | "浅色";
   type ExitIPRow = { label?: string; value: string; muted?: boolean };
+  type TokenSortKey = "masked_token" | "client_name" | "status" | "egress_id" | "wg_address" | "expires_at" | "last_active";
+  type SortDirection = "asc" | "desc";
 
   const api = new AdminApi();
 
@@ -102,6 +104,31 @@
     logs: "logs",
     events: "logs",
   };
+  const tokenSortLabels: Record<TokenSortKey, string> = {
+    masked_token: "授权码",
+    client_name: "客户端",
+    status: "状态",
+    egress_id: "出口",
+    wg_address: "WG 地址",
+    expires_at: "到期",
+    last_active: "最近活跃",
+  };
+  const defaultTokenSortDirections: Record<TokenSortKey, SortDirection> = {
+    masked_token: "asc",
+    client_name: "asc",
+    status: "asc",
+    egress_id: "asc",
+    wg_address: "asc",
+    expires_at: "asc",
+    last_active: "desc",
+  };
+  const tokenStatusOrder: Record<TokenSummary["status"], number> = {
+    enabled: 1,
+    expiring: 2,
+    disabled: 3,
+    expired: 4,
+  };
+  const tokenSortCollator = new Intl.Collator("zh-Hans-CN", { numeric: true, sensitivity: "base" });
 
   const demoOverview: Overview = {
     hub: { public_ip: "36.50.84.68", wg_ip: "10.66.0.1", version: "zhhub v0.4.2", uptime_seconds: 18 * 86400 + 7 * 3600 },
@@ -178,6 +205,8 @@
   let revealingTokenID = "";
   let revealingExitIPID = "";
   let tokenPage = 1;
+  let tokenSortKey: TokenSortKey = "last_active";
+  let tokenSortDirection: SortDirection = "desc";
 
   onMount(() => {
     view = readHashView();
@@ -222,11 +251,13 @@
   $: displayEgress = egress.length > 0 ? egress : demoEgress;
   $: displayEvents = events.length > 0 ? events : demoEvents;
   $: enabledTokens = displayTokens.filter((token) => token.enabled).length;
-  $: tokenPageCount = Math.max(1, Math.ceil(displayTokens.length / tokenPageSize));
+  $: tokenLastActiveByID = buildTokenLastActiveByID(displayLeases);
+  $: sortedTokens = sortTokens(displayTokens, tokenLastActiveByID, tokenSortKey, tokenSortDirection);
+  $: tokenPageCount = Math.max(1, Math.ceil(sortedTokens.length / tokenPageSize));
   $: if (tokenPage > tokenPageCount) tokenPage = tokenPageCount;
-  $: tokenRangeStart = displayTokens.length === 0 ? 0 : (tokenPage - 1) * tokenPageSize + 1;
-  $: tokenRangeEnd = Math.min(displayTokens.length, tokenPage * tokenPageSize);
-  $: pagedTokens = displayTokens.slice(Math.max(0, tokenRangeStart - 1), tokenRangeEnd);
+  $: tokenRangeStart = sortedTokens.length === 0 ? 0 : (tokenPage - 1) * tokenPageSize + 1;
+  $: tokenRangeEnd = Math.min(sortedTokens.length, tokenPage * tokenPageSize);
+  $: pagedTokens = sortedTokens.slice(Math.max(0, tokenRangeStart - 1), tokenRangeEnd);
   $: tokenPageItems = pageItems(tokenPage, tokenPageCount);
   $: stats = [
     { label: "在线客户端", value: String(displayOverview.stats.active_lease_count || displayLeases.length), sub: `共 ${enabledTokens} 个启用授权码`, dot: "ok" },
@@ -397,6 +428,87 @@
     return current === name ? "on" : "";
   }
 
+  function sortTokenTable(key: TokenSortKey) {
+    if (tokenSortKey === key) {
+      tokenSortDirection = tokenSortDirection === "asc" ? "desc" : "asc";
+    } else {
+      tokenSortKey = key;
+      tokenSortDirection = defaultTokenSortDirections[key];
+    }
+    tokenPage = 1;
+  }
+
+  function tokenSortAria(key: TokenSortKey) {
+    if (tokenSortKey !== key) return undefined;
+    return tokenSortDirection === "asc" ? "ascending" : "descending";
+  }
+
+  function tokenSortIcon(key: TokenSortKey) {
+    if (tokenSortKey !== key) return "↕";
+    return tokenSortDirection === "asc" ? "↑" : "↓";
+  }
+
+  function tokenSortTitle(key: TokenSortKey) {
+    const next = tokenSortKey === key ? (tokenSortDirection === "asc" ? "desc" : "asc") : defaultTokenSortDirections[key];
+    return `按${tokenSortLabels[key]}${next === "asc" ? "升序" : "降序"}排序`;
+  }
+
+  function buildTokenLastActiveByID(rows: LeaseSummary[]) {
+    const result: Record<string, string> = {};
+    for (const row of rows) {
+      if (row.seen_at) result[row.token_id] = row.seen_at;
+    }
+    return result;
+  }
+
+  function sortTokens(rows: TokenSummary[], lastActiveByID: Record<string, string>, key: TokenSortKey, direction: SortDirection) {
+    const factor = direction === "asc" ? 1 : -1;
+    return [...rows].sort((left, right) => {
+      const selected = compareTokenRows(left, right, key, lastActiveByID);
+      if (selected !== 0) return selected * factor;
+      return tokenSortCollator.compare(left.masked_token, right.masked_token) || tokenSortCollator.compare(left.client_name, right.client_name);
+    });
+  }
+
+  function compareTokenRows(left: TokenSummary, right: TokenSummary, key: TokenSortKey, lastActiveByID: Record<string, string>) {
+    switch (key) {
+      case "masked_token":
+        return tokenSortCollator.compare(left.masked_token, right.masked_token);
+      case "client_name":
+        return tokenSortCollator.compare(left.client_name, right.client_name);
+      case "status":
+        return compareNumber(tokenStatusOrder[left.status] ?? 99, tokenStatusOrder[right.status] ?? 99);
+      case "egress_id":
+        return tokenSortCollator.compare(left.egress_id, right.egress_id);
+      case "wg_address":
+        return tokenSortCollator.compare(left.wg_address, right.wg_address);
+      case "expires_at":
+        return compareNumber(tokenExpirySortValue(left.expires_at), tokenExpirySortValue(right.expires_at));
+      case "last_active":
+        return compareNumber(tokenLastActiveSortValue(left, lastActiveByID), tokenLastActiveSortValue(right, lastActiveByID));
+    }
+  }
+
+  function compareNumber(left: number, right: number) {
+    if (left === right) return 0;
+    return left < right ? -1 : 1;
+  }
+
+  function tokenExpirySortValue(value?: string | null) {
+    if (!value) return Number.POSITIVE_INFINITY;
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed;
+  }
+
+  function tokenLastActiveSortValue(token: TokenSummary, lastActiveByID: Record<string, string>) {
+    const parsed = new Date(tokenLastActiveAt(token, lastActiveByID) || "").getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+
+  function tokenLastActiveAt(token: TokenSummary, lastActiveByID: Record<string, string>) {
+    return token.last_active_at || lastActiveByID[token.id] || null;
+  }
+
   function statusPill(status: string) {
     if (["online", "enabled", "ok", "triggered"].includes(status)) return "ok";
     if (["busy", "expiring", "degraded"].includes(status)) return "warn";
@@ -431,11 +543,11 @@
     return "idle";
   }
 
-  function tokenLast(token: TokenSummary) {
-    const online = displayLeases.find((lease) => lease.masked_token === token.masked_token || lease.client_name === token.client_name);
-    if (online) return { label: "在线", cls: "ok" };
+  function tokenLast(token: TokenSummary, lastActiveByID: Record<string, string>) {
+    const seenAt = tokenLastActiveAt(token, lastActiveByID);
+    if (seenAt) return { label: `在线 · ${secondsAgo(seenAt)}`, cls: "ok" };
     if (token.status === "expired") return { label: "已过期", cls: "err" };
-    return { label: "3 分钟前", cls: "idle" };
+    return { label: "未接入", cls: "idle" };
   }
 
   function shortDate(value?: string | null) {
@@ -597,6 +709,7 @@
         egress_name: egressName,
         wg_address: `10.66.0.${19 + n}/24`,
         expires_at: expiresAt,
+        last_active_at: null,
       };
     });
   }
@@ -804,10 +917,49 @@
           </div>
           <div class="card flush">
             <table class="tbl">
-              <thead><tr><th>授权码</th><th>客户端</th><th>状态</th><th>出口</th><th>WG 地址</th><th>到期</th><th>最近活跃</th><th class="right">操作</th></tr></thead>
+              <thead>
+                <tr>
+                  <th aria-sort={tokenSortAria("masked_token")}>
+                    <button class="sorthead" type="button" title={tokenSortTitle("masked_token")} on:click={() => sortTokenTable("masked_token")}>
+                      <span>授权码</span><span class={`sortmark ${tokenSortKey === "masked_token" ? "on" : ""}`} aria-hidden="true">{tokenSortIcon("masked_token")}</span>
+                    </button>
+                  </th>
+                  <th aria-sort={tokenSortAria("client_name")}>
+                    <button class="sorthead" type="button" title={tokenSortTitle("client_name")} on:click={() => sortTokenTable("client_name")}>
+                      <span>客户端</span><span class={`sortmark ${tokenSortKey === "client_name" ? "on" : ""}`} aria-hidden="true">{tokenSortIcon("client_name")}</span>
+                    </button>
+                  </th>
+                  <th aria-sort={tokenSortAria("status")}>
+                    <button class="sorthead" type="button" title={tokenSortTitle("status")} on:click={() => sortTokenTable("status")}>
+                      <span>状态</span><span class={`sortmark ${tokenSortKey === "status" ? "on" : ""}`} aria-hidden="true">{tokenSortIcon("status")}</span>
+                    </button>
+                  </th>
+                  <th aria-sort={tokenSortAria("egress_id")}>
+                    <button class="sorthead" type="button" title={tokenSortTitle("egress_id")} on:click={() => sortTokenTable("egress_id")}>
+                      <span>出口</span><span class={`sortmark ${tokenSortKey === "egress_id" ? "on" : ""}`} aria-hidden="true">{tokenSortIcon("egress_id")}</span>
+                    </button>
+                  </th>
+                  <th aria-sort={tokenSortAria("wg_address")}>
+                    <button class="sorthead" type="button" title={tokenSortTitle("wg_address")} on:click={() => sortTokenTable("wg_address")}>
+                      <span>WG 地址</span><span class={`sortmark ${tokenSortKey === "wg_address" ? "on" : ""}`} aria-hidden="true">{tokenSortIcon("wg_address")}</span>
+                    </button>
+                  </th>
+                  <th aria-sort={tokenSortAria("expires_at")}>
+                    <button class="sorthead" type="button" title={tokenSortTitle("expires_at")} on:click={() => sortTokenTable("expires_at")}>
+                      <span>到期</span><span class={`sortmark ${tokenSortKey === "expires_at" ? "on" : ""}`} aria-hidden="true">{tokenSortIcon("expires_at")}</span>
+                    </button>
+                  </th>
+                  <th aria-sort={tokenSortAria("last_active")}>
+                    <button class="sorthead" type="button" title={tokenSortTitle("last_active")} on:click={() => sortTokenTable("last_active")}>
+                      <span>最近活跃</span><span class={`sortmark ${tokenSortKey === "last_active" ? "on" : ""}`} aria-hidden="true">{tokenSortIcon("last_active")}</span>
+                    </button>
+                  </th>
+                  <th class="right">操作</th>
+                </tr>
+              </thead>
               <tbody>
                 {#each pagedTokens as row}
-                  {@const last = tokenLast(row)}
+                  {@const last = tokenLast(row, tokenLastActiveByID)}
                   <tr>
                     <td>
                       <div class="secretline tokenline mono strong">
@@ -842,7 +994,7 @@
             </table>
             {#if tokenPageCount > 1}
               <div class="pager fx ac jb">
-                <div class="note mono">显示 {tokenRangeStart}-{tokenRangeEnd} / {displayTokens.length}</div>
+                <div class="note mono">显示 {tokenRangeStart}-{tokenRangeEnd} / {sortedTokens.length}</div>
                 <div class="fx ac gap6">
                   <button class="btn btnxs ghost" disabled={tokenPage === 1} on:click={() => (tokenPage = Math.max(1, tokenPage - 1))}>上一页</button>
                   {#each tokenPageItems as item}
@@ -1452,6 +1604,47 @@
 
   .tbl th.right {
     text-align: right;
+  }
+
+  .sorthead {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    cursor: pointer;
+  }
+
+  .sorthead:hover {
+    color: var(--tx);
+  }
+
+  .sorthead:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .sortmark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 13px;
+    height: 13px;
+    color: var(--tx3);
+    font-size: 10px;
+    line-height: 1;
+  }
+
+  .sortmark.on {
+    color: var(--accent);
   }
 
   .tbl td {

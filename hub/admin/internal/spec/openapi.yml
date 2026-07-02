@@ -304,7 +304,7 @@ components:
             $ref: '#/components/schemas/TokenSummary'
     TokenSummary:
       type: object
-      required: [id, masked_token, client_name, enabled, status, egress_id, egress_name, wg_address, expires_at]
+      required: [id, masked_token, client_name, enabled, status, egress_id, egress_name, wg_address, expires_at, last_active_at]
       properties:
         id:
           type: string
@@ -325,6 +325,10 @@ components:
           type: string
         expires_at:
           type: string
+          nullable: true
+        last_active_at:
+          type: string
+          format: date-time
           nullable: true
     TokenSecretResponse:
       type: object

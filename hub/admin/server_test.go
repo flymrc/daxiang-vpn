@@ -85,6 +85,9 @@ func TestAdminTokensAreMasked(t *testing.T) {
 	if !strings.Contains(body, "ZH-***01") {
 		t.Fatalf("tokens response did not include masked token: %s", body)
 	}
+	if !strings.Contains(body, `"last_active_at":null`) {
+		t.Fatalf("tokens response did not include last_active_at: %s", body)
+	}
 }
 
 func TestAdminTokenReveal(t *testing.T) {

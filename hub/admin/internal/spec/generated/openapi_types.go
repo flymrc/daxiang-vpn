@@ -176,15 +176,16 @@ type TokenSecretResponse struct {
 
 // TokenSummary defines model for TokenSummary.
 type TokenSummary struct {
-	ClientName  string             `json:"client_name"`
-	EgressId    string             `json:"egress_id"`
-	EgressName  string             `json:"egress_name"`
-	Enabled     bool               `json:"enabled"`
-	ExpiresAt   *string            `json:"expires_at"`
-	Id          string             `json:"id"`
-	MaskedToken string             `json:"masked_token"`
-	Status      TokenSummaryStatus `json:"status"`
-	WgAddress   string             `json:"wg_address"`
+	ClientName   string             `json:"client_name"`
+	EgressId     string             `json:"egress_id"`
+	EgressName   string             `json:"egress_name"`
+	Enabled      bool               `json:"enabled"`
+	ExpiresAt    *string            `json:"expires_at"`
+	Id           string             `json:"id"`
+	LastActiveAt *time.Time         `json:"last_active_at"`
+	MaskedToken  string             `json:"masked_token"`
+	Status       TokenSummaryStatus `json:"status"`
+	WgAddress    string             `json:"wg_address"`
 }
 
 // TokenSummaryStatus defines model for TokenSummary.Status.
