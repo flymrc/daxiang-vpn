@@ -1516,7 +1516,7 @@
   }
 
   .ipcard {
-    grid-column: span 2;
+    min-width: 0;
   }
 
   .ipsecret {
