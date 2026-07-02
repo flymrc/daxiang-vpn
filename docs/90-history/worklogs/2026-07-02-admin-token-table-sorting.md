@@ -34,3 +34,17 @@
 - 未登录访问 `https://jp-proxy.ruichao.dev/admin/api/tokens/not-real/secret` 返回 401。
 - `HEAD https://jp-proxy.ruichao.dev/api/client/bootstrap` 返回预期 405。
 - `journalctl -u zhhub.service --since '2026-07-02 00:48:01'` 未发现 `panic|fatal|failed|error`。
+
+## 部署后资源巡检
+
+2026-07-02 00:55 UTC 只读巡检:
+
+- 整机 uptime 27 天,load average `0.03, 0.01, 0.00`。
+- 内存 total 1.9GiB,used 485MiB,available 1.4GiB,swap 基本未用。
+- 根盘 40G,used 7.0G,available 31G,使用率 19%。
+- `zhhub.service` active,systemd 记账 Memory 12.2M,peak 12.9M,CPU 361ms;进程 RSS 约 18.5MiB。
+- `caddy.service` active,进程 RSS 约 42.9MiB。
+- `admin.db` 5.7M,`admin.db-wal` 3.0M,`admin.db-shm` 32K。
+- `audit_events` 18408 行,过去 1h 1080 行,过去 24h 18408 行;其中 `client.bootstrap ok` 18303 行,admin 登录/reveal/rotate 操作量很小。
+- `journalctl --disk-usage` 显示 systemd journal 约 488.3M;近期增长主要来自高频 bootstrap 日志,不是 admin UI。
+- `18100` 仅监听 `127.0.0.1`;`18080` 仍监听公网且 ufw 仍放行,仅作为老客户端迁移期兼容入口。

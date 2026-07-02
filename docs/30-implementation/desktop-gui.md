@@ -274,3 +274,7 @@ clients/desktop-gui/
   - Hub 返回 `status:"busy"` 时,GUI 显示“换 IP 正在进行中”,不再展示 `? -> ?`。
   - 随包 `zhvpn` sidecar 构建时注入同版本号,`zhvpn version --json` 返回 `0.4.10`。
   - GUI 版本号显示为 `v0.4.10`。
+- **0.4.11 P0 客户端安全迁移发放包已完成**（2026-07-02）：
+  - 随包 `zhvpn` sidecar 使用默认 HTTPS API base,并支持本地生成 WireGuard 私钥、bootstrap 只上报公钥。
+  - standalone CLI 发放包和 GUI sidecar 均注入版本号 `0.4.11`。
+  - GUI 版本号显示为 `v0.4.11`。

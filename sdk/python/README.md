@@ -5,7 +5,7 @@
 ## 安装
 
 ```powershell
-python -m pip install .\dist\zongheng_vpn-0.1.1-py3-none-win_amd64.whl
+python -m pip install .\dist\zongheng_vpn-0.1.2-py3-none-win_amd64.whl
 ```
 
 如果要用 `vpn.get()` / `vpn.request()`：
@@ -60,5 +60,5 @@ vpn.logout()
 
 ```powershell
 python -c "from zongheng_vpn import Client; Client().disconnect()"
-python -m pip install --upgrade .\dist\zongheng_vpn-0.1.1-py3-none-win_amd64.whl
+python -m pip install --upgrade .\dist\zongheng_vpn-0.1.2-py3-none-win_amd64.whl
 ```
