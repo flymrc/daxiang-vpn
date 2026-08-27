@@ -129,12 +129,14 @@ zhvpn client
     v
 Caddy :443 / jp-proxy.ruichao.dev
     |
-    | reverse_proxy
+    | reverse_proxy; listener identity is fixed by Hub registration
     v
-zhhub client API 127.0.0.1:18080
+zhhub trusted proxy API 127.0.0.1:18079
+
+legacy clients --------------------> zhhub compat API 0.0.0.0:18080
 ```
 
-2026-07-01 生产 Caddy 已部署 `/api/client/*` 和 `/healthz` 反代。客户端默认 API base 已改为 `https://jp-proxy.ruichao.dev`,仍保留 `ZHVPN_API_BASE` 作为测试/回滚覆盖。生产 Hub 也已支持客户端上报 `wireguard_public_key`,由 Hub 用 `wg set` 应用 peer,新协议响应不再下发 `wireguard.private_key`。剩余迁移顺序是:发布新客户端,确认 bootstrap/rotate 正常,清理生产 token 中的 legacy 私钥字段,最后关闭公网 `18080/tcp`。在收口前,`18080/tcp` 和 legacy 私钥响应只是老客户端兼容路径,不应视为目标安全状态。
+客户端默认 API base 是 `https://jp-proxy.ruichao.dev`，仍保留 `ZHVPN_API_BASE` 作为测试/回滚覆盖。Hub 的两个客户端 listener 复用同一业务实现，但 ingress 身份由注册 handler 固定派生，不信任客户端提供的转发头：Caddy HTTPS 路由只进入 loopback `18079`，公网 `18080` 固定记为兼容入口。Hub 支持客户端上报 `wireguard_public_key`，由 Hub 用 `wg set` 应用 peer，新协议响应不再下发 `wireguard.private_key`。剩余迁移顺序是：先部署 observation-only 双 listener 并验证观测链，再发布可审计客户端，确认 bootstrap/rotate 正常，完成 campaign 和静默窗口，之后才清理 legacy 私钥并关闭公网 `18080/tcp`。在收口前，`18080/tcp` 和 legacy 私钥响应只是老客户端兼容路径，不应视为目标安全状态。
 
 ## 分阶段设计
 

@@ -45,9 +45,9 @@ dist/
 
 ```powershell
 # Windows 客户端
-clients/cli/build.ps1
+clients/cli/build.ps1 -Version X.Y.Z
 # macOS CLI
-./clients/cli/build-macos.sh
+VERSION=X.Y.Z ./clients/cli/build-macos.sh
 # Hub 服务端
 pushd hub/admin/web
 npm ci
@@ -73,7 +73,7 @@ zhvpn.exe login <授权码>
 
 Hub 管理控制台由同一个 `zhhub` 二进制提供,内网监听 `127.0.0.1:18100`,公网入口由 Caddy 接管 `https://jp-proxy.ruichao.dev/admin/`;根路径 `/` 和未知路径都返回 404,并已替代原 `librespeed` 测速页。
 
-客户端授权 API 正在做 P0 TLS 迁移:生产 Caddy 已提供 `https://jp-proxy.ruichao.dev/api/client/*` -> `127.0.0.1:18080` 的 HTTPS 反代,客户端默认 API base 已改为 `https://jp-proxy.ruichao.dev`。生产 Hub 已支持客户端本地生成 WireGuard 私钥、bootstrap 只上报公钥,但旧公网 `18080/tcp` 和 legacy 私钥响应仍作为老客户端迁移期兼容入口/路径保留;新客户端验证稳定后应关闭公网放行并清理 tokens 里的旧私钥字段。
+客户端授权 API 正在做 P0 TLS 迁移。Hub 使用两个身份固定的客户端 listener：`0.0.0.0:18080` 是老客户端兼容入口，`127.0.0.1:18079` 是 Caddy 专用可信代理入口；Caddy 的 `https://jp-proxy.ruichao.dev/api/client/*` 和 `/healthz` 只应反代到 `18079`。生产 Hub 已支持客户端本地生成 WireGuard 私钥、bootstrap 只上报公钥，但旧公网 `18080/tcp` 和 legacy 私钥响应仍作为迁移期兼容路径保留；只有观测门槛通过后才能关闭公网放行并清理 tokens 里的旧私钥字段。
 
 > 2026-06-15 决策：Mac mini `10.66.0.100:1080` 出口路线已弃用，不再作为新客户端、自动调度或 easyJet/Wraith 验证出口。Mac 上的 WireGuard/sing-box 只保留为历史/管理诊断对象；新流量默认应走 Android `zhreverse` Hub 入口 `10.66.0.1:18081`。
 

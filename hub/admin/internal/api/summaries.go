@@ -40,7 +40,7 @@ func (s *Server) tokenSummaries() []generated.TokenSummary {
 			lastActiveAt = &seenAt
 		}
 		rows = append(rows, generated.TokenSummary{
-			Id:           tokenID(item.Token),
+			Id:           auth.TokenID(item.Token),
 			MaskedToken:  maskToken(item.Token),
 			ClientName:   record.ClientName,
 			Enabled:      record.Enabled,
@@ -73,7 +73,7 @@ func (s *Server) leaseSummaries() []generated.LeaseSummary {
 			expires = &lease.ExpiresAt
 		}
 		rows = append(rows, generated.LeaseSummary{
-			TokenId:     tokenID(lease.Token),
+			TokenId:     auth.TokenID(lease.Token),
 			MaskedToken: maskToken(lease.Token),
 			ClientName:  record.ClientName,
 			SourceIp:    lease.SourceIP,

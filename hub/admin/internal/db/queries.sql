@@ -154,3 +154,51 @@ FROM audit_events
 WHERE event_type IN ('client.rotate_ip', 'admin.rotate_ip')
   AND result = 'ok'
   AND occurred_at >= ?;
+
+-- name: UpsertClientMigrationObservation :exec
+INSERT INTO client_migration_observations (
+  token_id, first_seen_unix_ns, last_seen_unix_ns, last_seen_at,
+  client_product, client_version, protocol_version, ingress, key_mode,
+  private_key_returned, migration_class,
+  last_secure_bootstrap_unix_ns, last_legacy_unix_ns, last_unknown_unix_ns,
+  secure_bootstrap_count, legacy_count, unknown_count, compat_ingress_count
+)
+VALUES (
+  sqlc.arg(token_id), sqlc.arg(occurred_at_unix_ns), sqlc.arg(occurred_at_unix_ns), sqlc.arg(occurred_at),
+  sqlc.arg(client_product), sqlc.arg(client_version), sqlc.arg(protocol_version), sqlc.arg(ingress), sqlc.arg(key_mode),
+  sqlc.arg(private_key_returned), sqlc.arg(migration_class),
+  CASE WHEN sqlc.arg(migration_class) = 'secure_bootstrap' THEN sqlc.arg(occurred_at_unix_ns) ELSE 0 END,
+  CASE WHEN sqlc.arg(migration_class) = 'legacy' THEN sqlc.arg(occurred_at_unix_ns) ELSE 0 END,
+  CASE WHEN sqlc.arg(migration_class) = 'unknown' THEN sqlc.arg(occurred_at_unix_ns) ELSE 0 END,
+  CASE WHEN sqlc.arg(migration_class) = 'secure_bootstrap' THEN 1 ELSE 0 END,
+  CASE WHEN sqlc.arg(migration_class) = 'legacy' THEN 1 ELSE 0 END,
+  CASE WHEN sqlc.arg(migration_class) = 'unknown' THEN 1 ELSE 0 END,
+  CASE WHEN sqlc.arg(ingress) = 'compat' THEN 1 ELSE 0 END
+)
+ON CONFLICT(token_id) DO UPDATE SET
+  first_seen_unix_ns = MIN(client_migration_observations.first_seen_unix_ns, excluded.first_seen_unix_ns),
+  last_seen_unix_ns = MAX(client_migration_observations.last_seen_unix_ns, excluded.last_seen_unix_ns),
+  last_seen_at = CASE WHEN excluded.last_seen_unix_ns >= client_migration_observations.last_seen_unix_ns THEN excluded.last_seen_at ELSE client_migration_observations.last_seen_at END,
+  client_product = CASE WHEN excluded.last_seen_unix_ns >= client_migration_observations.last_seen_unix_ns THEN excluded.client_product ELSE client_migration_observations.client_product END,
+  client_version = CASE WHEN excluded.last_seen_unix_ns >= client_migration_observations.last_seen_unix_ns THEN excluded.client_version ELSE client_migration_observations.client_version END,
+  protocol_version = CASE WHEN excluded.last_seen_unix_ns >= client_migration_observations.last_seen_unix_ns THEN excluded.protocol_version ELSE client_migration_observations.protocol_version END,
+  ingress = CASE WHEN excluded.last_seen_unix_ns >= client_migration_observations.last_seen_unix_ns THEN excluded.ingress ELSE client_migration_observations.ingress END,
+  key_mode = CASE WHEN excluded.last_seen_unix_ns >= client_migration_observations.last_seen_unix_ns THEN excluded.key_mode ELSE client_migration_observations.key_mode END,
+  private_key_returned = CASE WHEN excluded.last_seen_unix_ns >= client_migration_observations.last_seen_unix_ns THEN excluded.private_key_returned ELSE client_migration_observations.private_key_returned END,
+  migration_class = CASE WHEN excluded.last_seen_unix_ns >= client_migration_observations.last_seen_unix_ns THEN excluded.migration_class ELSE client_migration_observations.migration_class END,
+  last_secure_bootstrap_unix_ns = MAX(client_migration_observations.last_secure_bootstrap_unix_ns, excluded.last_secure_bootstrap_unix_ns),
+  last_legacy_unix_ns = MAX(client_migration_observations.last_legacy_unix_ns, excluded.last_legacy_unix_ns),
+  last_unknown_unix_ns = MAX(client_migration_observations.last_unknown_unix_ns, excluded.last_unknown_unix_ns),
+  secure_bootstrap_count = client_migration_observations.secure_bootstrap_count + excluded.secure_bootstrap_count,
+  legacy_count = client_migration_observations.legacy_count + excluded.legacy_count,
+  unknown_count = client_migration_observations.unknown_count + excluded.unknown_count,
+  compat_ingress_count = client_migration_observations.compat_ingress_count + excluded.compat_ingress_count;
+
+-- name: ListClientMigrationObservations :many
+SELECT token_id, first_seen_unix_ns, last_seen_unix_ns, last_seen_at,
+       client_product, client_version, protocol_version, ingress, key_mode,
+       private_key_returned, migration_class,
+       last_secure_bootstrap_unix_ns, last_legacy_unix_ns, last_unknown_unix_ns,
+       secure_bootstrap_count, legacy_count, unknown_count, compat_ingress_count
+FROM client_migration_observations
+ORDER BY token_id;

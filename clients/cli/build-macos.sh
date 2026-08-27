@@ -9,7 +9,14 @@ cd "$(dirname "$0")"
 
 repo_root="$(cd ../.. && pwd)"
 tags="with_gvisor"
-ldflags="-s -w"
+host_os="$(go env GOOS)"
+host_arch="$(go env GOARCH)"
+version="${VERSION:?set VERSION to the release version}"
+if [[ "$version" == "dev" ]]; then
+  echo "VERSION must be an explicit release version" >&2
+  exit 1
+fi
+ldflags="-s -w -X zongheng-vpn/clients/cli/internal/buildinfo.Product=cli -X zongheng-vpn/clients/cli/internal/buildinfo.Version=$version"
 
 targets=(
   "arm64:macos-arm64"
@@ -26,6 +33,13 @@ for target in "${targets[@]}"; do
   echo "构建 macOS $arch -> $out"
   GOOS=darwin GOARCH="$arch" go build -tags "$tags" -trimpath -ldflags "$ldflags" -o "$out" .
   chmod 755 "$out"
+  if [[ "$host_os" == "darwin" && "$arch" == "$host_arch" ]]; then
+    identity="$($out version --json)"
+    if [[ "$identity" != *'"product":"cli"'* || "$identity" != *'"version":"'"$version"'"'* || "$identity" != *'"protocol_version":2'* ]]; then
+      echo "CLI identity mismatch: $identity" >&2
+      exit 1
+    fi
+  fi
   size_bytes=$(wc -c < "$out" | tr -d ' ')
   echo "  完成：$size_bytes bytes"
 done

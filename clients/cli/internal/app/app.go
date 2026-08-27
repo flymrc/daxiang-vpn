@@ -18,6 +18,7 @@ import (
 
 	"golang.org/x/crypto/curve25519"
 	"zongheng-vpn/clients/cli/internal/bootstrap"
+	"zongheng-vpn/clients/cli/internal/buildinfo"
 	"zongheng-vpn/clients/cli/internal/netcheck"
 	"zongheng-vpn/shared/config"
 	"zongheng-vpn/shared/paths"
@@ -104,15 +105,17 @@ var ErrSilent = errors.New("已输出结果")
 
 // jsonResult is the machine-readable result for login / rotate-ip (--json).
 type jsonResult struct {
-	OK      bool   `json:"ok"`
-	Status  string `json:"status,omitempty"`
-	Egress  string `json:"egress,omitempty"`
-	Proxy   string `json:"proxy,omitempty"`
-	Before  string `json:"before,omitempty"`
-	After   string `json:"after,omitempty"`
-	Message string `json:"message,omitempty"`
-	Version string `json:"version,omitempty"`
-	Error   string `json:"error,omitempty"`
+	OK              bool   `json:"ok"`
+	Status          string `json:"status,omitempty"`
+	Egress          string `json:"egress,omitempty"`
+	Proxy           string `json:"proxy,omitempty"`
+	Before          string `json:"before,omitempty"`
+	After           string `json:"after,omitempty"`
+	Message         string `json:"message,omitempty"`
+	Product         string `json:"product,omitempty"`
+	Version         string `json:"version,omitempty"`
+	ProtocolVersion int    `json:"protocol_version,omitempty"`
+	Error           string `json:"error,omitempty"`
 }
 
 // statusResult is the machine-readable result for status --json.
@@ -315,9 +318,14 @@ func version(args []string) error {
 		return err
 	}
 	if jsonOut {
-		return printJSON(jsonResult{OK: true, Version: Version})
+		return printJSON(jsonResult{
+			OK:              true,
+			Product:         buildinfo.Product,
+			Version:         buildinfo.Version,
+			ProtocolVersion: buildinfo.ProtocolVersion,
+		})
 	}
-	fmt.Println(Version)
+	fmt.Println(buildinfo.Version)
 	return nil
 }
 
@@ -487,8 +495,6 @@ func clampWireGuardPrivateKey(key []byte) {
 	key[31] &= 127
 	key[31] |= 64
 }
-
-var Version = "dev"
 
 func start(ctx paths.Context, args []string) error {
 	jsonOut := hasFlag(args, "--json")

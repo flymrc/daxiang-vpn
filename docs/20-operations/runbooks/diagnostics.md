@@ -117,7 +117,9 @@ cat /etc/wireguard/wg0.conf                # 运行时配置
 
 ```bash
 systemctl status zhhub.service
-ss -ltnp | grep -E ':(18080|18100)\b'
+ss -ltnp | grep -E ':(18079|18080|18100)\b'
+curl -s http://127.0.0.1:18079/healthz
+curl -s http://127.0.0.1:18080/healthz
 curl -s http://127.0.0.1:18100/admin/api/health
 systemctl status caddy
 caddy validate --config /etc/caddy/Caddyfile
@@ -128,6 +130,7 @@ curl -I https://jp-proxy.ruichao.dev/not-found-check
 
 正常判断:
 
+- `127.0.0.1:18079` 是 Caddy 专用可信代理入口，`18080` 是迁移期兼容入口；两者健康检查都应返回 `{"status":"ok"}`。
 - `127.0.0.1:18100` 有监听,但公网不应直连 `18100/tcp`。
 - `/admin/api/health` 返回 `{"status":"ok"}`。
 - 公网入口由 Caddy 反代;控制台访问后应进入应用内管理员登录页。

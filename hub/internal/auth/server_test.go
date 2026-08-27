@@ -68,10 +68,47 @@ func TestClientIPTrustsForwardedForFromLocalProxy(t *testing.T) {
 	}
 }
 
+func TestClassifyBootstrapSecurity(t *testing.T) {
+	tests := []struct {
+		name        string
+		ingress     ClientIngress
+		publicKey   string
+		product     string
+		version     string
+		protocol    int
+		wantClass   string
+		wantKeyMode string
+	}{
+		{name: "trusted current client", ingress: ClientIngressTrustedProxy, publicKey: "key", product: "desktop-gui", version: "0.4.12", protocol: 2, wantClass: "secure_bootstrap", wantKeyMode: "client_generated"},
+		{name: "trusted legacy client", ingress: ClientIngressTrustedProxy, wantClass: "legacy", wantKeyMode: "server_legacy"},
+		{name: "compat current client", ingress: ClientIngressCompat, publicKey: "key", product: "cli", version: "0.5.0", protocol: 2, wantClass: "legacy", wantKeyMode: "client_generated"},
+		{name: "trusted unversioned client", ingress: ClientIngressTrustedProxy, publicKey: "key", product: "cli", version: "dev", protocol: 2, wantClass: "unknown", wantKeyMode: "client_generated"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := classifyBootstrapSecurity(tt.ingress, tt.publicKey, tt.product, tt.version, tt.protocol, tt.publicKey == "")
+			if got.MigrationClass != tt.wantClass || got.KeyMode != tt.wantKeyMode {
+				t.Fatalf("classification = %+v", got)
+			}
+		})
+	}
+}
+
+func TestBootstrapHandlerRejectsUnknownIngress(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic")
+		}
+	}()
+	_ = testBootstrapServer().BootstrapHandler(ClientIngress("unknown"))
+}
+
 func TestBootstrapWithClientPublicKeyAppliesPeerAndOmitsPrivateKey(t *testing.T) {
 	server := testBootstrapServer()
 	publicKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
 	var appliedKey, appliedAddress string
+	var auditEvent AuditEvent
+	server.SetAuditSink(func(event AuditEvent) { auditEvent = event })
 	server.applyClientPeer = func(publicKey string, address string) error {
 		appliedKey = publicKey
 		appliedAddress = address
@@ -81,13 +118,16 @@ func TestBootstrapWithClientPublicKeyAppliesPeerAndOmitsPrivateKey(t *testing.T)
 	body, err := json.Marshal(bootstrapRequest{
 		Token:              "ZH-OK",
 		WireGuardPublicKey: publicKey,
+		ClientProduct:      "desktop-gui",
+		ClientVersion:      "0.4.12",
+		ProtocolVersion:    2,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest(http.MethodPost, "/api/client/bootstrap", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
-	server.Bootstrap(rec, req)
+	server.BootstrapHandler(ClientIngressTrustedProxy)(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
@@ -105,6 +145,19 @@ func TestBootstrapWithClientPublicKeyAppliesPeerAndOmitsPrivateKey(t *testing.T)
 	if res.WireGuard.PublicKey != publicKey {
 		t.Fatalf("public key = %q", res.WireGuard.PublicKey)
 	}
+	if auditEvent.MigrationObservation == nil {
+		t.Fatal("missing migration observation")
+	}
+	observation := auditEvent.MigrationObservation
+	if observation.MigrationClass != "secure_bootstrap" || observation.Ingress != string(ClientIngressTrustedProxy) {
+		t.Fatalf("migration observation = %+v", observation)
+	}
+	if observation.TokenID != TokenID("ZH-OK") {
+		t.Fatalf("token id = %q", observation.TokenID)
+	}
+	if bytes.Contains([]byte(auditEvent.DetailJSON), []byte(publicKey)) || bytes.Contains([]byte(auditEvent.DetailJSON), []byte("CLIENT_PRIVATE_KEY")) {
+		t.Fatalf("audit detail contains key material: %s", auditEvent.DetailJSON)
+	}
 }
 
 func TestBootstrapLegacyClientStillReceivesConfiguredPrivateKey(t *testing.T) {
@@ -115,7 +168,7 @@ func TestBootstrapLegacyClientStillReceivesConfiguredPrivateKey(t *testing.T) {
 	}
 	req := httptest.NewRequest(http.MethodPost, "/api/client/bootstrap", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
-	server.Bootstrap(rec, req)
+	server.BootstrapHandler(ClientIngressCompat)(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
@@ -140,7 +193,7 @@ func TestBootstrapRejectsInvalidClientPublicKey(t *testing.T) {
 	}
 	req := httptest.NewRequest(http.MethodPost, "/api/client/bootstrap", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
-	server.Bootstrap(rec, req)
+	server.BootstrapHandler(ClientIngressCompat)(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())

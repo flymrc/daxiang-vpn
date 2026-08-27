@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	dbstore "zongheng-vpn/hub/admin/internal/db"
@@ -15,13 +16,14 @@ import (
 const sessionCookieName = "zhhub_admin_session"
 
 type Server struct {
-	cfg        Config
-	store      *dbstore.Store
-	tokens     *auth.TokenStore
-	clientAuth *auth.Server
-	mux        *http.ServeMux
-	startedAt  time.Time
-	httpClient *http.Client
+	cfg                    Config
+	store                  *dbstore.Store
+	tokens                 *auth.TokenStore
+	clientAuth             *auth.Server
+	mux                    *http.ServeMux
+	startedAt              time.Time
+	httpClient             *http.Client
+	observationWriteFailed atomic.Bool
 
 	maintenanceCancel context.CancelFunc
 	maintenanceDone   chan struct{}
@@ -53,6 +55,7 @@ func NewServer(cfg Config, tokenStore *auth.TokenStore, clientAuth *auth.Server)
 	if clientAuth != nil {
 		clientAuth.SetAuditSink(func(event auth.AuditEvent) {
 			if err := store.InsertAudit(context.Background(), event); err != nil {
+				s.observationWriteFailed.Store(true)
 				log.Printf("admin audit 写入失败: %v", err)
 			}
 		})
@@ -83,6 +86,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/admin/api/auth/me", s.requireSession(s.handleMe, false))
 	s.mux.HandleFunc("/admin/api/health", s.handleHealth)
 	s.mux.HandleFunc("/admin/api/overview", s.requireSession(s.handleOverview, false))
+	s.mux.HandleFunc("/admin/api/migration/readiness", s.requireSession(s.handleMigrationReadiness, false))
 	s.mux.HandleFunc("/admin/api/tokens", s.requireSession(s.handleTokens, false))
 	s.mux.HandleFunc("/admin/api/tokens/", s.requireSession(s.handleTokenSecret, false))
 	s.mux.HandleFunc("/admin/api/leases", s.requireSession(s.handleLeases, false))

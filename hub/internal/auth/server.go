@@ -50,15 +50,35 @@ type carrierCacheEntry struct {
 }
 
 type AuditEvent struct {
-	OccurredAt time.Time
-	Actor      string
-	SourceIP   string
-	EventType  string
-	Target     string
-	DetailJSON string
-	Result     string
-	ErrorCode  string
+	OccurredAt           time.Time
+	Actor                string
+	SourceIP             string
+	EventType            string
+	Target               string
+	DetailJSON           string
+	Result               string
+	ErrorCode            string
+	MigrationObservation *MigrationObservation
 }
+
+type MigrationObservation struct {
+	TokenID            string
+	OccurredAt         time.Time
+	ClientProduct      string
+	ClientVersion      string
+	ProtocolVersion    int
+	Ingress            string
+	KeyMode            string
+	PrivateKeyReturned bool
+	MigrationClass     string
+}
+
+type ClientIngress string
+
+const (
+	ClientIngressCompat       ClientIngress = "compat"
+	ClientIngressTrustedProxy ClientIngress = "trusted_proxy"
+)
 
 type TokenLeaseSnapshot struct {
 	Token     string
@@ -90,11 +110,17 @@ var (
 type bootstrapRequest struct {
 	Token              string `json:"token"`
 	WireGuardPublicKey string `json:"wireguard_public_key"`
+	ClientProduct      string `json:"client_product"`
+	ClientVersion      string `json:"client_version"`
+	ProtocolVersion    int    `json:"protocol_version"`
 }
 
 type rotateIPRequest struct {
-	Token       string `json:"token"`
-	DownSeconds int    `json:"down_seconds"`
+	Token           string `json:"token"`
+	DownSeconds     int    `json:"down_seconds"`
+	ClientProduct   string `json:"client_product"`
+	ClientVersion   string `json:"client_version"`
+	ProtocolVersion int    `json:"protocol_version"`
 }
 
 type rotateIPResponse struct {
@@ -146,7 +172,16 @@ func (s *Server) SetRotateTrigger(trigger func(string, int) error) {
 	s.triggerRotateIP = trigger
 }
 
-func (s *Server) Bootstrap(w http.ResponseWriter, r *http.Request) {
+func (s *Server) BootstrapHandler(ingress ClientIngress) http.HandlerFunc {
+	if ingress != ClientIngressCompat && ingress != ClientIngressTrustedProxy {
+		panic("invalid client ingress: " + string(ingress))
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		s.bootstrap(w, r, ingress)
+	}
+}
+
+func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request, ingress ClientIngress) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method_not_allowed"})
 		return
@@ -229,15 +264,37 @@ func (s *Server) Bootstrap(w http.ResponseWriter, r *http.Request) {
 		record.WireGuard.PublicKey = clientPublicKey
 	}
 
+	occurredAt := time.Now()
+	privateKeyReturned := strings.TrimSpace(record.WireGuard.PrivateKey) != ""
+	classification := classifyBootstrapSecurity(
+		ingress,
+		clientPublicKey,
+		req.ClientProduct,
+		req.ClientVersion,
+		req.ProtocolVersion,
+		privateKeyReturned,
+	)
+	observation := &MigrationObservation{
+		TokenID:            TokenID(req.Token),
+		OccurredAt:         occurredAt,
+		ClientProduct:      strings.TrimSpace(req.ClientProduct),
+		ClientVersion:      strings.TrimSpace(req.ClientVersion),
+		ProtocolVersion:    req.ProtocolVersion,
+		Ingress:            classification.Ingress,
+		KeyMode:            classification.KeyMode,
+		PrivateKeyReturned: classification.PrivateKeyReturned,
+		MigrationClass:     classification.MigrationClass,
+	}
 	log.Printf("bootstrap 通过 src=%s token=%q client=%s egress=%s", src, maskToken(req.Token), record.ClientName, record.Egress.Name)
 	s.audit(AuditEvent{
-		OccurredAt: time.Now(),
-		Actor:      record.ClientName,
-		SourceIP:   src,
-		EventType:  "client.bootstrap",
-		Target:     "token:" + maskToken(req.Token),
-		DetailJSON: fmt.Sprintf(`{"egress":%q}`, record.Egress.Name),
-		Result:     "ok",
+		OccurredAt:           occurredAt,
+		Actor:                record.ClientName,
+		SourceIP:             src,
+		EventType:            "client.bootstrap",
+		Target:               "token:" + maskToken(req.Token),
+		DetailJSON:           bootstrapAuditDetailJSON(record.Egress.Name, observation),
+		Result:               "ok",
+		MigrationObservation: observation,
 	})
 	writeJSON(w, http.StatusOK, bootstrapResponse{
 		Client:     clientResponse{Name: record.ClientName},
@@ -246,6 +303,72 @@ func (s *Server) Bootstrap(w http.ResponseWriter, r *http.Request) {
 		LocalProxy: record.LocalProxy,
 		WireGuard:  record.WireGuard,
 	})
+}
+
+type bootstrapSecurityClassification struct {
+	Ingress            string
+	KeyMode            string
+	PrivateKeyReturned bool
+	MigrationClass     string
+}
+
+func classifyBootstrapSecurity(ingress ClientIngress, publicKey string, product string, version string, protocolVersion int, privateKeyReturned bool) bootstrapSecurityClassification {
+	keyMode := "server_legacy"
+	if strings.TrimSpace(publicKey) != "" {
+		keyMode = "client_generated"
+	}
+	classification := bootstrapSecurityClassification{
+		Ingress:            string(ingress),
+		KeyMode:            keyMode,
+		PrivateKeyReturned: privateKeyReturned,
+		MigrationClass:     "legacy",
+	}
+	if ingress != ClientIngressTrustedProxy || keyMode != "client_generated" || privateKeyReturned {
+		return classification
+	}
+	if !validClientMetadata(product, version, protocolVersion) {
+		classification.MigrationClass = "unknown"
+		return classification
+	}
+	classification.MigrationClass = "secure_bootstrap"
+	return classification
+}
+
+func validClientMetadata(product string, version string, protocolVersion int) bool {
+	switch strings.TrimSpace(product) {
+	case "cli", "desktop-gui", "python-sdk":
+	default:
+		return false
+	}
+	version = strings.TrimSpace(version)
+	return protocolVersion == 2 && version != "" && version != "dev" && len(version) <= 64
+}
+
+func bootstrapAuditDetailJSON(egress string, observation *MigrationObservation) string {
+	detail := struct {
+		Egress             string `json:"egress"`
+		ClientProduct      string `json:"client_product"`
+		ClientVersion      string `json:"client_version"`
+		ProtocolVersion    int    `json:"protocol_version"`
+		Ingress            string `json:"ingress"`
+		KeyMode            string `json:"key_mode"`
+		PrivateKeyReturned bool   `json:"private_key_returned"`
+		MigrationClass     string `json:"migration_class"`
+	}{
+		Egress:             egress,
+		ClientProduct:      observation.ClientProduct,
+		ClientVersion:      observation.ClientVersion,
+		ProtocolVersion:    observation.ProtocolVersion,
+		Ingress:            observation.Ingress,
+		KeyMode:            observation.KeyMode,
+		PrivateKeyReturned: observation.PrivateKeyReturned,
+		MigrationClass:     observation.MigrationClass,
+	}
+	data, err := json.Marshal(detail)
+	if err != nil {
+		panic(err)
+	}
+	return string(data)
 }
 
 func validateWireGuardPublicKey(publicKey string) error {

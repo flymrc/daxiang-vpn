@@ -14,6 +14,14 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repo = Resolve-Path (Join-Path $root "..\..")
 $desktopVersion = (Get-Content (Join-Path $root "package.json") -Raw | ConvertFrom-Json).version
+$cargoVersion = ((Get-Content (Join-Path $root "src-tauri\Cargo.toml") | Select-String '^version\s*=\s*"([^"]+)"$').Matches.Groups[1].Value)
+$tauriVersion = (Get-Content (Join-Path $root "src-tauri\tauri.conf.json") -Raw | ConvertFrom-Json).version
+if ([string]::IsNullOrWhiteSpace($desktopVersion) -or $desktopVersion -eq "dev") {
+    throw "desktop release version must not be dev"
+}
+if ($desktopVersion -ne $cargoVersion -or $desktopVersion -ne $tauriVersion) {
+    throw "desktop version mismatch: package=$desktopVersion cargo=$cargoVersion tauri=$tauriVersion"
+}
 
 # 1. Resolve Rust target triple. Tauri externalBin expects this sidecar suffix.
 $hostTriple = (rustc -Vv | Select-String '^host:\s*(.+)$').Matches.Groups[1].Value.Trim()
@@ -29,6 +37,8 @@ $goArch = switch ($triple) {
     "aarch64-pc-windows-msvc" { "arm64" }
     default { throw "unsupported Windows Rust target triple: $triple" }
 }
+$hostGoOS = (go env GOOS).Trim()
+$hostGoArch = (go env GOARCH).Trim()
 Write-Host "==> host triple: $hostTriple"
 Write-Host "==> target triple: $triple ($goArch)"
 
@@ -56,9 +66,15 @@ function Build-Sidecar([string]$targetTriple, [string]$goArch) {
             # Maximum compatibility with older Intel i5 / Win10 machines.
             $env:GOAMD64 = "v1"
         }
-        $ldflags = "-s -w -X zongheng-vpn/clients/cli/internal/app.Version=$desktopVersion"
+        $ldflags = "-s -w -X zongheng-vpn/clients/cli/internal/buildinfo.Product=desktop-gui -X zongheng-vpn/clients/cli/internal/buildinfo.Version=$desktopVersion"
         go build -tags with_gvisor -trimpath -ldflags $ldflags -o $out (Join-Path $repo "clients\cli")
         if ($LASTEXITCODE -ne 0) { throw "go build sidecar failed for $targetTriple" }
+        if ($hostGoOS -eq "windows" -and $goArch -eq $hostGoArch) {
+            $identity = (& $out version --json | ConvertFrom-Json)
+            if ($identity.product -ne "desktop-gui" -or $identity.version -ne $desktopVersion -or $identity.protocol_version -ne 2) {
+                throw "sidecar identity mismatch: $($identity | ConvertTo-Json -Compress)"
+            }
+        }
     }
     finally {
         if ($null -eq $oldGoos) { Remove-Item Env:GOOS -ErrorAction SilentlyContinue } else { $env:GOOS = $oldGoos }

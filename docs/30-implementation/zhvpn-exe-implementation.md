@@ -494,7 +494,7 @@ go build -tags with_gvisor -trimpath -ldflags "-s -w" -o dist\windows-amd64\zhvp
 发布构建（同时产出 amd64 / arm64）直接运行：
 
 ```powershell
-.\build.ps1
+.\build.ps1 -Version X.Y.Z
 ```
 
 如果在非 Windows 系统交叉编译：

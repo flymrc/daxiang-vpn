@@ -136,6 +136,87 @@ func TestInsertAuditCapsLargeDetailJSON(t *testing.T) {
 	}
 }
 
+func TestInsertAuditProjectsLatestClientMigrationObservation(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	latest := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+
+	mustExec(t, store.InsertAudit(ctx, auth.AuditEvent{
+		OccurredAt: latest,
+		Actor:      "test-client",
+		EventType:  "client.bootstrap",
+		Target:     "token:masked",
+		DetailJSON: `{"migration_class":"secure_bootstrap"}`,
+		Result:     "ok",
+		MigrationObservation: &auth.MigrationObservation{
+			TokenID:            auth.TokenID("ZH-TEST"),
+			OccurredAt:         latest,
+			ClientProduct:      "desktop-gui",
+			ClientVersion:      "0.4.12",
+			ProtocolVersion:    2,
+			Ingress:            "trusted_proxy",
+			KeyMode:            "client_generated",
+			PrivateKeyReturned: false,
+			MigrationClass:     "secure_bootstrap",
+		},
+	}))
+	mustExec(t, store.InsertAudit(ctx, auth.AuditEvent{
+		OccurredAt: latest.Add(-time.Hour),
+		Actor:      "test-client",
+		EventType:  "client.bootstrap",
+		Target:     "token:masked",
+		DetailJSON: `{"migration_class":"legacy"}`,
+		Result:     "ok",
+		MigrationObservation: &auth.MigrationObservation{
+			TokenID:            auth.TokenID("ZH-TEST"),
+			OccurredAt:         latest.Add(-time.Hour),
+			Ingress:            "compat",
+			KeyMode:            "server_legacy",
+			PrivateKeyReturned: true,
+			MigrationClass:     "legacy",
+		},
+	}))
+
+	var class, product, version string
+	var firstSeen, lastSeen, secureCount, legacyCount int64
+	row := store.db.QueryRowContext(ctx, `
+		SELECT migration_class, client_product, client_version, first_seen_unix_ns, last_seen_unix_ns,
+		       secure_bootstrap_count, legacy_count
+		FROM client_migration_observations`)
+	if err := row.Scan(&class, &product, &version, &firstSeen, &lastSeen, &secureCount, &legacyCount); err != nil {
+		t.Fatal(err)
+	}
+	if class != "secure_bootstrap" || product != "desktop-gui" || version != "0.4.12" {
+		t.Fatalf("latest observation regressed: class=%q product=%q version=%q", class, product, version)
+	}
+	if firstSeen != latest.Add(-time.Hour).UnixNano() || lastSeen != latest.UnixNano() || secureCount != 1 || legacyCount != 1 {
+		t.Fatalf("projection counters/time = %d %d %d %d", firstSeen, lastSeen, secureCount, legacyCount)
+	}
+}
+
+func TestInsertAuditRejectsInvalidMigrationObservationAtomically(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	err := store.InsertAudit(ctx, auth.AuditEvent{
+		OccurredAt: time.Now(),
+		Actor:      "test-client",
+		EventType:  "client.bootstrap",
+		Result:     "ok",
+		MigrationObservation: &auth.MigrationObservation{
+			TokenID:        auth.TokenID("ZH-TEST"),
+			Ingress:        "trusted_proxy",
+			KeyMode:        "client_generated",
+			MigrationClass: "not-a-class",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected invalid observation error")
+	}
+	if got := countRows(t, store, "audit_events"); got != 0 {
+		t.Fatalf("audit_events count = %d, want atomic rollback", got)
+	}
+}
+
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
 	store, err := OpenStore(filepath.Join(t.TempDir(), "admin.db"))

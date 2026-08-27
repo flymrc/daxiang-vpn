@@ -67,14 +67,6 @@ func maskToken(token string) string {
 	return token[:3] + "***" + token[len(token)-2:]
 }
 
-func tokenID(token string) string {
-	sum := hashSecret(token)
-	if len(sum) > 12 {
-		return sum[:12]
-	}
-	return sum
-}
-
 func hashSecret(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])

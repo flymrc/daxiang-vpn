@@ -83,7 +83,7 @@ func (s *Server) handleTokenSecret(w http.ResponseWriter, r *http.Request, sc se
 		return
 	}
 	for _, item := range s.tokens.Snapshot() {
-		if tokenID(item.Token) == id {
+		if auth.TokenID(item.Token) == id {
 			s.audit("admin.reveal_token", sc.session.Username, requestIP(r), "token:"+id, "{}", "ok", "")
 			writeJSON(w, http.StatusOK, generated.TokenSecretResponse{
 				Id:    id,

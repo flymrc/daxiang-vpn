@@ -2,12 +2,14 @@ package app
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 
+	"zongheng-vpn/clients/cli/internal/buildinfo"
 	"zongheng-vpn/shared/config"
 	"zongheng-vpn/shared/paths"
 )
@@ -365,6 +367,50 @@ func TestVersionRejectsUnknownArgs(t *testing.T) {
 	if err := version([]string{"--bad"}); err == nil {
 		t.Fatal("expected error")
 	}
+}
+
+func TestVersionJSONReportsClientContract(t *testing.T) {
+	oldProduct, oldVersion := buildinfo.Product, buildinfo.Version
+	buildinfo.Product, buildinfo.Version = "cli", "1.2.3"
+	t.Cleanup(func() {
+		buildinfo.Product, buildinfo.Version = oldProduct, oldVersion
+	})
+
+	out := captureStdout(t, func() {
+		if err := version([]string{"--json"}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	var got struct {
+		Product         string `json:"product"`
+		Version         string `json:"version"`
+		ProtocolVersion int    `json:"protocol_version"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Product != "cli" || got.Version != "1.2.3" || got.ProtocolVersion != 2 {
+		t.Fatalf("version contract = %+v", got)
+	}
+}
+
+func captureStdout(t *testing.T, run func()) string {
+	t.Helper()
+	old := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = writer
+	run()
+	_ = writer.Close()
+	os.Stdout = old
+	data, err := io.ReadAll(reader)
+	_ = reader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
 }
 
 func TestParseStatusOptions(t *testing.T) {

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Zongheng Hub Admin API
-  version: 0.1.0
+  version: 0.2.0
 servers:
   - url: /admin/api
 paths:
@@ -69,6 +69,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OverviewResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+  /migration/readiness:
+    get:
+      operationId: getMigrationReadiness
+      responses:
+        '200':
+          description: Observation-only client migration readiness report.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MigrationReadinessResponse'
         '401':
           $ref: '#/components/responses/Error'
   /tokens:
@@ -294,6 +306,78 @@ components:
           type: integer
         rotate_today_count:
           type: integer
+    MigrationReadinessResponse:
+      type: object
+      required: [ready, mode, campaign_configured, observation_write_healthy, valid_token_count, observed_token_count, unobserved_token_count, secure_bootstrap_token_count, legacy_token_count, unknown_token_count, compat_ingress_token_count, observer_started_at, last_observation_at, blockers, clients, generated_at]
+      properties:
+        ready:
+          type: boolean
+        mode:
+          type: string
+          enum: [observation_only]
+        campaign_configured:
+          type: boolean
+        observation_write_healthy:
+          type: boolean
+        valid_token_count:
+          type: integer
+        observed_token_count:
+          type: integer
+        unobserved_token_count:
+          type: integer
+        secure_bootstrap_token_count:
+          type: integer
+        legacy_token_count:
+          type: integer
+        unknown_token_count:
+          type: integer
+        compat_ingress_token_count:
+          type: integer
+        observer_started_at:
+          type: string
+          format: date-time
+        last_observation_at:
+          type: string
+          format: date-time
+          nullable: true
+        blockers:
+          type: array
+          items:
+            type: string
+        clients:
+          type: array
+          items:
+            $ref: '#/components/schemas/MigrationClientStatus'
+        generated_at:
+          type: string
+          format: date-time
+    MigrationClientStatus:
+      type: object
+      required: [token_id, observed, client_product, client_version, protocol_version, ingress, key_mode, private_key_returned, migration_class, last_seen_at]
+      properties:
+        token_id:
+          type: string
+        observed:
+          type: boolean
+        client_product:
+          type: string
+        client_version:
+          type: string
+        protocol_version:
+          type: integer
+        ingress:
+          type: string
+        key_mode:
+          type: string
+        private_key_returned:
+          type: boolean
+        migration_class:
+          type: string
+          enum: [secure_bootstrap, legacy, unknown]
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
     TokensResponse:
       type: object
       required: [tokens]

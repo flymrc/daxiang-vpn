@@ -85,3 +85,24 @@ CREATE TABLE IF NOT EXISTS audit_events (
 
 CREATE INDEX IF NOT EXISTS idx_audit_events_occurred_at ON audit_events(occurred_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_events_type_time ON audit_events(event_type, occurred_at DESC);
+
+CREATE TABLE IF NOT EXISTS client_migration_observations (
+  token_id TEXT PRIMARY KEY,
+  first_seen_unix_ns INTEGER NOT NULL,
+  last_seen_unix_ns INTEGER NOT NULL,
+  last_seen_at TEXT NOT NULL,
+  client_product TEXT NOT NULL,
+  client_version TEXT NOT NULL,
+  protocol_version INTEGER NOT NULL,
+  ingress TEXT NOT NULL,
+  key_mode TEXT NOT NULL,
+  private_key_returned INTEGER NOT NULL,
+  migration_class TEXT NOT NULL,
+  last_secure_bootstrap_unix_ns INTEGER NOT NULL DEFAULT 0,
+  last_legacy_unix_ns INTEGER NOT NULL DEFAULT 0,
+  last_unknown_unix_ns INTEGER NOT NULL DEFAULT 0,
+  secure_bootstrap_count INTEGER NOT NULL DEFAULT 0,
+  legacy_count INTEGER NOT NULL DEFAULT 0,
+  unknown_count INTEGER NOT NULL DEFAULT 0,
+  compat_ingress_count INTEGER NOT NULL DEFAULT 0
+);

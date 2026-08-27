@@ -20,6 +20,18 @@ const (
 	Ok HealthResponseStatus = "ok"
 )
 
+// Defines values for MigrationClientStatusMigrationClass.
+const (
+	Legacy          MigrationClientStatusMigrationClass = "legacy"
+	SecureBootstrap MigrationClientStatusMigrationClass = "secure_bootstrap"
+	Unknown         MigrationClientStatusMigrationClass = "unknown"
+)
+
+// Defines values for MigrationReadinessResponseMode.
+const (
+	ObservationOnly MigrationReadinessResponseMode = "observation_only"
+)
+
 // Defines values for RotateIPResponseStatus.
 const (
 	Busy      RotateIPResponseStatus = "busy"
@@ -134,6 +146,46 @@ type LoginRequest struct {
 	Password string `json:"password"`
 	Username string `json:"username"`
 }
+
+// MigrationClientStatus defines model for MigrationClientStatus.
+type MigrationClientStatus struct {
+	ClientProduct      string                              `json:"client_product"`
+	ClientVersion      string                              `json:"client_version"`
+	Ingress            string                              `json:"ingress"`
+	KeyMode            string                              `json:"key_mode"`
+	LastSeenAt         *time.Time                          `json:"last_seen_at"`
+	MigrationClass     MigrationClientStatusMigrationClass `json:"migration_class"`
+	Observed           bool                                `json:"observed"`
+	PrivateKeyReturned bool                                `json:"private_key_returned"`
+	ProtocolVersion    int                                 `json:"protocol_version"`
+	TokenId            string                              `json:"token_id"`
+}
+
+// MigrationClientStatusMigrationClass defines model for MigrationClientStatus.MigrationClass.
+type MigrationClientStatusMigrationClass string
+
+// MigrationReadinessResponse defines model for MigrationReadinessResponse.
+type MigrationReadinessResponse struct {
+	Blockers                  []string                       `json:"blockers"`
+	CampaignConfigured        bool                           `json:"campaign_configured"`
+	Clients                   []MigrationClientStatus        `json:"clients"`
+	CompatIngressTokenCount   int                            `json:"compat_ingress_token_count"`
+	GeneratedAt               time.Time                      `json:"generated_at"`
+	LastObservationAt         *time.Time                     `json:"last_observation_at"`
+	LegacyTokenCount          int                            `json:"legacy_token_count"`
+	Mode                      MigrationReadinessResponseMode `json:"mode"`
+	ObservationWriteHealthy   bool                           `json:"observation_write_healthy"`
+	ObservedTokenCount        int                            `json:"observed_token_count"`
+	ObserverStartedAt         time.Time                      `json:"observer_started_at"`
+	Ready                     bool                           `json:"ready"`
+	SecureBootstrapTokenCount int                            `json:"secure_bootstrap_token_count"`
+	UnknownTokenCount         int                            `json:"unknown_token_count"`
+	UnobservedTokenCount      int                            `json:"unobserved_token_count"`
+	ValidTokenCount           int                            `json:"valid_token_count"`
+}
+
+// MigrationReadinessResponseMode defines model for MigrationReadinessResponse.Mode.
+type MigrationReadinessResponseMode string
 
 // OverviewResponse defines model for OverviewResponse.
 type OverviewResponse struct {

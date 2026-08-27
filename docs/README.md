@@ -81,6 +81,7 @@ Hub 管理控制台 v1 作为 `zhhub` 第二个 listener 运行,本机监听 `12
 ## 40 Security
 
 - [安全 TODO](40-security/security-todo.md)
+- [客户端 HTTPS 与本地 WireGuard 密钥迁移计划](40-security/client-security-migration-plan.md)
 - [Hub 安全审查 2026-06-04](40-security/security-audit-2026-06-04.md)
 
 ## 90 History

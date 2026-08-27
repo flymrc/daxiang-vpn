@@ -84,6 +84,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/migration/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getMigrationReadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tokens": {
         parameters: {
             query?: never;
@@ -237,6 +253,42 @@ export interface components {
             active_lease_count: number;
             egress_online_count: number;
             rotate_today_count: number;
+        };
+        MigrationReadinessResponse: {
+            ready: boolean;
+            /** @enum {string} */
+            mode: "observation_only";
+            campaign_configured: boolean;
+            observation_write_healthy: boolean;
+            valid_token_count: number;
+            observed_token_count: number;
+            unobserved_token_count: number;
+            secure_bootstrap_token_count: number;
+            legacy_token_count: number;
+            unknown_token_count: number;
+            compat_ingress_token_count: number;
+            /** Format: date-time */
+            observer_started_at: string;
+            /** Format: date-time */
+            last_observation_at: string | null;
+            blockers: string[];
+            clients: components["schemas"]["MigrationClientStatus"][];
+            /** Format: date-time */
+            generated_at: string;
+        };
+        MigrationClientStatus: {
+            token_id: string;
+            observed: boolean;
+            client_product: string;
+            client_version: string;
+            protocol_version: number;
+            ingress: string;
+            key_mode: string;
+            private_key_returned: boolean;
+            /** @enum {string} */
+            migration_class: "secure_bootstrap" | "legacy" | "unknown";
+            /** Format: date-time */
+            last_seen_at: string | null;
         };
         TokensResponse: {
             tokens: components["schemas"]["TokenSummary"][];
@@ -457,6 +509,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OverviewResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    getMigrationReadiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Observation-only client migration readiness report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationReadinessResponse"];
                 };
             };
             401: components["responses"]["Error"];

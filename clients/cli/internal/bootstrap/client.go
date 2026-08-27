@@ -10,17 +10,24 @@ import (
 	"strings"
 	"time"
 
+	"zongheng-vpn/clients/cli/internal/buildinfo"
 	"zongheng-vpn/shared/config"
 )
 
 type request struct {
 	Token              string `json:"token"`
 	WireGuardPublicKey string `json:"wireguard_public_key,omitempty"`
+	ClientProduct      string `json:"client_product"`
+	ClientVersion      string `json:"client_version"`
+	ProtocolVersion    int    `json:"protocol_version"`
 }
 
 type rotateIPRequest struct {
-	Token       string `json:"token"`
-	DownSeconds int    `json:"down_seconds"`
+	Token           string `json:"token"`
+	DownSeconds     int    `json:"down_seconds"`
+	ClientProduct   string `json:"client_product"`
+	ClientVersion   string `json:"client_version"`
+	ProtocolVersion int    `json:"protocol_version"`
 }
 
 type RotateIPResult struct {
@@ -42,7 +49,14 @@ func Fetch(token string, wireGuardPublicKey string) (config.Config, error) {
 	}
 	wireGuardPublicKey = strings.TrimSpace(wireGuardPublicKey)
 
-	body, err := json.Marshal(request{Token: token, WireGuardPublicKey: wireGuardPublicKey})
+	metadata := currentClientMetadata()
+	body, err := json.Marshal(request{
+		Token:              token,
+		WireGuardPublicKey: wireGuardPublicKey,
+		ClientProduct:      metadata.Product,
+		ClientVersion:      metadata.Version,
+		ProtocolVersion:    metadata.ProtocolVersion,
+	})
 	if err != nil {
 		return config.Config{}, err
 	}
@@ -96,7 +110,14 @@ func RotateIP(token string, downSeconds int) (RotateIPResult, error) {
 	if token == "" {
 		return RotateIPResult{}, errors.New("授权码不能为空")
 	}
-	body, err := json.Marshal(rotateIPRequest{Token: token, DownSeconds: downSeconds})
+	metadata := currentClientMetadata()
+	body, err := json.Marshal(rotateIPRequest{
+		Token:           token,
+		DownSeconds:     downSeconds,
+		ClientProduct:   metadata.Product,
+		ClientVersion:   metadata.Version,
+		ProtocolVersion: metadata.ProtocolVersion,
+	})
 	if err != nil {
 		return RotateIPResult{}, err
 	}
@@ -178,4 +199,18 @@ func hiddenString(data []byte) string {
 		out[i] = b ^ 0x5a
 	}
 	return string(out)
+}
+
+type clientMetadata struct {
+	Product         string
+	Version         string
+	ProtocolVersion int
+}
+
+func currentClientMetadata() clientMetadata {
+	return clientMetadata{
+		Product:         buildinfo.Product,
+		Version:         buildinfo.Version,
+		ProtocolVersion: buildinfo.ProtocolVersion,
+	}
 }

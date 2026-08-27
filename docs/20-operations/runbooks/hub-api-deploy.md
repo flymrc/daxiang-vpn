@@ -2,10 +2,9 @@
 
 ## 构建
 
-在本机仓库执行：
+在本机 `zongheng-vpn` 仓库根目录执行：
 
 ```powershell
-cd c:\Users\xuotq\zongheng-vpn
 pushd hub/admin/web
 npm ci
 npm run build:embed
@@ -39,6 +38,7 @@ Remove-Item Env:\GOOS, Env:\GOARCH
 ```text
 ZHHUB_TOKENS=/opt/zongheng/zhhub/tokens.yaml
 ZHHUB_LISTEN=0.0.0.0:18080
+ZHHUB_TRUSTED_PROXY_LISTEN=127.0.0.1:18079
 ZHHUB_ANDROID_CONTROL_KEY=/root/.ssh/zhandroid_control_hub
 ZHHUB_ANDROID_CONTROL_KNOWN_HOSTS=/root/.ssh/zhandroid_control_known_hosts
 ZHHUB_ANDROID_CONTROL_HOST_KEY_POLICY=accept-new
@@ -79,6 +79,7 @@ Type=simple
 WorkingDirectory=/opt/zongheng/zhhub
 Environment=ZHHUB_TOKENS=/opt/zongheng/zhhub/tokens.yaml
 Environment=ZHHUB_LISTEN=0.0.0.0:18080
+Environment=ZHHUB_TRUSTED_PROXY_LISTEN=127.0.0.1:18079
 Environment=ZHHUB_ANDROID_CONTROL_KEY=/root/.ssh/zhandroid_control_hub
 Environment=ZHHUB_ANDROID_CONTROL_KNOWN_HOSTS=/root/.ssh/zhandroid_control_known_hosts
 Environment=ZHHUB_ANDROID_CONTROL_HOST_KEY_POLICY=accept-new
@@ -126,7 +127,7 @@ TCP 80
 TCP 443
 ```
 
-`18100/tcp` 不开放给公网,只监听 `127.0.0.1`。`18080/tcp` 是 zhhub 客户端 API 的明文本地后端,只应由 Caddy 在本机反代访问;老客户端还在直连 `http://36.50.84.68:18080` 的迁移期可临时保留公网放行,待 HTTPS 客户端发布并确认升级后必须收掉公网 `18080/tcp`。
+`18100/tcp` 不开放给公网,只监听 `127.0.0.1`。Caddy 只反代到 loopback `127.0.0.1:18079`；`18080/tcp` 是老客户端直连的明文兼容入口，迁移期可临时保留公网放行，待 HTTPS 客户端发布并确认升级后必须收掉公网 `18080/tcp`。
 
 `80/443` 由 Caddy 使用,用于 `jp-proxy.ruichao.dev` 自动 HTTPS 和反向代理。
 
@@ -156,8 +157,10 @@ jp-proxy.ruichao.dev A 36.50.84.68
 
 控制台和客户端授权 API 的公网 HTTPS 入口都由 Caddy 负责,不使用 Dokku。Caddy 自动签发/续期证书:
 
-- `/api/client/*` 和 `/healthz` 反代到 zhhub 客户端 API 后端 `127.0.0.1:18080`。
+- `/api/client/*` 和 `/healthz` 反代到 zhhub loopback 可信代理入口 `127.0.0.1:18079`。
 - `/admin/*` 反代到 zhhub admin listener `127.0.0.1:18100`。
+
+`18079` 与 `18080` 的 listener 身份由 Hub 注册时固定，不读取 `X-Forwarded-*` 推断。必须先部署并验证同时提供两个 listener 的 Hub，再切 Caddy upstream；不能先改 Caddy。
 
 示例 Caddyfile:
 
@@ -166,11 +169,11 @@ jp-proxy.ruichao.dev {
   encode gzip zstd
 
   handle /api/client/* {
-    reverse_proxy 127.0.0.1:18080
+    reverse_proxy 127.0.0.1:18079
   }
 
   handle /healthz {
-    reverse_proxy 127.0.0.1:18080
+    reverse_proxy 127.0.0.1:18079
   }
 
   handle /admin* {
@@ -202,6 +205,7 @@ systemctl reload caddy
 
 ```bash
 curl http://127.0.0.1:18080/healthz
+curl http://127.0.0.1:18079/healthz
 curl http://127.0.0.1:18100/admin/api/health
 curl https://jp-proxy.ruichao.dev/healthz
 curl -I https://jp-proxy.ruichao.dev/
@@ -234,10 +238,12 @@ https://jp-proxy.ruichao.dev
 
 客户端仍支持 `ZHVPN_API_BASE` 覆盖,用于本地测试或紧急回滚。迁移顺序:
 
-1. 先部署 Caddy `/api/client/*` HTTPS 反代并验证。
-2. 再发布默认走 `https://jp-proxy.ruichao.dev` 的客户端。
-3. 观察新客户端 bootstrap/rotate 正常。
-4. 最后删除 ufw 的公网 `18080/tcp` 放行,只保留 Caddy `80/443`。
+1. 先部署双 listener Hub，验证 `18080` 兼容入口和 loopback-only `18079` 可信代理入口。
+2. 再把 Caddy `/api/client/*` 与 `/healthz` upstream 切到 `127.0.0.1:18079` 并验证。
+3. 发布带 `client_product`、`client_version`、`protocol_version=2` 的客户端，观察 SQLite 投影与只读 readiness 报告。
+4. 完成 campaign、端到端证据和静默窗口后，才删除 ufw 的公网 `18080/tcp` 放行并停止兼容 listener。
+
+只读迁移报告为 `GET /admin/api/migration/readiness`。当前实现是 `observation_only`，在 campaign 和端到端证据尚未建立时固定返回 `ready=false`；不要把观测覆盖率当成收口批准。
 
 ## 客户端本地 WireGuard 密钥迁移
 

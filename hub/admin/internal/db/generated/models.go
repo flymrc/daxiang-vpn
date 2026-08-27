@@ -48,6 +48,27 @@ type AuditEvent struct {
 	ErrorCode  string `json:"error_code"`
 }
 
+type ClientMigrationObservation struct {
+	TokenID                   string `json:"token_id"`
+	FirstSeenUnixNs           int64  `json:"first_seen_unix_ns"`
+	LastSeenUnixNs            int64  `json:"last_seen_unix_ns"`
+	LastSeenAt                string `json:"last_seen_at"`
+	ClientProduct             string `json:"client_product"`
+	ClientVersion             string `json:"client_version"`
+	ProtocolVersion           int64  `json:"protocol_version"`
+	Ingress                   string `json:"ingress"`
+	KeyMode                   string `json:"key_mode"`
+	PrivateKeyReturned        int64  `json:"private_key_returned"`
+	MigrationClass            string `json:"migration_class"`
+	LastSecureBootstrapUnixNs int64  `json:"last_secure_bootstrap_unix_ns"`
+	LastLegacyUnixNs          int64  `json:"last_legacy_unix_ns"`
+	LastUnknownUnixNs         int64  `json:"last_unknown_unix_ns"`
+	SecureBootstrapCount      int64  `json:"secure_bootstrap_count"`
+	LegacyCount               int64  `json:"legacy_count"`
+	UnknownCount              int64  `json:"unknown_count"`
+	CompatIngressCount        int64  `json:"compat_ingress_count"`
+}
+
 type EgressNode struct {
 	EgressID       string `json:"egress_id"`
 	DisplayName    string `json:"display_name"`

@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"zongheng-vpn/clients/cli/internal/buildinfo"
 )
 
 func TestAPIBaseDefaultsToHTTPSPublicHost(t *testing.T) {
@@ -25,6 +27,7 @@ func TestAPIBaseEnvOverrideTrimsTrailingSlash(t *testing.T) {
 
 func TestFetchSendsWireGuardPublicKey(t *testing.T) {
 	const publicKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+	setBuildInfo(t, "desktop-gui", "0.4.12")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/client/bootstrap" {
 			http.NotFound(w, r)
@@ -39,6 +42,9 @@ func TestFetchSendsWireGuardPublicKey(t *testing.T) {
 		}
 		if req.WireGuardPublicKey != publicKey {
 			t.Fatalf("wireguard_public_key = %q", req.WireGuardPublicKey)
+		}
+		if req.ClientProduct != "desktop-gui" || req.ClientVersion != "0.4.12" || req.ProtocolVersion != 2 {
+			t.Fatalf("client metadata = %q %q %d", req.ClientProduct, req.ClientVersion, req.ProtocolVersion)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
@@ -93,10 +99,18 @@ func TestRotateIPBusyResponse(t *testing.T) {
 }
 
 func TestRotateIPTriggeredResponse(t *testing.T) {
+	setBuildInfo(t, "python-sdk", "0.1.3")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/client/rotate-ip" {
 			http.NotFound(w, r)
 			return
+		}
+		var req rotateIPRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatal(err)
+		}
+		if req.ClientProduct != "python-sdk" || req.ClientVersion != "0.1.3" || req.ProtocolVersion != 2 {
+			t.Fatalf("client metadata = %q %q %d", req.ClientProduct, req.ClientVersion, req.ProtocolVersion)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(RotateIPResult{
@@ -115,6 +129,15 @@ func TestRotateIPTriggeredResponse(t *testing.T) {
 	if res.Status != "triggered" {
 		t.Fatalf("status = %q", res.Status)
 	}
+}
+
+func setBuildInfo(t *testing.T, product string, version string) {
+	t.Helper()
+	oldProduct, oldVersion := buildinfo.Product, buildinfo.Version
+	buildinfo.Product, buildinfo.Version = product, version
+	t.Cleanup(func() {
+		buildinfo.Product, buildinfo.Version = oldProduct, oldVersion
+	})
 }
 
 func TestRotateIPInvalidDownSecondsMessage(t *testing.T) {

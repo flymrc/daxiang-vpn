@@ -290,6 +290,58 @@ func (q *Queries) ListAuditEvents(ctx context.Context, limit int64) ([]AuditEven
 	return items, nil
 }
 
+const listClientMigrationObservations = `-- name: ListClientMigrationObservations :many
+SELECT token_id, first_seen_unix_ns, last_seen_unix_ns, last_seen_at,
+       client_product, client_version, protocol_version, ingress, key_mode,
+       private_key_returned, migration_class,
+       last_secure_bootstrap_unix_ns, last_legacy_unix_ns, last_unknown_unix_ns,
+       secure_bootstrap_count, legacy_count, unknown_count, compat_ingress_count
+FROM client_migration_observations
+ORDER BY token_id
+`
+
+func (q *Queries) ListClientMigrationObservations(ctx context.Context) ([]ClientMigrationObservation, error) {
+	rows, err := q.db.QueryContext(ctx, listClientMigrationObservations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ClientMigrationObservation
+	for rows.Next() {
+		var i ClientMigrationObservation
+		if err := rows.Scan(
+			&i.TokenID,
+			&i.FirstSeenUnixNs,
+			&i.LastSeenUnixNs,
+			&i.LastSeenAt,
+			&i.ClientProduct,
+			&i.ClientVersion,
+			&i.ProtocolVersion,
+			&i.Ingress,
+			&i.KeyMode,
+			&i.PrivateKeyReturned,
+			&i.MigrationClass,
+			&i.LastSecureBootstrapUnixNs,
+			&i.LastLegacyUnixNs,
+			&i.LastUnknownUnixNs,
+			&i.SecureBootstrapCount,
+			&i.LegacyCount,
+			&i.UnknownCount,
+			&i.CompatIngressCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const pruneAdminLoginAttempts = `-- name: PruneAdminLoginAttempts :exec
 DELETE FROM admin_login_attempts
 WHERE id NOT IN (
@@ -357,6 +409,75 @@ func (q *Queries) UpsertAdminUser(ctx context.Context, arg UpsertAdminUserParams
 		arg.PasswordHash,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+	)
+	return err
+}
+
+const upsertClientMigrationObservation = `-- name: UpsertClientMigrationObservation :exec
+INSERT INTO client_migration_observations (
+  token_id, first_seen_unix_ns, last_seen_unix_ns, last_seen_at,
+  client_product, client_version, protocol_version, ingress, key_mode,
+  private_key_returned, migration_class,
+  last_secure_bootstrap_unix_ns, last_legacy_unix_ns, last_unknown_unix_ns,
+  secure_bootstrap_count, legacy_count, unknown_count, compat_ingress_count
+)
+VALUES (
+  ?1, ?2, ?2, ?3,
+  ?4, ?5, ?6, ?7, ?8,
+  ?9, ?10,
+  CASE WHEN ?10 = 'secure_bootstrap' THEN ?2 ELSE 0 END,
+  CASE WHEN ?10 = 'legacy' THEN ?2 ELSE 0 END,
+  CASE WHEN ?10 = 'unknown' THEN ?2 ELSE 0 END,
+  CASE WHEN ?10 = 'secure_bootstrap' THEN 1 ELSE 0 END,
+  CASE WHEN ?10 = 'legacy' THEN 1 ELSE 0 END,
+  CASE WHEN ?10 = 'unknown' THEN 1 ELSE 0 END,
+  CASE WHEN ?7 = 'compat' THEN 1 ELSE 0 END
+)
+ON CONFLICT(token_id) DO UPDATE SET
+  first_seen_unix_ns = MIN(client_migration_observations.first_seen_unix_ns, excluded.first_seen_unix_ns),
+  last_seen_unix_ns = MAX(client_migration_observations.last_seen_unix_ns, excluded.last_seen_unix_ns),
+  last_seen_at = CASE WHEN excluded.last_seen_unix_ns >= client_migration_observations.last_seen_unix_ns THEN excluded.last_seen_at ELSE client_migration_observations.last_seen_at END,
+  client_product = CASE WHEN excluded.last_seen_unix_ns >= client_migration_observations.last_seen_unix_ns THEN excluded.client_product ELSE client_migration_observations.client_product END,
+  client_version = CASE WHEN excluded.last_seen_unix_ns >= client_migration_observations.last_seen_unix_ns THEN excluded.client_version ELSE client_migration_observations.client_version END,
+  protocol_version = CASE WHEN excluded.last_seen_unix_ns >= client_migration_observations.last_seen_unix_ns THEN excluded.protocol_version ELSE client_migration_observations.protocol_version END,
+  ingress = CASE WHEN excluded.last_seen_unix_ns >= client_migration_observations.last_seen_unix_ns THEN excluded.ingress ELSE client_migration_observations.ingress END,
+  key_mode = CASE WHEN excluded.last_seen_unix_ns >= client_migration_observations.last_seen_unix_ns THEN excluded.key_mode ELSE client_migration_observations.key_mode END,
+  private_key_returned = CASE WHEN excluded.last_seen_unix_ns >= client_migration_observations.last_seen_unix_ns THEN excluded.private_key_returned ELSE client_migration_observations.private_key_returned END,
+  migration_class = CASE WHEN excluded.last_seen_unix_ns >= client_migration_observations.last_seen_unix_ns THEN excluded.migration_class ELSE client_migration_observations.migration_class END,
+  last_secure_bootstrap_unix_ns = MAX(client_migration_observations.last_secure_bootstrap_unix_ns, excluded.last_secure_bootstrap_unix_ns),
+  last_legacy_unix_ns = MAX(client_migration_observations.last_legacy_unix_ns, excluded.last_legacy_unix_ns),
+  last_unknown_unix_ns = MAX(client_migration_observations.last_unknown_unix_ns, excluded.last_unknown_unix_ns),
+  secure_bootstrap_count = client_migration_observations.secure_bootstrap_count + excluded.secure_bootstrap_count,
+  legacy_count = client_migration_observations.legacy_count + excluded.legacy_count,
+  unknown_count = client_migration_observations.unknown_count + excluded.unknown_count,
+  compat_ingress_count = client_migration_observations.compat_ingress_count + excluded.compat_ingress_count
+`
+
+type UpsertClientMigrationObservationParams struct {
+	TokenID            string `json:"token_id"`
+	OccurredAtUnixNs   int64  `json:"occurred_at_unix_ns"`
+	OccurredAt         string `json:"occurred_at"`
+	ClientProduct      string `json:"client_product"`
+	ClientVersion      string `json:"client_version"`
+	ProtocolVersion    int64  `json:"protocol_version"`
+	Ingress            string `json:"ingress"`
+	KeyMode            string `json:"key_mode"`
+	PrivateKeyReturned int64  `json:"private_key_returned"`
+	MigrationClass     string `json:"migration_class"`
+}
+
+func (q *Queries) UpsertClientMigrationObservation(ctx context.Context, arg UpsertClientMigrationObservationParams) error {
+	_, err := q.db.ExecContext(ctx, upsertClientMigrationObservation,
+		arg.TokenID,
+		arg.OccurredAtUnixNs,
+		arg.OccurredAt,
+		arg.ClientProduct,
+		arg.ClientVersion,
+		arg.ProtocolVersion,
+		arg.Ingress,
+		arg.KeyMode,
+		arg.PrivateKeyReturned,
+		arg.MigrationClass,
 	)
 	return err
 }

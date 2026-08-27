@@ -6,12 +6,12 @@ Windows / macOS 客户端 CLI MVP。Windows 发布物名为 `zhvpn.exe`，macOS 
 
 ```powershell
 # Windows
-.\build.ps1
+.\build.ps1 -Version X.Y.Z
 ```
 
 ```bash
 # macOS
-./build-macos.sh
+VERSION=X.Y.Z ./build-macos.sh
 ```
 
 也可手动构建当前平台：

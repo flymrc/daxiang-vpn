@@ -29,6 +29,8 @@ const (
 	maxAuditDetailJSONBytes = 4096
 	maxAuditResultBytes     = 64
 	maxAuditErrorCodeBytes  = 128
+	maxClientProductBytes   = 64
+	maxClientVersionBytes   = 64
 )
 
 //go:embed schema.sql
@@ -105,8 +107,9 @@ func (s *Store) EnsureAdminUser(ctx context.Context, username string, passwordHa
 }
 
 func (s *Store) InsertAudit(ctx context.Context, event auth.AuditEvent) error {
-	return s.q.InsertAuditEvent(ctx, generated.InsertAuditEventParams{
-		OccurredAt: formatTime(defaultTime(event.OccurredAt)),
+	occurredAt := defaultTime(event.OccurredAt)
+	auditParams := generated.InsertAuditEventParams{
+		OccurredAt: formatTime(occurredAt),
 		Actor:      nonempty(truncateText(event.Actor, maxAuditActorBytes), "unknown"),
 		SourceIp:   truncateText(event.SourceIP, maxAuditSourceIPBytes),
 		EventType:  truncateText(event.EventType, maxAuditEventTypeBytes),
@@ -114,7 +117,76 @@ func (s *Store) InsertAudit(ctx context.Context, event auth.AuditEvent) error {
 		DetailJson: sanitizeDetailJSON(event.DetailJSON),
 		Result:     nonempty(truncateText(event.Result, maxAuditResultBytes), "unknown"),
 		ErrorCode:  truncateText(event.ErrorCode, maxAuditErrorCodeBytes),
-	})
+	}
+	if event.MigrationObservation == nil {
+		return s.q.InsertAuditEvent(ctx, auditParams)
+	}
+	observationParams, err := migrationObservationParams(event, occurredAt)
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	qtx := s.q.WithTx(tx)
+	if err := qtx.InsertAuditEvent(ctx, auditParams); err != nil {
+		return err
+	}
+	if err := qtx.UpsertClientMigrationObservation(ctx, observationParams); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) ListClientMigrationObservations(ctx context.Context) ([]generated.ClientMigrationObservation, error) {
+	return s.q.ListClientMigrationObservations(ctx)
+}
+
+func migrationObservationParams(event auth.AuditEvent, auditTime time.Time) (generated.UpsertClientMigrationObservationParams, error) {
+	observation := event.MigrationObservation
+	if event.EventType != "client.bootstrap" || event.Result != "ok" {
+		return generated.UpsertClientMigrationObservationParams{}, errors.New("migration observation requires successful client.bootstrap audit")
+	}
+	if observation.TokenID == "" {
+		return generated.UpsertClientMigrationObservationParams{}, errors.New("migration observation token id is required")
+	}
+	switch observation.Ingress {
+	case "compat", "trusted_proxy":
+	default:
+		return generated.UpsertClientMigrationObservationParams{}, fmt.Errorf("invalid migration ingress %q", observation.Ingress)
+	}
+	switch observation.KeyMode {
+	case "client_generated", "server_legacy":
+	default:
+		return generated.UpsertClientMigrationObservationParams{}, fmt.Errorf("invalid migration key mode %q", observation.KeyMode)
+	}
+	switch observation.MigrationClass {
+	case "secure_bootstrap", "legacy", "unknown":
+	default:
+		return generated.UpsertClientMigrationObservationParams{}, fmt.Errorf("invalid migration class %q", observation.MigrationClass)
+	}
+	occurredAt := observation.OccurredAt
+	if occurredAt.IsZero() {
+		occurredAt = auditTime
+	}
+	privateKeyReturned := int64(0)
+	if observation.PrivateKeyReturned {
+		privateKeyReturned = 1
+	}
+	return generated.UpsertClientMigrationObservationParams{
+		TokenID:            observation.TokenID,
+		OccurredAtUnixNs:   occurredAt.UnixNano(),
+		OccurredAt:         formatTime(occurredAt),
+		ClientProduct:      truncateText(observation.ClientProduct, maxClientProductBytes),
+		ClientVersion:      truncateText(observation.ClientVersion, maxClientVersionBytes),
+		ProtocolVersion:    int64(observation.ProtocolVersion),
+		Ingress:            observation.Ingress,
+		KeyMode:            observation.KeyMode,
+		PrivateKeyReturned: privateKeyReturned,
+		MigrationClass:     observation.MigrationClass,
+	}, nil
 }
 
 func (s *Store) Maintain(ctx context.Context, policy MaintenancePolicy) error {
