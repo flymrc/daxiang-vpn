@@ -27,7 +27,7 @@ ssh -i ~/.ssh/zongheng_server root@36.50.84.68
 
 - 服务：`zhhub.service`（2026-06-11 从旧 `dxhub.service` 迁移完成，dx→zh 收尾）。
 - 二进制 / tokens / admin DB：`/opt/zongheng/zhhub/zhhub`、`/opt/zongheng/zhhub/tokens.yaml`、`/opt/zongheng/zhhub/admin.db`。
-- 客户端 API 监听：`0.0.0.0:18080`（HTTP 后端）；提供 `/healthz`、`/api/client/bootstrap`、`/api/client/rotate-ip`。公网 HTTPS 入口是 Caddy `https://jp-proxy.ruichao.dev/api/client/*`;公网 `18080/tcp` 仅作老客户端迁移期兼容,新客户端验证稳定后应从 ufw 收口。
+- 客户端 API 监听：`0.0.0.0:18080` 是公网老客户端兼容入口，`127.0.0.1:18079` 是 Caddy 专用可信代理入口；两者提供 `/healthz`、`/api/client/bootstrap`、`/api/client/rotate-ip`。公网 HTTPS 入口由 Caddy 反代到 `18079`；公网 `18080/tcp` 继续作迁移期兼容，当前不得从 UFW 收口。
 - WireGuard 客户端密钥迁移：2026-07-01 生产 `zhhub` 已支持客户端上报 `wireguard_public_key`,并用 `wg set wg0 peer <public_key> allowed-ips <client_ip>/32` 应用 peer;新协议响应不再下发 `wireguard.private_key`。老客户端未上报公钥时仍走 legacy 私钥响应,待新客户端分发后清理 tokens。
 - P0-2 上线备份：`/root/zongheng-backups/20260701091751-p0-local-wg-key`；对应 `zhhub` SHA256 `33e6b88b281b04cd3e0430d16ae3be7becbd0452f3a087fce4e0f5cd355f9e7d`。
 - admin SQLite 容量防护上线备份：`/root/zongheng-backups/20260701125316-admin-sqlite-retention`；对应 `zhhub` SHA256 `aff3855a6ae5bfd53fc62dc2342ba397d84c7444dde47d0da550735d92b6baf2`。
@@ -37,9 +37,10 @@ ssh -i ~/.ssh/zongheng_server root@36.50.84.68
 - admin reveal 依赖追踪修复上线备份：`/root/zongheng-backups/20260701134256-admin-reveal-reactivity-fix`；对应 `zhhub` SHA256 `8cb90800e2c64f9731e51e95042ffc0af4324358a5782e449d1859b1245d7187`。
 - admin 授权码分页上线备份：`/root/zongheng-backups/20260701135152-admin-token-pagination`；对应 `zhhub` SHA256 `482bc633fad2619793018b4e35939abe806dc52b11b46fecb801b544aa6b35d4`。
 - admin 出口 IP 双栈显示上线备份：`/root/zongheng-backups/20260701140319-admin-exit-ip-dual-stack`；对应 `zhhub` SHA256 `757c52d6dc2b82b1d00276dec6e844b5ee0807829e23fc3724f809e6c15599d1`。
-- admin 出口卡片布局修复上线备份：`/root/zongheng-backups/20260702003327-admin-egress-card-layout`；当前 `zhhub` SHA256 `53c1aba5fe06ed36c4860abf6bd7abac26c1ffb5774e8c892693cc2c8d8f3818`。
+- admin 出口卡片布局修复上线备份：`/root/zongheng-backups/20260702003327-admin-egress-card-layout`；当时 `zhhub` SHA256 `53c1aba5fe06ed36c4860abf6bd7abac26c1ffb5774e8c892693cc2c8d8f3818`。
+- 客户端迁移观测上线备份：`/root/zongheng-backups/20260827235455-client-observer`；源码提交 `fa4190a9dbee2d37be3c350eff0dd7d1eece12e0`，当前 `zhhub` SHA256 `0d36e906f9720b29e23e0de0c1909bf2253937b2ebf81de7caa04c8cd6796bec`。本次只部署 observation-only、双 listener 和 Caddy `18079` 上游，不含防火墙、token、WireGuard 或 Android 变更。
 - 管理控制台监听：`127.0.0.1:18100`；Caddy 对公网提供 `https://jp-proxy.ruichao.dev/admin/` 并反代到本地 listener,根路径 `/` 和未知路径都返回 404。
-- 关键 env：`ZHHUB_TOKENS`、`ZHHUB_LISTEN`、`ZHHUB_ADMIN_LISTEN=127.0.0.1:18100`、`ZHHUB_ADMIN_DB=/opt/zongheng/zhhub/admin.db`、`ZHHUB_ADMIN_PASSWORD_HASH`、`ZHHUB_ADMIN_AUDIT_RETENTION_DAYS=90`、`ZHHUB_ADMIN_AUDIT_MAX_ROWS=50000`、`ZHHUB_ADMIN_LOGIN_ATTEMPT_RETENTION_DAYS=7`、`ZHHUB_ADMIN_LOGIN_ATTEMPT_MAX_ROWS=10000`、`ZHHUB_ADMIN_DB_MAINTENANCE_MINUTES=60`、`ZHHUB_ADMIN_EXIT_IP_CHECK_URL=https://api64.ipify.org`、`ZHHUB_ADMIN_EXIT_IPV6_CHECK_URL=https://api6.ipify.org`、`ZHHUB_ADMIN_EXIT_IPV4_CHECK_URL=https://api.ipify.org`、`ZHHUB_ADMIN_EXIT_IP_CHECK_TIMEOUT_SECONDS=8`、`ZHHUB_ANDROID_CONTROL_KEY=/root/.ssh/zhandroid_control_hub`、`ZHHUB_ANDROID_CONTROL_KNOWN_HOSTS=/root/.ssh/zhandroid_control_known_hosts`、`ZHHUB_ANDROID_CARRIER_CACHE_SECONDS=300`、`ZHHUB_TOKEN_LEASE_SECONDS=30`。
+- 关键 env：`ZHHUB_TOKENS`、`ZHHUB_LISTEN`、`ZHHUB_TRUSTED_PROXY_LISTEN=127.0.0.1:18079`、`ZHHUB_ADMIN_LISTEN=127.0.0.1:18100`、`ZHHUB_ADMIN_DB=/opt/zongheng/zhhub/admin.db`、`ZHHUB_ADMIN_PASSWORD_HASH`、`ZHHUB_ADMIN_AUDIT_RETENTION_DAYS=90`、`ZHHUB_ADMIN_AUDIT_MAX_ROWS=50000`、`ZHHUB_ADMIN_LOGIN_ATTEMPT_RETENTION_DAYS=7`、`ZHHUB_ADMIN_LOGIN_ATTEMPT_MAX_ROWS=10000`、`ZHHUB_ADMIN_DB_MAINTENANCE_MINUTES=60`、`ZHHUB_ADMIN_EXIT_IP_CHECK_URL=https://api64.ipify.org`、`ZHHUB_ADMIN_EXIT_IPV6_CHECK_URL=https://api6.ipify.org`、`ZHHUB_ADMIN_EXIT_IPV4_CHECK_URL=https://api.ipify.org`、`ZHHUB_ADMIN_EXIT_IP_CHECK_TIMEOUT_SECONDS=8`、`ZHHUB_ANDROID_CONTROL_KEY=/root/.ssh/zhandroid_control_hub`、`ZHHUB_ANDROID_CONTROL_KNOWN_HOSTS=/root/.ssh/zhandroid_control_known_hosts`、`ZHHUB_ANDROID_CARRIER_CACHE_SECONDS=300`、`ZHHUB_TOKEN_LEASE_SECONDS=30`。
 - 一键换 IP 依赖 `ZHHUB_ANDROID_CONTROL_KEY` 指向的私钥能登手机控制面 `10.66.0.101:2022`。
 - 管理控制台门禁由应用内 Argon2id 管理员密码登录负责。明文密码和 hash 不写入文档。
 - 管理凭据存放在本机 `~/.zhhub/hub-admin-credentials-20260701.txt` 和 Hub `/root/hub-admin-credentials-20260701.txt`；两处都不进入仓库。
@@ -177,7 +178,7 @@ ssh -i ~/.ssh/zhandroid_control_local -p 2022 root@10.66.0.101 \
 
 ## 当前服务器状态
 
-检查日期：2026-07-01。
+检查日期：2026-08-28。
 
 - 主机名：`jp-proxy.ruichao.dev`
 - 系统：Ubuntu 24.04.4 LTS
@@ -188,7 +189,7 @@ ssh -i ~/.ssh/zhandroid_control_local -p 2022 root@10.66.0.101 \
 - IPv4 转发：已开启
 - WireGuard 服务：`wg-quick@wg0`，已启用并正在运行
 - 防火墙：`ufw` 已启用,默认拒绝入站;显式放行 SSH、WireGuard、zhhub bootstrap、zhreverse TCP、Caddy `80/443` 和 `wg0` 上的 `10.66.0.1:18081/tcp`
-- Caddy：`caddy.service` 已启用并运行,监听公网 `80/tcp` 和 `443/tcp`,配置 `/etc/caddy/Caddyfile`。当前承载 `/admin*` -> `127.0.0.1:18100`、`/api/client/*` 和 `/healthz` -> `127.0.0.1:18080`;`/` 与未知路径 404。Caddyfile 关键备份：`/etc/caddy/Caddyfile.bak-20260701084419-api-tls`、`/etc/caddy/Caddyfile.bak-20260701130056-root-route-redir-fix`、`/etc/caddy/Caddyfile.bak-20260701130311-root-404`。
+- Caddy：`caddy.service` 已启用并运行,监听公网 `80/tcp` 和 `443/tcp`,配置 `/etc/caddy/Caddyfile`。当前承载 `/admin*` -> `127.0.0.1:18100`、`/api/client/*` 和 `/healthz` -> `127.0.0.1:18079`;`/` 与未知路径 404。2026-08-28 切换后 Caddyfile SHA256 为 `97507d0a3b9eb0579a42fac8641007f7e370f164a400274c068ce9440c6891fb`，切换前配置保存在本次 root-only 备份目录。
 - Docker：`linuxserver/librespeed` 已停止,`restart=no`;容器保留用于回滚,不再占用 `80/tcp`。
 
 ## 当前 WireGuard Peer

@@ -284,6 +284,15 @@ admin SQLite 容量防护生产部署记录:
 - 启动维护验证：`/opt/zongheng/zhhub/admin.db-wal` 从部署前约 4.0M 收缩到约 20K;
   `journalctl -u zhhub.service --since "5 min ago"` 无 `admin db maintenance failed`、panic 或 fatal。
 
+客户端迁移 observation-only 生产部署记录（2026-08-28）：
+
+- 备份目录：`/root/zongheng-backups/20260827235455-client-observer`，目录和内容仅 root 可读。
+- 源码提交：`fa4190a9dbee2d37be3c350eff0dd7d1eece12e0`；`zhhub` SHA256：`0d36e906f9720b29e23e0de0c1909bf2253937b2ebf81de7caa04c8cd6796bec`。
+- 已先用隔离端口和合成 token 验证 secure/legacy/header spoof、响应私钥边界、SQLite 投影与无副作用 rotate 错误路径，再部署生产双 listener。
+- Caddy 的两条客户端 upstream 已从 `18080` 精确切到 `18079`；本地双 listener、公网 HTTPS、admin、SQLite quick check 和 Android reverse 出口均正常。
+- 只读 readiness 已通过登录验证：模式为 `observation_only`、写入健康、`ready=false`；未设置 campaign `T0`。
+- 未修改 UFW、生产 token、WireGuard peer、legacy 私钥、Android 或 `zhreverse`。
+
 剩余收尾:
 
 1. 分发新 CLI,并同步更新 Windows GUI sidecar 与 Python SDK bundled CLI。

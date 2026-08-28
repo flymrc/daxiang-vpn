@@ -15,9 +15,18 @@
 - 新增登录后只读接口 `GET /admin/api/migration/readiness`，列出当前有效 token 的非敏感版本和分类。当前模式固定为 `observation_only`，campaign 和端到端证据未建立前始终 `ready=false`。
 - 更新 Hub README 和部署 runbook，明确先部署双 listener、再切 Caddy upstream 的顺序。
 
+## 生产 observation-only 部署
+
+- 以提交 `fa4190a9dbee2d37be3c350eff0dd7d1eece12e0` 的干净 worktree 构建 Linux amd64 Hub；产物 SHA256 为 `0d36e906f9720b29e23e0de0c1909bf2253937b2ebf81de7caa04c8cd6796bec`。
+- 在 root-only 目录 `/root/zongheng-backups/20260827235455-client-observer` 保存旧二进制、token 配置、SQLite、systemd unit/drop-in、Caddyfile 和脱敏状态记录。
+- 先在隔离端口使用合成 token 验证 secure/legacy/header spoof、响应私钥边界、SQLite 投影和无副作用 rotate 错误路径。
+- 部署 Hub 双 listener 后分别验证 `18080`、`18079`、`18100`，再把线上 Caddy 的两条客户端 upstream 从 `18080` 精确切到 `18079`。
+- 公网 HTTPS health/bootstrap 路由、管理入口、认证后只读 readiness、SQLite quick check、Android reverse 双会话和蜂窝出口均正常；来自两个外部节点的 `18079` 直连均不可达。
+- readiness 保持 `observation_only`、写入健康和 `ready=false`；部署时有效 token 尚无新版观测，未设置 campaign `T0`。
+
 ## 边界
 
-- 本次只修改本地代码、离线测试和公开操作文档；未部署 Hub，未 reload Caddy，未修改防火墙、token、WireGuard、Android 出口或任何生产状态。
+- 本次生产副作用只包括替换 `zhhub`、增加可信 loopback listener drop-in、原地新增 SQLite 观测表，以及切换 Caddy 客户端 upstream。未修改防火墙、token、WireGuard、legacy 私钥、Android 出口或 `zhreverse`。
 - 未实现 campaign 成员表、批准版本 allowlist、端到端证据、静默窗口或强制拒绝；不能据此清理私钥或关闭 `18080`。
 - 真实用户映射和生产证据不进入公开仓库；报告只使用稳定 token hash ID。
 - 当前结论保持 `NO-GO`。

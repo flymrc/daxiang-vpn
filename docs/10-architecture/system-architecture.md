@@ -138,6 +138,8 @@ legacy clients --------------------> zhhub compat API 0.0.0.0:18080
 
 客户端默认 API base 是 `https://jp-proxy.ruichao.dev`，仍保留 `ZHVPN_API_BASE` 作为测试/回滚覆盖。Hub 的两个客户端 listener 复用同一业务实现，但 ingress 身份由注册 handler 固定派生，不信任客户端提供的转发头：Caddy HTTPS 路由只进入 loopback `18079`，公网 `18080` 固定记为兼容入口。Hub 支持客户端上报 `wireguard_public_key`，由 Hub 用 `wg set` 应用 peer，新协议响应不再下发 `wireguard.private_key`。剩余迁移顺序是：先部署 observation-only 双 listener 并验证观测链，再发布可审计客户端，确认 bootstrap/rotate 正常，完成 campaign 和静默窗口，之后才清理 legacy 私钥并关闭公网 `18080/tcp`。在收口前，`18080/tcp` 和 legacy 私钥响应只是老客户端兼容路径，不应视为目标安全状态。
 
+2026-08-28 已完成 observation-only 双 listener 生产部署和 Caddy `18079` 切换。兼容 listener、防火墙和 legacy 私钥保持原状；campaign `T0` 尚未设置，最终安全收口仍是 NO-GO。
+
 ## 分阶段设计
 
 ### P0：Hub 内网互通

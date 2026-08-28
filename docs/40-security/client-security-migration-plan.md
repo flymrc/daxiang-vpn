@@ -53,13 +53,13 @@
 
 ### 3.2 私有证据位置
 
-- [ ] 在外层 ZeroCoreUnit00v2 工作区的机器本地 `.local/zongheng-vpn/migration/` 建立受限迁移目录；不要在本产品 Git 根目录内创建同名目录。
-- [ ] 建目录前确认解析后的绝对路径位于 `zongheng-vpn` Git 工作树之外。
-- [ ] 确认外层仓库忽略该目录，且公开树审计不会发布其中内容。
+- [x] 在外层 ZeroCoreUnit00v2 工作区的机器本地 `.local/zongheng-vpn/migration/` 建立受限迁移目录；不要在本产品 Git 根目录内创建同名目录。
+- [x] 建目录前确认解析后的绝对路径位于 `zongheng-vpn` Git 工作树之外。
+- [x] 确认外层仓库忽略该目录，且公开树审计不会发布其中内容。
 - [ ] 只在私有迁移矩阵中记录用户/安装实例与稳定 token ID 的对应关系。
 - [ ] 私有矩阵不保存 token 明文、公钥、私钥或完整配置。
 - [ ] 含 legacy 私钥的生产备份只保存在 Hub root-only、受控加密目录。
-- [ ] 为私有证据配置负责人、权限、保留期和销毁日期。
+- [x] 为私有证据配置负责人、权限、保留期和销毁条件。
 
 ## 4. 当前基线
 
@@ -190,8 +190,8 @@ Caddy HTTPS -> 专用 loopback-only secure listener
 公网迁移兼容 -> 独立 legacy listener
 ```
 
-- [ ] 确认专用 loopback 端口不与现有控制面或数据面 listener 冲突。
-- [ ] Caddy 只反代到 loopback secure listener。
+- [x] 确认专用 loopback 端口不与现有控制面或数据面 listener 冲突。
+- [x] Caddy 只反代到 loopback secure listener。
 - [x] legacy listener 保持现有兼容行为，直至全局 Go 门槛通过。
 - [x] 两个 listener 复用同一显式 handler/service，不复制 bootstrap 业务逻辑。
 - [x] 外部提供的转发头不能改变 listener 派生的 ingress。
@@ -273,18 +273,18 @@ last_reconciled_at
 
 ## 8. 阶段 2：Hub 观测部署
 
-- [ ] 生产变更前保存 root-only 配置、数据库和服务状态备份。
-- [ ] 使用合成 token 在隔离环境完成 secure_bootstrap、legacy 和伪造 header 集成测试；`426` 只属于阶段 7 enforce 验收。
-- [ ] 验证 Caddy HTTPS -> secure listener 分类正确。
-- [ ] 验证直连 legacy listener 分类正确。
-- [ ] 验证旧客户端 fixture 在 `observe` 模式仍可用且被标记为 legacy。
+- [x] 生产变更前保存 root-only 配置、数据库和服务状态备份。
+- [x] 使用合成 token 在隔离环境完成 secure_bootstrap、legacy 和伪造 header 集成测试；`426` 只属于阶段 7 enforce 验收。
+- [x] 验证 Caddy HTTPS -> secure listener 分类正确。
+- [x] 验证直连 legacy listener 分类正确。
+- [x] 验证旧客户端 fixture 在 `observe` 模式仍可用且被标记为 legacy。
 - [ ] 验证新客户端使用临时目录生成本地密钥，响应和缓存均无服务端私钥。
 - [ ] 验证 bootstrap、rotate、SQLite 投影和只读 readiness 报告端到端贯通。
-- [ ] 部署 Hub `observe` 模式；不拒绝现有旧客户端。
+- [x] 部署 Hub `observe` 模式；不拒绝现有旧客户端。
 - [ ] 从 Hub 观测部署开始到正式 `T0` 之间冻结普通新 token 发放；只允许已登记的合成/canary token。
 - [ ] 确认现有健康检查已改用 HTTPS 或本机 secure listener，不再依赖公网 legacy listener。
 - [ ] 连续观察 24 小时，无审计空洞、分类错误或错误率异常。
-- [ ] 记录可信观测候选起点，但在可审计客户端产物及三类 canary 就绪前不设置 campaign `T0`。
+- [x] 记录可信观测候选起点，但在可审计客户端产物及三类 canary 就绪前不设置 campaign `T0`。
 
 ### 阶段 2 退出门槛
 
@@ -574,6 +574,7 @@ last_reconciled_at
 | 2026-08-27 | 基线审计 | 确认当前遥测不足以证明客户端代际和入口 | `ready=false` | 本计划“当前基线” | Codex / 待人工复核 | NO-GO |
 | 2026-08-28 | 文档准备 | 落盘长期清单、文档入口和工作记录 | 链接/隐私/格式检查通过 | `docs/90-history/worklogs/2026-08-28-client-security-migration-plan.md` | Codex / 只读复核 | NO-GO |
 | 2026-08-28 | 阶段 2 授权 | 用户授权进入生产阶段；范围限定为可逆 observation-only canary | 不含 enforce、私钥清理、防火墙或安卓改动 | 本计划“阶段 2” | 用户 / Codex | GO（仅观测） |
+| 2026-08-28 08:56 JST | 阶段 2 部署 | 上线双 listener Hub 并将 Caddy 客户端 upstream 切到 `18079` | 合成 canary、双 listener、HTTPS、SQLite、readiness 与 Android 出口验证通过 | 机器本地 `.local/zongheng-vpn/migration/phase2-observation-20260828/` | Codex / 两路只读复核 | GO（24h 观测） |
 
 ## 19. 进度摘要
 
@@ -582,7 +583,7 @@ last_reconciled_at
 | 项目 | 当前值 |
 |---|---|
 | Campaign T0 | 未设置 |
-| 当前模式 | observation-only 生产候选已通过本地门禁；尚未建立 campaign |
+| 当前模式 | production observation-only；双 listener 和 Caddy `18079` 已上线，尚未建立 campaign |
 | 有效安装实例总数 | 仅记录于私有迁移矩阵 |
 | Compliant | 未知 |
 | Legacy | 未知 |
