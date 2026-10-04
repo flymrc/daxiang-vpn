@@ -34,3 +34,12 @@
 - Hub 经手机出口的 IPv6 为 `240b:c010:640:391a:0:42:8b1b:4001`，IPv4 为 `210.157.193.193`；本机 `127.0.0.1:7890` 经现有 zhvpn 的 IPv6 请求也返回同一手机地址。
 - 用户随后明确取消 Jetstar 重跑，本轮没有完成该网站搜索/booking 业务验收，也未人为顶满线上并发来增加 `proxy_idle_preemptions`。部署后的空闲抢占计数和真实流量应继续观察。
 - 回滚：复制上述备份到临时文件，再原子替换当前二进制并 `systemctl restart zhreverse-hub.service`；回滚也会短暂断开代理连接，不需要改配置或手机端。
+
+部署后端到端验证（2026-10-05 01:38–01:40 JST，另一会话按已确认的部署计划执行）：
+
+- 同一台 Windows 客户端、系统 Chrome、经 zhvpn 跑 Jetstar MEL-SYD 预订流程（卡号留空、不付款），NetLog 取证。
+- Hub `proxy_idle_preemptions` 从 0 增到 20；该客户端并发峰值 48。
+- 点 Search 后 `booking.jetstar.com` 的 `search-flights`→`select-flights` 返回 200，后续资源正常，未再出现 `ERR_CONNECTION_RESET`（修复前同场景两次均在 booking 跳转被重置）。
+- 仍有 46 次重置，全部集中在首页打开后第 9–14 秒的首轮突发（隧道均不满 10 秒，无可抢占对象），目标为 Google 后台和广告/统计/聊天域名；之后零重置。若要进一步减少，可评估更短的 `proxy_preempt_idle`，代价是更早关闭刚空闲的连接。
+- 流程随后停在 Akamai 验证页（`select-flights` 返回约 1.2KB 中间页并加载 Bot Manager 脚本，之后页面主线程长时间无响应、无后续请求），与连接上限无关，另行排查。
+- Hub 日志中每 3 秒出现的 `reject tunnel from 118.158.252.9: invalid hello` 在部署前已存在（部署前 35 分钟约 1390 次），与本次部署无关，来源待查。
