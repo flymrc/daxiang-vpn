@@ -2,6 +2,8 @@
 
 纵横 VPN 是一个 Hub + Android 手机出口 + Windows 客户端的代理网络项目。
 
+2026-10-05 Hub `zhreverse` 已上线满额空闲 CONNECT 抢占（阈值 10 秒；并发上限仍为全局 96 / 每客户端 48）。生产校验与备份见[服务器访问文档](docs/20-operations/runbooks/server-access.md)；手机数据面未在本次部署中变更，当前仍运行 Motorola `dxreverse` 兼容客户端。
+
 ## 目录
 
 > 注:`clients/` 是终端用户客户端,`egress/` 是出口节点(基础设施侧)。安卓相关都在 `egress/` 下,**不是**终端客户端。

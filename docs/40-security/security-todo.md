@@ -73,6 +73,7 @@ P0 各项已由 [Hub 安全审查报告 2026-06-04](../40-security/security-audi
 - [ ] **关闭 SSH 密码登录**（审查 #4）—— 关 `PasswordAuthentication` 与 root 密码登录。
       前置条件：所有要登录的机器公钥须先加入 `authorized_keys`（否则只有密码的机器登不上）。
       操作有锁死风险，需用回滚兜底手法。当前因待定其他机器密钥下发而搁置。
+      2026-10-05 已追加 Windows `xuotq@xuotq` 公钥并实测免密登录，指纹见 [server-access](../20-operations/runbooks/server-access.md)。本次未更改 SSH 服务配置，不能据此把关闭密码登录标记为完成。
 - [x] **apt 安全更新**（审查 #6）—— 2026-06-04 完成，剩余安全包 0。
       顺带修复 `ssh` 开机自启（原 disabled，重启会登不上）。无内核更新故未重启。
       遗留：libc6/apparmor 建议低峰重启收尾（非必须）。
@@ -109,4 +110,3 @@ P0 各项已由 [Hub 安全审查报告 2026-06-04](../40-security/security-audi
 - 禁止监听 `0.0.0.0` 或蜂窝/WiFi 公网接口。
 - 只允许 SSH key 登录，禁用密码登录；真实 `authorized_keys` 和私钥不得入库。
 - 远程控制通道只作为运维入口，不替代 Hub 侧健康检查和本机 watchdog 自愈。
-
