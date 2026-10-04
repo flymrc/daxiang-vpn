@@ -20,11 +20,16 @@ server:
   debug_allowed_cidrs:
     - 10.66.0.1/32
   # Protect the Android mobile egress from client-side burst concurrency.
-  # Excess CONNECT requests fail fast with HTTP 429 instead of piling up in the tunnel.
+  # Excess CONNECT requests fail fast with HTTP 429 instead of piling up in the tunnel,
+  # unless an idle tunnel can be preempted (see proxy_preempt_idle).
   max_proxy_connections: 96
   max_proxy_connections_per_client: 48
   # Reap idle CONNECT tunnels so abandoned browser/speedtest connections release slots.
   proxy_idle_timeout: 2m
+  # At a limit, close the longest-idle tunnel (idle at least this long; same client for
+  # the per-client limit) instead of rejecting the new CONNECT. Browsers keep many idle
+  # keep-alive tunnels and simply reconnect when they need one again.
+  proxy_preempt_idle: 10s
   # Deprecated/ignored: Hub must not act as an egress fallback. IPv4-only targets
   # should still go through the phone; if Rakuten IPv4 is broken, report it as
   # broken instead of exposing the Hub VPS as the user's egress.

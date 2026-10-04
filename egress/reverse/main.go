@@ -29,6 +29,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hashicorp/yamux"
@@ -103,6 +104,7 @@ type serverOptions struct {
 	MaxProxyConns     int           `json:"max_proxy_connections,omitempty" yaml:"max_proxy_connections,omitempty"`
 	MaxProxyConnsPeer int           `json:"max_proxy_connections_per_client,omitempty" yaml:"max_proxy_connections_per_client,omitempty"`
 	ProxyIdleTimeout  time.Duration `json:"proxy_idle_timeout,omitempty" yaml:"proxy_idle_timeout,omitempty"`
+	ProxyPreemptIdle  time.Duration `json:"proxy_preempt_idle,omitempty" yaml:"proxy_preempt_idle,omitempty"`
 	V4OnlyDirect      bool          `json:"v4_only_direct,omitempty" yaml:"v4_only_direct,omitempty"`
 }
 
@@ -130,6 +132,7 @@ func defaultServerOptions() serverOptions {
 		Transport:        "quic",
 		Resolve:          "server",
 		ProxyIdleTimeout: 2 * time.Minute,
+		ProxyPreemptIdle: 10 * time.Second,
 	}
 }
 
@@ -158,6 +161,9 @@ func (o serverOptions) withDefaults(defaults serverOptions) serverOptions {
 	}
 	if o.ProxyIdleTimeout == 0 {
 		o.ProxyIdleTimeout = defaults.ProxyIdleTimeout
+	}
+	if o.ProxyPreemptIdle == 0 {
+		o.ProxyPreemptIdle = defaults.ProxyPreemptIdle
 	}
 	if len(o.DebugAllowedCIDRs) == 0 {
 		o.DebugAllowedCIDRs = o.AllowedProxyCIDRs
@@ -237,6 +243,7 @@ func runServer(args []string) error {
 	maxProxyConns := fs.Int("max-proxy-connections", defaults.MaxProxyConns, "maximum concurrent CONNECT proxy sessions; 0 disables the limit")
 	maxProxyConnsPeer := fs.Int("max-proxy-connections-per-client", defaults.MaxProxyConnsPeer, "maximum concurrent CONNECT proxy sessions per client IP; 0 disables the limit")
 	proxyIdleTimeout := fs.Duration("proxy-idle-timeout", defaults.ProxyIdleTimeout, "idle timeout for CONNECT proxy sessions; 0 disables idle reaping")
+	proxyPreemptIdle := fs.Duration("proxy-preempt-idle", defaults.ProxyPreemptIdle, "at a CONNECT limit, close the longest-idle session idle at least this long instead of rejecting; 0 disables preemption")
 	v4OnlyDirect := fs.Bool("v4-only-direct", defaults.V4OnlyDirect, "deprecated and ignored; Hub never acts as an egress fallback")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -286,6 +293,9 @@ func runServer(args []string) error {
 	if explicit["proxy-idle-timeout"] {
 		opts.ProxyIdleTimeout = *proxyIdleTimeout
 	}
+	if explicit["proxy-preempt-idle"] {
+		opts.ProxyPreemptIdle = *proxyPreemptIdle
+	}
 	if explicit["v4-only-direct"] {
 		opts.V4OnlyDirect = *v4OnlyDirect
 	}
@@ -308,6 +318,9 @@ func runServer(args []string) error {
 	if opts.ProxyIdleTimeout < 0 {
 		return errors.New("--proxy-idle-timeout must be >= 0")
 	}
+	if opts.ProxyPreemptIdle < 0 {
+		return errors.New("--proxy-preempt-idle must be >= 0")
+	}
 
 	allowedProxyNets, err := parseCIDRs("allowed_proxy_cidrs", opts.AllowedProxyCIDRs)
 	if err != nil {
@@ -325,6 +338,7 @@ func runServer(args []string) error {
 		maxProxyConns:     opts.MaxProxyConns,
 		maxProxyConnsPeer: opts.MaxProxyConnsPeer,
 		proxyIdleTimeout:  opts.ProxyIdleTimeout,
+		proxyPreemptIdle:  opts.ProxyPreemptIdle,
 		activeProxyByPeer: map[string]int{},
 	}
 	tunnelReady := make(chan error, 1)
@@ -345,7 +359,7 @@ func runServer(args []string) error {
 	if opts.V4OnlyDirect {
 		log.Printf("v4_only_direct is deprecated and ignored: Hub must not act as an egress fallback")
 	}
-	log.Printf("reverse server listening transport=%s resolve=%s tunnel=%s proxy=%s max_proxy_connections=%d max_proxy_connections_per_client=%d proxy_idle_timeout=%s", opts.Transport, opts.Resolve, opts.Listen, opts.Proxy, opts.MaxProxyConns, opts.MaxProxyConnsPeer, opts.ProxyIdleTimeout)
+	log.Printf("reverse server listening transport=%s resolve=%s tunnel=%s proxy=%s max_proxy_connections=%d max_proxy_connections_per_client=%d proxy_idle_timeout=%s proxy_preempt_idle=%s", opts.Transport, opts.Resolve, opts.Listen, opts.Proxy, opts.MaxProxyConns, opts.MaxProxyConnsPeer, opts.ProxyIdleTimeout, opts.ProxyPreemptIdle)
 	return server.ListenAndServe()
 }
 
@@ -515,11 +529,14 @@ type sessionManager struct {
 	maxProxyConns         int
 	maxProxyConnsPeer     int
 	proxyIdleTimeout      time.Duration
+	proxyPreemptIdle      time.Duration
 	activeProxyMu         sync.Mutex
 	activeProxyConns      int
 	activeProxyByPeer     map[string]int
+	activeProxySlots      map[*proxySlot]struct{}
 	activeProxyPeak       int
 	activeProxyPeakByPeer map[string]int
+	proxyPreemptions      int64
 	proxyMetricsMu        sync.Mutex
 	proxyMetrics          proxyMetricStore
 }
@@ -542,6 +559,8 @@ type sessionHealthReport struct {
 	MaxProxyConnections          int                  `json:"max_proxy_connections,omitempty"`
 	MaxProxyConnectionsPerClient int                  `json:"max_proxy_connections_per_client,omitempty"`
 	ProxyIdleTimeoutMillis       int64                `json:"proxy_idle_timeout_ms,omitempty"`
+	ProxyPreemptIdleMillis       int64                `json:"proxy_preempt_idle_ms,omitempty"`
+	ProxyIdlePreemptions         int64                `json:"proxy_idle_preemptions,omitempty"`
 	ProxyMetrics                 proxyMetricReport    `json:"proxy_metrics"`
 }
 
@@ -937,6 +956,8 @@ func (m *sessionManager) sessionHealthSnapshot() sessionHealthReport {
 	report.MaxProxyConnections = m.maxProxyConns
 	report.MaxProxyConnectionsPerClient = m.maxProxyConnsPeer
 	report.ProxyIdleTimeoutMillis = m.proxyIdleTimeout.Milliseconds()
+	report.ProxyPreemptIdleMillis = m.proxyPreemptIdle.Milliseconds()
+	report.ProxyIdlePreemptions = m.proxyPreemptions
 	if len(m.activeProxyByPeer) > 0 {
 		report.ActiveProxyConnectionsByPeer = make(map[string]int, len(m.activeProxyByPeer))
 		for peer, count := range m.activeProxyByPeer {
@@ -1045,7 +1066,7 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 		Peer:      proxyPeer(req.RemoteAddr),
 		Target:    req.Host,
 	}
-	release, ok, reason := m.acquireProxySlot(req.RemoteAddr)
+	slot, ok, reason := m.acquireProxySlot(req.RemoteAddr)
 	if !ok {
 		metric.Status = "rejected"
 		metric.Error = reason
@@ -1053,7 +1074,7 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, reason, http.StatusTooManyRequests)
 		return
 	}
-	defer release()
+	defer slot.release()
 
 	target := req.Host
 	if m.resolve == "server" {
@@ -1125,7 +1146,7 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	pipeStarted := time.Now()
-	transfer := pipeBothMeasured(clientConn, &bufferedConn{Conn: stream, reader: streamReader}, m.proxyIdleTimeout)
+	transfer := pipeBothMeasured(clientConn, &bufferedConn{Conn: stream, reader: streamReader}, m.proxyIdleTimeout, slot)
 	if transfer.FirstTargetByteAfter > 0 {
 		metric.FirstByteLatency = pipeStarted.Sub(metric.StartedAt) + transfer.FirstTargetByteAfter
 	}
@@ -1738,16 +1759,44 @@ func summarizeBytes(samples []proxyMetricSample, pick func(proxyMetricSample) in
 	return summary
 }
 
-func (m *sessionManager) acquireProxySlot(remoteAddr string) (func(), bool, string) {
+// proxySlot is one counted CONNECT session. Once piping starts it can be preempted
+// when it has gone idle and a new CONNECT would otherwise hit a connection limit.
+type proxySlot struct {
+	manager    *sessionManager
+	peer       string
+	lastActive atomic.Int64 // unix nanoseconds of the last relayed bytes
+	closer     func()       // set when piping starts; guarded by manager.activeProxyMu
+	released   bool         // guarded by manager.activeProxyMu
+}
+
+func (s *proxySlot) touch() {
+	s.lastActive.Store(time.Now().UnixNano())
+}
+
+// attach makes the slot preemptible; closer ends its piping session.
+func (s *proxySlot) attach(closer func()) {
+	s.manager.activeProxyMu.Lock()
+	s.closer = closer
+	s.manager.activeProxyMu.Unlock()
+	s.touch()
+}
+
+func (s *proxySlot) release() {
+	s.manager.activeProxyMu.Lock()
+	defer s.manager.activeProxyMu.Unlock()
+	s.manager.releaseProxySlotLocked(s)
+}
+
+func (m *sessionManager) acquireProxySlot(remoteAddr string) (*proxySlot, bool, string) {
 	peer := proxyPeer(remoteAddr)
 
 	m.activeProxyMu.Lock()
 	defer m.activeProxyMu.Unlock()
 
-	if m.maxProxyConns > 0 && m.activeProxyConns >= m.maxProxyConns {
+	if m.maxProxyConns > 0 && m.activeProxyConns >= m.maxProxyConns && !m.preemptIdleProxySlotLocked("") {
 		return nil, false, "proxy busy"
 	}
-	if m.maxProxyConnsPeer > 0 && m.activeProxyByPeer[peer] >= m.maxProxyConnsPeer {
+	if m.maxProxyConnsPeer > 0 && m.activeProxyByPeer[peer] >= m.maxProxyConnsPeer && !m.preemptIdleProxySlotLocked(peer) {
 		return nil, false, "proxy busy for client"
 	}
 
@@ -1757,6 +1806,12 @@ func (m *sessionManager) acquireProxySlot(remoteAddr string) (func(), bool, stri
 	if m.activeProxyPeakByPeer == nil {
 		m.activeProxyPeakByPeer = map[string]int{}
 	}
+	if m.activeProxySlots == nil {
+		m.activeProxySlots = map[*proxySlot]struct{}{}
+	}
+	slot := &proxySlot{manager: m, peer: peer}
+	slot.touch()
+	m.activeProxySlots[slot] = struct{}{}
 	m.activeProxyConns++
 	m.activeProxyByPeer[peer]++
 	if m.activeProxyConns > m.activeProxyPeak {
@@ -1765,22 +1820,55 @@ func (m *sessionManager) acquireProxySlot(remoteAddr string) (func(), bool, stri
 	if m.activeProxyByPeer[peer] > m.activeProxyPeakByPeer[peer] {
 		m.activeProxyPeakByPeer[peer] = m.activeProxyByPeer[peer]
 	}
+	return slot, true, ""
+}
 
-	var once sync.Once
-	return func() {
-		once.Do(func() {
-			m.activeProxyMu.Lock()
-			defer m.activeProxyMu.Unlock()
-			if m.activeProxyConns > 0 {
-				m.activeProxyConns--
-			}
-			if m.activeProxyByPeer[peer] <= 1 {
-				delete(m.activeProxyByPeer, peer)
-			} else {
-				m.activeProxyByPeer[peer]--
-			}
-		})
-	}, true, ""
+func (m *sessionManager) releaseProxySlotLocked(slot *proxySlot) {
+	if slot.released {
+		return
+	}
+	slot.released = true
+	delete(m.activeProxySlots, slot)
+	if m.activeProxyConns > 0 {
+		m.activeProxyConns--
+	}
+	if m.activeProxyByPeer[slot.peer] <= 1 {
+		delete(m.activeProxyByPeer, slot.peer)
+	} else {
+		m.activeProxyByPeer[slot.peer]--
+	}
+}
+
+// preemptIdleProxySlotLocked frees the longest-idle piping session that has been idle
+// for at least proxyPreemptIdle, from peer only, or from any client when peer is empty.
+// Browsers keep many idle keep-alive tunnels; rejecting a new CONNECT for them breaks
+// page navigations, while closing an idle tunnel only costs the browser a reconnect.
+func (m *sessionManager) preemptIdleProxySlotLocked(peer string) bool {
+	if m.proxyPreemptIdle <= 0 {
+		return false
+	}
+	cutoff := time.Now().Add(-m.proxyPreemptIdle).UnixNano()
+	var victim *proxySlot
+	var victimLast int64
+	for slot := range m.activeProxySlots {
+		if slot.closer == nil || (peer != "" && slot.peer != peer) {
+			continue
+		}
+		last := slot.lastActive.Load()
+		if last > cutoff {
+			continue
+		}
+		if victim == nil || last < victimLast {
+			victim, victimLast = slot, last
+		}
+	}
+	if victim == nil {
+		return false
+	}
+	m.releaseProxySlotLocked(victim)
+	m.proxyPreemptions++
+	go victim.closer()
+	return true
 }
 
 func proxyPeer(remoteAddr string) string {
@@ -3057,10 +3145,12 @@ func (c *bufferedConn) Read(p []byte) (int, error) {
 }
 
 func pipeBoth(a net.Conn, b net.Conn, idleTimeout time.Duration) {
-	_ = pipeBothMeasured(a, b, idleTimeout)
+	_ = pipeBothMeasured(a, b, idleTimeout, nil)
 }
 
-func pipeBothMeasured(a net.Conn, b net.Conn, idleTimeout time.Duration) proxyTransferStats {
+// pipeBothMeasured relays both directions. A non-nil slot becomes preemptible and
+// records each relayed chunk as activity.
+func pipeBothMeasured(a net.Conn, b net.Conn, idleTimeout time.Duration, slot *proxySlot) proxyTransferStats {
 	var stats proxyTransferStats
 	started := time.Now()
 	var wg sync.WaitGroup
@@ -3077,11 +3167,20 @@ func pipeBothMeasured(a net.Conn, b net.Conn, idleTimeout time.Duration) proxyTr
 	if idleTimeout > 0 {
 		go reapIdleConnections(idleTimeout, activity, done, closeBoth)
 	}
+	onActivity := func() {
+		noteActivity(activity)
+		if slot != nil {
+			slot.touch()
+		}
+	}
+	if slot != nil {
+		slot.attach(closeBoth)
+	}
 
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		stats.TargetToClientBytes = copyWithActivity(a, b, activity, func() {
+		stats.TargetToClientBytes = copyWithActivity(a, b, onActivity, func() {
 			if stats.FirstTargetByteAfter == 0 {
 				stats.FirstTargetByteAfter = time.Since(started)
 			}
@@ -3090,7 +3189,7 @@ func pipeBothMeasured(a net.Conn, b net.Conn, idleTimeout time.Duration) proxyTr
 	}()
 	go func() {
 		defer wg.Done()
-		stats.ClientToTargetBytes = copyWithActivity(b, a, activity, nil)
+		stats.ClientToTargetBytes = copyWithActivity(b, a, onActivity, nil)
 		closeBoth()
 	}()
 	wg.Wait()
@@ -3098,7 +3197,7 @@ func pipeBothMeasured(a net.Conn, b net.Conn, idleTimeout time.Duration) proxyTr
 	return stats
 }
 
-func copyWithActivity(dst net.Conn, src net.Conn, activity chan<- struct{}, onFirstBytes func()) int64 {
+func copyWithActivity(dst net.Conn, src net.Conn, onActivity func(), onFirstBytes func()) int64 {
 	buffer := make([]byte, 32*1024)
 	var copied int64
 	for {
@@ -3111,7 +3210,7 @@ func copyWithActivity(dst net.Conn, src net.Conn, activity chan<- struct{}, onFi
 				return copied
 			}
 			copied += int64(n)
-			noteActivity(activity)
+			onActivity()
 		}
 		if readErr != nil {
 			return copied
