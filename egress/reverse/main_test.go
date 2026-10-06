@@ -40,6 +40,9 @@ func TestLoadReverseConfigExamples(t *testing.T) {
 	if server.ProxyIdleTimeout != 2*time.Minute {
 		t.Fatalf("server proxy idle timeout = %s", server.ProxyIdleTimeout)
 	}
+	if server.ProxyPreemptIdle != 10*time.Second {
+		t.Fatalf("server proxy preempt idle = %s", server.ProxyPreemptIdle)
+	}
 	if server.V4OnlyDirect {
 		t.Fatal("server v4_only_direct should be disabled in the example")
 	}
@@ -76,11 +79,11 @@ func TestAcquireProxySlotLimitsPerClient(t *testing.T) {
 		activeProxyByPeer: map[string]int{},
 	}
 
-	release1, ok, reason := manager.acquireProxySlot("10.66.0.30:10001")
+	slot1, ok, reason := manager.acquireProxySlot("10.66.0.30:10001")
 	if !ok {
 		t.Fatalf("first acquire failed: %s", reason)
 	}
-	release2, ok, reason := manager.acquireProxySlot("10.66.0.30:10002")
+	slot2, ok, reason := manager.acquireProxySlot("10.66.0.30:10002")
 	if !ok {
 		t.Fatalf("second acquire failed: %s", reason)
 	}
@@ -88,13 +91,13 @@ func TestAcquireProxySlotLimitsPerClient(t *testing.T) {
 		t.Fatalf("third per-client acquire ok=%v reason=%q", ok, reason)
 	}
 
-	release1()
-	release3, ok, reason := manager.acquireProxySlot("10.66.0.30:10003")
+	slot1.release()
+	slot3, ok, reason := manager.acquireProxySlot("10.66.0.30:10003")
 	if !ok {
 		t.Fatalf("acquire after release failed: %s", reason)
 	}
-	release2()
-	release3()
+	slot2.release()
+	slot3.release()
 }
 
 func TestAcquireProxySlotLimitsGlobal(t *testing.T) {
@@ -103,11 +106,11 @@ func TestAcquireProxySlotLimitsGlobal(t *testing.T) {
 		activeProxyByPeer: map[string]int{},
 	}
 
-	release1, ok, reason := manager.acquireProxySlot("10.66.0.30:10001")
+	slot1, ok, reason := manager.acquireProxySlot("10.66.0.30:10001")
 	if !ok {
 		t.Fatalf("first acquire failed: %s", reason)
 	}
-	release2, ok, reason := manager.acquireProxySlot("10.66.0.31:10001")
+	slot2, ok, reason := manager.acquireProxySlot("10.66.0.31:10001")
 	if !ok {
 		t.Fatalf("second acquire failed: %s", reason)
 	}
@@ -115,8 +118,171 @@ func TestAcquireProxySlotLimitsGlobal(t *testing.T) {
 		t.Fatalf("third global acquire ok=%v reason=%q", ok, reason)
 	}
 
-	release1()
-	release2()
+	slot1.release()
+	slot2.release()
+}
+
+func newPreemptManager(maxConns, maxPerClient int) *sessionManager {
+	return &sessionManager{
+		maxProxyConns:     maxConns,
+		maxProxyConnsPeer: maxPerClient,
+		proxyPreemptIdle:  10 * time.Second,
+		activeProxyByPeer: map[string]int{},
+	}
+}
+
+func mustAcquire(t *testing.T, manager *sessionManager, remoteAddr string) *proxySlot {
+	t.Helper()
+	slot, ok, reason := manager.acquireProxySlot(remoteAddr)
+	if !ok {
+		t.Fatalf("acquire %s failed: %s", remoteAddr, reason)
+	}
+	return slot
+}
+
+// pipeIdle marks the slot as piping and idle for idleFor; the channel closes when the slot is preempted.
+func pipeIdle(slot *proxySlot, idleFor time.Duration) <-chan struct{} {
+	closed := make(chan struct{})
+	slot.attach(func() { close(closed) })
+	slot.lastActive.Store(time.Now().Add(-idleFor).UnixNano())
+	return closed
+}
+
+func assertClosed(t *testing.T, ch <-chan struct{}, want bool) {
+	t.Helper()
+	select {
+	case <-ch:
+		if !want {
+			t.Fatal("session was closed but should stay open")
+		}
+	case <-time.After(200 * time.Millisecond):
+		if want {
+			t.Fatal("session was not closed")
+		}
+	}
+}
+
+func TestAcquireProxySlotPreemptsLongestIdleSessionOfSameClient(t *testing.T) {
+	manager := newPreemptManager(0, 2)
+	older := mustAcquire(t, manager, "10.66.0.30:10001")
+	newer := mustAcquire(t, manager, "10.66.0.30:10002")
+	olderClosed := pipeIdle(older, 30*time.Second)
+	newerClosed := pipeIdle(newer, 15*time.Second)
+
+	third := mustAcquire(t, manager, "10.66.0.30:10003")
+	assertClosed(t, olderClosed, true)
+	assertClosed(t, newerClosed, false)
+	if got := manager.activeProxyByPeer["10.66.0.30"]; got != 2 {
+		t.Fatalf("active per client = %d, want 2", got)
+	}
+	if manager.proxyPreemptions != 1 {
+		t.Fatalf("preemptions = %d, want 1", manager.proxyPreemptions)
+	}
+
+	// The preempted pipe still runs its deferred release; it must not free a second slot.
+	older.release()
+	if got := manager.activeProxyByPeer["10.66.0.30"]; got != 2 {
+		t.Fatalf("active per client after late release = %d, want 2", got)
+	}
+	newer.release()
+	third.release()
+	if manager.activeProxyConns != 0 || len(manager.activeProxyByPeer) != 0 || len(manager.activeProxySlots) != 0 {
+		t.Fatalf("leaked slots: conns=%d byPeer=%v slots=%d", manager.activeProxyConns, manager.activeProxyByPeer, len(manager.activeProxySlots))
+	}
+}
+
+func TestAcquireProxySlotKeepsActiveAndSettingUpSessions(t *testing.T) {
+	manager := newPreemptManager(0, 2)
+	active := mustAcquire(t, manager, "10.66.0.30:10001")
+	activeClosed := pipeIdle(active, 2*time.Second)
+	settingUp := mustAcquire(t, manager, "10.66.0.30:10002")
+	settingUp.lastActive.Store(time.Now().Add(-time.Minute).UnixNano())
+
+	if _, ok, reason := manager.acquireProxySlot("10.66.0.30:10003"); ok || reason != "proxy busy for client" {
+		t.Fatalf("acquire ok=%v reason=%q, want proxy busy for client", ok, reason)
+	}
+	assertClosed(t, activeClosed, false)
+}
+
+func TestAcquireProxySlotPerClientPreemptStaysWithinClient(t *testing.T) {
+	manager := newPreemptManager(0, 1)
+	otherClosed := pipeIdle(mustAcquire(t, manager, "10.66.0.31:10001"), time.Minute)
+	pipeIdle(mustAcquire(t, manager, "10.66.0.30:10001"), time.Second)
+
+	if _, ok, reason := manager.acquireProxySlot("10.66.0.30:10002"); ok || reason != "proxy busy for client" {
+		t.Fatalf("acquire ok=%v reason=%q, want proxy busy for client", ok, reason)
+	}
+	assertClosed(t, otherClosed, false)
+}
+
+func TestAcquireProxySlotGlobalPreemptsAcrossClients(t *testing.T) {
+	manager := newPreemptManager(2, 0)
+	idleClosed := pipeIdle(mustAcquire(t, manager, "10.66.0.30:10001"), time.Minute)
+	busyClosed := pipeIdle(mustAcquire(t, manager, "10.66.0.31:10001"), time.Second)
+
+	mustAcquire(t, manager, "10.66.0.32:10001")
+	assertClosed(t, idleClosed, true)
+	assertClosed(t, busyClosed, false)
+	if manager.activeProxyConns != 2 {
+		t.Fatalf("active = %d, want 2", manager.activeProxyConns)
+	}
+}
+
+func TestPreemptedPipeClosesBothEnds(t *testing.T) {
+	manager := newPreemptManager(0, 1)
+	slot := mustAcquire(t, manager, "10.66.0.30:10001")
+	clientSide, hubClient := net.Pipe()
+	targetSide, hubTarget := net.Pipe()
+	defer clientSide.Close()
+	defer targetSide.Close()
+	done := make(chan struct{})
+	go func() {
+		pipeBothMeasured(hubClient, hubTarget, 0, slot)
+		slot.release()
+		close(done)
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		manager.activeProxyMu.Lock()
+		attached := slot.closer != nil
+		manager.activeProxyMu.Unlock()
+		if attached {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("pipe never attached its slot")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	slot.lastActive.Store(time.Now().Add(-time.Minute).UnixNano())
+
+	next := mustAcquire(t, manager, "10.66.0.30:10002")
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("preempted pipe did not finish")
+	}
+	if _, err := clientSide.Read(make([]byte, 1)); err == nil {
+		t.Fatal("client side still open after preemption")
+	}
+	if _, err := targetSide.Read(make([]byte, 1)); err == nil {
+		t.Fatal("target side still open after preemption")
+	}
+	if got := manager.activeProxyByPeer["10.66.0.30"]; got != 1 {
+		t.Fatalf("active per client = %d, want 1", got)
+	}
+	next.release()
+}
+
+func TestAcquireProxySlotPreemptDisabledByZero(t *testing.T) {
+	manager := newPreemptManager(0, 1)
+	manager.proxyPreemptIdle = 0
+	idleClosed := pipeIdle(mustAcquire(t, manager, "10.66.0.30:10001"), time.Hour)
+
+	if _, ok, reason := manager.acquireProxySlot("10.66.0.30:10002"); ok || reason != "proxy busy for client" {
+		t.Fatalf("acquire ok=%v reason=%q, want proxy busy for client", ok, reason)
+	}
+	assertClosed(t, idleClosed, false)
 }
 
 func TestQUICClientRequiresServerCertPin(t *testing.T) {
@@ -320,7 +486,7 @@ func TestPipeBothMeasuredRecordsBytesAndFirstByte(t *testing.T) {
 
 	statsCh := make(chan proxyTransferStats, 1)
 	go func() {
-		statsCh <- pipeBothMeasured(proxyClient, reverseClient, 0)
+		statsCh <- pipeBothMeasured(proxyClient, reverseClient, 0, nil)
 	}()
 
 	go func() {

@@ -73,6 +73,8 @@ Hub 不能作为最终公网出口或兜底出口。Hub 的职责是中转中国
 
 ### 当前 Android 出口数据面
 
+2026-10-05 Hub 部署补充：当前手机侧仍为 Motorola `dxreverse` 兼容客户端，以下 Pixel/`zhreverse` 手机端配置属于历史目标方案。Hub 服务端现启用 `proxy_preempt_idle=10s`：达到全局 96 或每客户端 48 条 CONNECT 上限时，把已进入转发且最久无流量、空闲至少 10 秒的隧道让位给新 CONNECT；每客户端上限只抢占该客户端，拨号中会话不参与。原 2 分钟空闲回收仍保留；拓扑、端口、手机软件和出口策略未改变。验收见[部署工作日志](../90-history/worklogs/2026-10-05-zhreverse-idle-preempt.md)。
+
 Android 手机出口已从“手机在 WireGuard 内网监听 `10.66.0.101:1080`”迁到反向数据面:
 
 ```text

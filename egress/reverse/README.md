@@ -166,7 +166,13 @@ reverse sessions.
 The Hub server can also cap concurrent `CONNECT` sessions with
 `max_proxy_connections` and `max_proxy_connections_per_client`; production uses
 these as a fast-fail guard so browser burst concurrency does not pile up inside
-the mobile reverse tunnel.
+the mobile reverse tunnel. When a limit is reached, Hub first preempts the
+longest-idle piping session (idle at least `proxy_preempt_idle`, default `10s`;
+same client for the per-client limit) and only returns 429 when none qualifies.
+Sessions still dialing the target are never preempted. `0` disables preemption.
+Ad-heavy pages keep about 50 idle keep-alive tunnels open, so without preemption
+the next navigation's CONNECT is rejected and the local sing-box, which already
+answered 200, resets the browser socket (`ERR_CONNECTION_RESET`).
 
 Hub-side probe:
 
