@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import ipaddress
 from typing import Any, Dict, Optional
+
+from .contracts import CONTROL_PROTOCOL_VERSION, validate_payload
 
 
 def _string(data: Dict[str, Any], key: str) -> Optional[str]:
@@ -18,15 +21,20 @@ class LoginResult:
     proxy: Optional[str] = None
     error: Optional[str] = None
     raw: Dict[str, Any] = field(default_factory=dict)
+    error_code: Optional[str] = None
+    contract_version: Optional[int] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "LoginResult":
+        validate_payload("Result", data)
         return cls(
             ok=bool(data.get("ok", False)),
             egress=_string(data, "egress"),
             proxy=_string(data, "proxy"),
             error=_string(data, "error"),
             raw=dict(data),
+            error_code=_string(data, "error_code"),
+            contract_version=data.get("contract_version"),
         )
 
 
@@ -39,9 +47,12 @@ class ActionResult:
     warning: Optional[str] = None
     error: Optional[str] = None
     raw: Dict[str, Any] = field(default_factory=dict)
+    error_code: Optional[str] = None
+    contract_version: Optional[int] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ActionResult":
+        validate_payload("Result", data)
         return cls(
             ok=bool(data.get("ok", False)),
             message=str(data.get("message") or ""),
@@ -50,7 +61,26 @@ class ActionResult:
             warning=_string(data, "warning"),
             error=_string(data, "error"),
             raw=dict(data),
+            error_code=_string(data, "error_code"),
+            contract_version=data.get("contract_version"),
         )
+
+
+@dataclass(frozen=True)
+class StatusEvidence:
+    """Evidence available in this response, without inferred health or time.
+
+    None means unknown. A returned IP is an observation, not proof of the
+    configured residential route or of a particular WireGuard tunnel.
+    """
+
+    engine_ready: Optional[bool]
+    proxy_tcp_reachable: Optional[bool]
+    tunnel_healthy: Optional[bool] = None
+    egress_ip_observed: Optional[bool] = None
+    ipv4_observation: Optional[str] = None
+    ipv6_observation: Optional[str] = None
+    verified_at: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -64,9 +94,17 @@ class Status:
     egress_ipv6: Optional[str] = None
     error: Optional[str] = None
     raw: Dict[str, Any] = field(default_factory=dict)
+    error_code: Optional[str] = None
+    contract_version: Optional[int] = None
+    engine_state: Optional[str] = None
+    instance_id: Optional[str] = None
+    config_generation: Optional[str] = None
+    control_protocol_version: Optional[int] = None
+    port_occupied: bool = False
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Status":
+        validate_payload("Status", data)
         return cls(
             running=bool(data.get("running", False)),
             proxy_reachable=bool(data.get("proxy_reachable", False)),
@@ -77,7 +115,42 @@ class Status:
             egress_ipv6=_string(data, "egress_ipv6"),
             error=_string(data, "error"),
             raw=dict(data),
+            error_code=_string(data, "error_code"),
+            contract_version=data.get("contract_version"),
+            engine_state=_string(data, "engine_state"),
+            instance_id=_string(data, "instance_id"),
+            config_generation=_string(data, "config_generation"),
+            control_protocol_version=data.get("control_protocol_version"),
+            port_occupied=data.get("port_occupied", False),
         )
+
+    @property
+    def evidence(self) -> StatusEvidence:
+        engine = None
+        if self.engine_state in {"stopped", "starting", "stopping", "degraded"}:
+            engine = False
+        elif (
+            self.engine_state == "ready" and self.running and self.instance_id
+            and self.config_generation and self.control_protocol_version == CONTROL_PROTOCOL_VERSION
+        ):
+            engine = True
+        return StatusEvidence(
+            engine_ready=engine,
+            proxy_tcp_reachable=self.proxy_reachable if engine is True else None,
+            egress_ip_observed=True if engine is True and self._has_ip_observation() else None,
+            ipv4_observation=self.egress_ipv4 if engine is True else None,
+            ipv6_observation=self.egress_ipv6 if engine is True else None,
+        )
+
+    def _has_ip_observation(self) -> bool:
+        for value in (self.egress_ip, self.egress_ipv4, self.egress_ipv6):
+            if value:
+                try:
+                    ipaddress.ip_address(value)
+                    return True
+                except ValueError:
+                    pass
+        return False
 
 
 @dataclass(frozen=True)
@@ -90,9 +163,12 @@ class RotateResult:
     egress: Optional[str] = None
     error: Optional[str] = None
     raw: Dict[str, Any] = field(default_factory=dict)
+    error_code: Optional[str] = None
+    contract_version: Optional[int] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "RotateResult":
+        validate_payload("Result", data)
         return cls(
             ok=bool(data.get("ok", False)),
             status=_string(data, "status"),
@@ -102,6 +178,8 @@ class RotateResult:
             egress=_string(data, "egress"),
             error=_string(data, "error"),
             raw=dict(data),
+            error_code=_string(data, "error_code"),
+            contract_version=data.get("contract_version"),
         )
 
 
@@ -111,12 +189,17 @@ class VersionResult:
     version: Optional[str] = None
     error: Optional[str] = None
     raw: Dict[str, Any] = field(default_factory=dict)
+    error_code: Optional[str] = None
+    contract_version: Optional[int] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "VersionResult":
+        validate_payload("Result", data)
         return cls(
             ok=bool(data.get("ok", False)),
             version=_string(data, "version"),
             error=_string(data, "error"),
             raw=dict(data),
+            error_code=_string(data, "error_code"),
+            contract_version=data.get("contract_version"),
         )

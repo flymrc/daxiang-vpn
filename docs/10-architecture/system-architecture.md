@@ -51,6 +51,8 @@ local proxy 127.0.0.1:7890
 
 2026-10-06 开发分支的首批重构把实例认证、操作锁与停止控制放在 `shared/proxy` 的独立 runtime 文件中，由 CLI 使用；PID 仅用于诊断。GUI 系统代理仍暂用独立可恢复 journal，迁入 CLI 的用户级租约尚未完成。精确合同与平台验证边界见[客户端实例与代理恢复合同](../30-implementation/client-runtime-safety-contract.md)，不能把本分支实现当作已发行客户端。
 
+本地后续切片以 `shared/contracts/source.go` 同源生成 Go/JSON Schema/TypeScript/Python 的 CLI 合同，CLI 与引擎身份使用其类型；消费者语义见 [CLI JSON v1](../30-implementation/cli-json-contract-v1.md)。`hub/internal/deviceauth` 的 SQLite 模型与 fake executor 是隔离授权基础，未接入生产 TokenStore/API，不能把它画成当前 Hub 的授权事实源。线上仍使用现有 YAML/WG 路线，迁移边界见[设备授权合同](../30-implementation/device-auth-revocation-contract.md)。
+
 ### 基础拓扑
 
 ```text

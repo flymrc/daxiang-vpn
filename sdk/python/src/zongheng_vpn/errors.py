@@ -38,9 +38,18 @@ class ZHVpnCommandError(ZHVpnError):
         self.stdout = stdout
         self.stderr = stderr
         self.payload = dict(payload or {})
+        self.error_code = self.payload.get("error_code")
         super().__init__(message)
 
 
 class ZHVpnJSONError(ZHVpnCommandError):
     """Raised when a --json CLI command does not return valid JSON."""
 
+
+class ZHVpnContractError(ZHVpnJSONError):
+    """Valid JSON violates a supported public DTO or evidence invariant."""
+
+    def __init__(self, message: str, *, field_path: str, schema_id: str, **kwargs: Any):
+        self.field_path = field_path
+        self.schema_id = schema_id
+        super().__init__(message, **kwargs)

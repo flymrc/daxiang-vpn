@@ -1,0 +1,632 @@
+{
+  "$defs": {
+    "EngineIdentity": {
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "control_secret"
+                ]
+              },
+              {
+                "required": [
+                  "private_key"
+                ]
+              },
+              {
+                "required": [
+                  "wireguard_private_key"
+                ]
+              },
+              {
+                "required": [
+                  "token"
+                ]
+              },
+              {
+                "required": [
+                  "authorization_token"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "description": "Public instance identity shared by the local authenticated control protocol. PID is diagnostic only; identity contains no control secret.",
+      "properties": {
+        "config_generation": {
+          "description": "Configuration SHA-256 generation.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "control_protocol_version": {
+          "const": 1,
+          "description": "Local control protocol version.",
+          "type": "integer"
+        },
+        "home": {
+          "description": "Canonical client home identity; Windows identity comparison uses case folding.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "instance_id": {
+          "description": "Random instance identifier.",
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "pid": {
+          "description": "Diagnostic process integer; never an authorization to signal a process.",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "instance_id",
+        "home",
+        "config_generation",
+        "control_protocol_version",
+        "pid"
+      ],
+      "type": "object"
+    },
+    "Result": {
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "ok"
+            ]
+          },
+          "then": {
+            "not": {
+              "properties": {
+                "error": {
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "error"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "error_code"
+            ]
+          },
+          "then": {
+            "properties": {
+              "error": {
+                "minLength": 1
+              }
+            },
+            "required": [
+              "error"
+            ]
+          }
+        },
+        {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "control_secret"
+                ]
+              },
+              {
+                "required": [
+                  "private_key"
+                ]
+              },
+              {
+                "required": [
+                  "wireguard_private_key"
+                ]
+              },
+              {
+                "required": [
+                  "token"
+                ]
+              },
+              {
+                "required": [
+                  "authorization_token"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "description": "Existing login/start/stop/logout/rotate-ip/version JSON result. This contract does not introduce operation IDs, retries or terminal-operation guarantees.",
+      "properties": {
+        "after": {
+          "description": "Existing rotate probe observation after a trigger.",
+          "type": "string"
+        },
+        "before": {
+          "description": "Existing rotate probe observation before a trigger.",
+          "type": "string"
+        },
+        "contract_version": {
+          "const": 1,
+          "description": "Public JSON contract version; absence is a legacy response, not authenticated evidence.",
+          "type": "integer"
+        },
+        "egress": {
+          "description": "Configured egress display name.",
+          "type": "string"
+        },
+        "error": {
+          "description": "Human-readable diagnostic; no credentials may be included.",
+          "type": "string"
+        },
+        "error_code": {
+          "description": "Stable diagnostic category; new codes are compatible additions.",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        "message": {
+          "description": "Human-readable outcome.",
+          "type": "string"
+        },
+        "ok": {
+          "description": "Outcome of the requested command; it does not imply tunnel or egress health.",
+          "type": "boolean"
+        },
+        "product": {
+          "description": "Binary product identifier.",
+          "type": "string"
+        },
+        "protocol_version": {
+          "description": "Existing binary/sidecar identity protocol; separate from local control and public JSON contract versions.",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "proxy": {
+          "description": "Configured local proxy address.",
+          "type": "string"
+        },
+        "status": {
+          "description": "Existing command-specific result text, including rotate trigger outcome; not a durable operation protocol.",
+          "type": "string"
+        },
+        "version": {
+          "description": "Binary build version, separate from the JSON contract version.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "type": "object"
+    },
+    "Status": {
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "proxy_reachable": {
+                "const": true
+              }
+            },
+            "required": [
+              "proxy_reachable"
+            ]
+          },
+          "then": {
+            "properties": {
+              "running": {
+                "const": true
+              }
+            },
+            "required": [
+              "running"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "engine_state": {
+                "const": "ready"
+              }
+            },
+            "required": [
+              "engine_state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "running": {
+                "const": true
+              }
+            },
+            "required": [
+              "running"
+            ]
+          }
+        },
+        {
+          "if": {
+            "allOf": [
+              {
+                "properties": {
+                  "running": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "running"
+                ]
+              },
+              {
+                "required": [
+                  "engine_state"
+                ]
+              }
+            ]
+          },
+          "then": {
+            "properties": {
+              "engine_state": {
+                "const": "ready"
+              }
+            },
+            "required": [
+              "engine_state"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "engine_state": {
+                "enum": [
+                  "stopped",
+                  "starting",
+                  "stopping",
+                  "degraded"
+                ]
+              }
+            },
+            "required": [
+              "engine_state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "proxy_reachable": {
+                "const": false
+              },
+              "running": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "engine_state": {
+                "enum": [
+                  "starting",
+                  "ready",
+                  "stopping"
+                ]
+              }
+            },
+            "required": [
+              "engine_state"
+            ]
+          },
+          "then": {
+            "required": [
+              "instance_id",
+              "config_generation",
+              "control_protocol_version"
+            ]
+          }
+        },
+        {
+          "if": {
+            "anyOf": [
+              {
+                "required": [
+                  "instance_id"
+                ]
+              },
+              {
+                "required": [
+                  "config_generation"
+                ]
+              },
+              {
+                "required": [
+                  "control_protocol_version"
+                ]
+              }
+            ]
+          },
+          "then": {
+            "allOf": [
+              {
+                "required": [
+                  "instance_id",
+                  "config_generation",
+                  "control_protocol_version"
+                ]
+              },
+              {
+                "properties": {
+                  "engine_state": {
+                    "enum": [
+                      "starting",
+                      "ready",
+                      "stopping"
+                    ]
+                  }
+                },
+                "required": [
+                  "engine_state"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "port_occupied": {
+                "const": true
+              }
+            },
+            "required": [
+              "port_occupied"
+            ]
+          },
+          "then": {
+            "properties": {
+              "running": {
+                "const": false
+              }
+            },
+            "required": [
+              "running"
+            ]
+          }
+        },
+        {
+          "if": {
+            "anyOf": [
+              {
+                "required": [
+                  "egress_ip"
+                ]
+              },
+              {
+                "required": [
+                  "egress_ipv4"
+                ]
+              },
+              {
+                "required": [
+                  "egress_ipv6"
+                ]
+              }
+            ]
+          },
+          "then": {
+            "allOf": [
+              {
+                "properties": {
+                  "running": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "running"
+                ]
+              },
+              {
+                "properties": {
+                  "proxy_reachable": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "proxy_reachable"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "error_code"
+            ]
+          },
+          "then": {
+            "properties": {
+              "error": {
+                "minLength": 1
+              }
+            },
+            "required": [
+              "error"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "error": {
+                "minLength": 1
+              }
+            },
+            "required": [
+              "error"
+            ]
+          },
+          "then": {
+            "properties": {
+              "proxy_reachable": {
+                "const": false
+              },
+              "running": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "control_secret"
+                ]
+              },
+              {
+                "required": [
+                  "private_key"
+                ]
+              },
+              {
+                "required": [
+                  "wireguard_private_key"
+                ]
+              },
+              {
+                "required": [
+                  "token"
+                ]
+              },
+              {
+                "required": [
+                  "authorization_token"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "description": "status --json. Compatible extra fields carry no additional evidence. Missing legacy lifecycle fields and all absent observations are unknown.",
+      "properties": {
+        "config_generation": {
+          "description": "SHA-256 generation of engine configuration; no private configuration contents.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "contract_version": {
+          "const": 1,
+          "description": "Public JSON contract version; absence is a legacy response, not authenticated evidence.",
+          "type": "integer"
+        },
+        "control_protocol_version": {
+          "const": 1,
+          "description": "Local authentication protocol version, separate from contract_version.",
+          "type": "integer"
+        },
+        "egress": {
+          "description": "Configured egress display name; cached configuration is not live egress evidence.",
+          "type": "string"
+        },
+        "egress_ip": {
+          "description": "IP observed by this command's optional proxy probe. Missing is unknown; no observation timestamp is supplied in v1.",
+          "type": "string"
+        },
+        "egress_ipv4": {
+          "description": "Optional IPv4 probe observation. Missing is unknown, not an unhealthy IPv4 verdict.",
+          "format": "ipv4",
+          "type": "string"
+        },
+        "egress_ipv6": {
+          "description": "Optional IPv6 probe observation. Missing is unknown, not an unhealthy IPv6 verdict.",
+          "format": "ipv6",
+          "type": "string"
+        },
+        "engine_state": {
+          "description": "Local lifecycle phase only. Absence is a legacy response. Ready may coexist with proxy_reachable=false.",
+          "enum": [
+            "stopped",
+            "starting",
+            "ready",
+            "stopping",
+            "degraded"
+          ],
+          "type": "string"
+        },
+        "error": {
+          "description": "Human-readable diagnostic; no credentials may be included.",
+          "type": "string"
+        },
+        "error_code": {
+          "description": "Stable diagnostic category; new codes are compatible additions.",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        "instance_id": {
+          "description": "Authenticated random instance identity; never a credential or PID-based authority.",
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "port_occupied": {
+          "description": "A configured TCP port responds while the authenticated engine is not ready. Does not identify its owner.",
+          "type": "boolean"
+        },
+        "proxy": {
+          "description": "Local proxy address, including configured address when stopped. Address alone is not ownership evidence.",
+          "type": "string"
+        },
+        "proxy_reachable": {
+          "description": "TCP connection succeeded to the authenticated ready instance's proxy. Does not establish HTTP forwarding or tunnel health.",
+          "type": "boolean"
+        },
+        "running": {
+          "description": "Authenticated local engine is ready. Does not establish tunnel or egress health. Legacy responses retain their historical meaning.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "running",
+        "proxy_reachable"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:zongheng-vpn:cli:v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "anyOf": [
+    {
+      "$ref": "#/$defs/Status"
+    },
+    {
+      "$ref": "#/$defs/Result"
+    },
+    {
+      "$ref": "#/$defs/EngineIdentity"
+    }
+  ],
+  "title": "Zongheng VPN CLI JSON v1",
+  "x-evidence-semantics": {
+    "egress": "egress is a cached configured label. Optional IPs are probe observations, not a claim that the selected residential exit or a WireGuard tunnel was authenticated.",
+    "engine": "Only engine_state=ready plus complete v1 authenticated identity gives local process readiness evidence. Legacy running alone gives no authenticated identity evidence.",
+    "missing": "Absent IP, lifecycle identity, family or verification time means unknown. Compatible unknown fields must not strengthen evidence without an explicitly supported contract.",
+    "proxy": "proxy_reachable is an instantaneous TCP observation of a ready local instance, not HTTP forwarding health. Ready plus false is valid partial health.",
+    "time": "v1 emits no verified_at/observed_at timestamp. Observation freshness is unknown; SDKs must not synthesize verification time from decode time or reuse previous IPs as current evidence.",
+    "tunnel": "No tunnel health observation is emitted in v1; always unknown."
+  }
+}

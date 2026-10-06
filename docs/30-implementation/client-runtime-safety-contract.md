@@ -18,7 +18,7 @@ Windows 系统代理暂由 GUI 的纯 `proxy_journal` 状态机与 WinINET adapt
 
 ## 本地控制与就绪
 
-维护源为 Go 的 `EngineIdentity/EngineStatus` 和控制消息结构，控制地址仅监听 loopback。凭据保存在受访问控制的运行目录，不进入公开 JSON、日志或诊断包。
+公开 `EngineIdentity` 与 CLI JSON 维护源为 `shared/contracts/source.go`；`shared/proxy` 使用生成身份类型，控制消息与 `EngineStatus` 仍由该包维护，控制地址仅监听 loopback。凭据保存在受访问控制的运行目录，不进入公开 JSON、日志或诊断包。
 
 请求与响应使用随机 nonce 和 HMAC，绑定实例、home、generation、协议与消息用途；控制密钥不发送到目标端点。重用端口、普通代理 listener、伪造响应及身份不匹配均不能授予停止权限。
 
@@ -38,7 +38,7 @@ state/PID 文件消失不证明进程退出。状态检查与停止完成检查�
 
 `ready/running` 不证明 WireGuard 有握手、手机已在线或出口请求成功。`proxy_reachable` 与出口 IP 证据仍分别报告；配置里的出口名称是配置标签。快速 `status --no-ip-check` 不隐式 bootstrap、不刷新授权或探测公网出口；端口有其他 listener 不冒充本实例。
 
-公开 CLI status 保留旧字段并增加 `engine_state`、`instance_id`、`config_generation`、`control_protocol_version`、`error_code` 和端口冲突诊断 `port_occupied`；控制秘密不在这些字段中。完整消费者 schema 生成与跨版本矩阵仍待 P1.6 验收。
+公开 CLI status 保留旧字段并增加 `engine_state`、`instance_id`、`config_generation`、`control_protocol_version`、`error_code` 和端口冲突诊断 `port_occupied`；控制秘密不在这些字段中。本地已建立 [CLI JSON v1 同源生成与 SDK 校验](cli-json-contract-v1.md)，输出增加 `contract_version=1`；完整 HTTP/Admin 合同、GUI 运行时校验和跨版本矩阵仍待 P1.6 验收。
 
 Windows 显式设置并读回运行文件的 ACL，限 home 所有者及已有机器控制权的 SYSTEM/Administrators；同时核验对象 owner，不能只看 DACL。文件必须是无重解析的单硬链接普通文件，在持有句柄下核对 file ID 后才设置权限。home 和运行目录验证所有者与修改权限，拒绝目录越界、junction 和其他账户可修改的目录；不重写目录 DACL，避免 ACL 继承传播改变目录外硬链接对象。不靠 Go `0600` 推定安全。macOS 验证 UID 与文件权限。控制安全不承诺隔离同一 OS 用户或机器管理员的恶意程序。
 
@@ -67,6 +67,6 @@ GUI 代理事务在同一用户共享的 app config 目录持有持久 `proxy-op
 
 Rust library 验证临时禁用 sidecar 打包输入，只对合成注册表键运行 adapter，不广播真实 WinINET 设置变更。这不是正式安装包、签名、真实用户系统代理或 macOS GUI 验收。
 
-全阶段的请求/operation ID、rotate 幂等与查询、机器可消费合同生成、OS 用户代理租约、跨版本完整迁移、Mac 实机、签名/安装升级和生产观察仍按总计划保持未完成。首切片不将这些计划声明为已实现。
+全阶段的请求/operation ID、rotate 幂等与查询、完整合同消费者、OS 用户代理租约集成、跨版本完整迁移、Mac 实机、签名/安装升级和生产观察仍按总计划保持未完成。局部实现不将这些阶段声明为已完成。
 
 平台 API 依据：[Microsoft LockFileEx](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-lockfileex)、[UnlockFileEx](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-unlockfileex)。锁范围与句柄释放规则须保持一致；不能借此承诺 Windows registry 的全局 CAS。

@@ -463,6 +463,8 @@ tail -n 50 /usr/local/var/log/zhvpn/*.log
 
 2026-10-06 开发分支开始以认证实例身份诊断引擎；先用 `zhvpn status --json --no-ip-check` 读取公开状态，端口/PID 只作辅助。`engine_legacy_state` 需要人工核验旧引擎的可执行路径、home 与真实运行身份，确认退出后归档旧记录，不能按 PID 自动强杀。`engine_identity_unverified`、`engine_control_unavailable` 和停止超时均保留恢复状态，不宣称停止成功。系统代理 journal 异常按[恢复合同](../../30-implementation/client-runtime-safety-contract.md)核对并重试；不要 dump `engine-state.json` 或运行 session 配置，它们可能含控制密钥或 WG 私钥。这些行为尚未发行。
 
+开发分支的本地检查入口为 `pwsh -NoProfile -File scripts/check-client-safety.ps1`，GUI 依赖先在其目录安装。该入口先检查 `shared/contracts` 的五份生成投影漂移，再运行 Go test/vet、客户端/shared/reverse 与离线授权 race、SDK、前端和 Rust library 测试；任何失败即停止。设备授权与新代理租约测试使用隔离 SQLite/fake executor/合成注册表，禁止把通过结果写作生产 peer 或真实 Internet Settings 验收。
+
 本机是否启动了两个客户端，优先在 Windows 看监听端口和进程树：
 
 ```powershell

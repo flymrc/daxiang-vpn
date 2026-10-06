@@ -21,6 +21,7 @@ import (
 	"zongheng-vpn/clients/cli/internal/buildinfo"
 	"zongheng-vpn/clients/cli/internal/netcheck"
 	"zongheng-vpn/shared/config"
+	"zongheng-vpn/shared/contracts"
 	"zongheng-vpn/shared/paths"
 	"zongheng-vpn/shared/proxy"
 )
@@ -104,40 +105,23 @@ rotate-ip：更换当前手机卡出口 IP，并等待出口恢复。
 var ErrSilent = errors.New("已输出结果")
 
 // jsonResult is the machine-readable result for login / rotate-ip (--json).
-type jsonResult struct {
-	OK              bool   `json:"ok"`
-	Status          string `json:"status,omitempty"`
-	Egress          string `json:"egress,omitempty"`
-	Proxy           string `json:"proxy,omitempty"`
-	Before          string `json:"before,omitempty"`
-	After           string `json:"after,omitempty"`
-	Message         string `json:"message,omitempty"`
-	Product         string `json:"product,omitempty"`
-	Version         string `json:"version,omitempty"`
-	ProtocolVersion int    `json:"protocol_version,omitempty"`
-	Error           string `json:"error,omitempty"`
-	ErrorCode       string `json:"error_code,omitempty"`
-}
+type jsonResult = contracts.Result
 
 // statusResult is the machine-readable result for status --json.
-type statusResult struct {
-	Running                bool   `json:"running"`
-	Proxy                  string `json:"proxy,omitempty"`
-	ProxyReachable         bool   `json:"proxy_reachable"`
-	Egress                 string `json:"egress,omitempty"`
-	EgressIP               string `json:"egress_ip,omitempty"`
-	EgressIPv4             string `json:"egress_ipv4,omitempty"`
-	EgressIPv6             string `json:"egress_ipv6,omitempty"`
-	Error                  string `json:"error,omitempty"`
-	ErrorCode              string `json:"error_code,omitempty"`
-	EngineState            string `json:"engine_state"`
-	InstanceID             string `json:"instance_id,omitempty"`
-	ConfigGeneration       string `json:"config_generation,omitempty"`
-	ControlProtocolVersion int    `json:"control_protocol_version,omitempty"`
-	PortOccupied           bool   `json:"port_occupied,omitempty"`
-}
+type statusResult = contracts.Status
 
 func printJSON(v any) error {
+	// Set the public contract version at the serialization boundary so success,
+	// rejection and early error paths cannot silently emit different schemas.
+	// Local control identity has its own version and unchanged signed payload.
+	switch result := v.(type) {
+	case contracts.Result:
+		result.ContractVersion = contracts.ContractVersion
+		v = result
+	case contracts.Status:
+		result.ContractVersion = contracts.ContractVersion
+		v = result
+	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetEscapeHTML(false) // keep < > & literal so messages like "<授权码>" stay readable
 	return enc.Encode(v)     // Encode appends a trailing newline

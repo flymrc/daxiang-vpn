@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"zongheng-vpn/shared/config"
+	"zongheng-vpn/shared/contracts"
 	"zongheng-vpn/shared/paths"
 )
 
@@ -28,18 +29,12 @@ const (
 	EngineCommand          = "__engine"
 	KillCommand            = "__killpid" // Retained only to explicitly reject old unsafe callers.
 	HomeFlag               = "--home"
-	ControlProtocolVersion = 1
+	ControlProtocolVersion = contracts.ControlProtocolVersion
 )
 
 // EngineIdentity identifies an instance, not an integer process slot. The
 // control secret is deliberately absent from all public status structures.
-type EngineIdentity struct {
-	InstanceID      string `json:"instance_id"`
-	Home            string `json:"home"`
-	Generation      string `json:"config_generation"`
-	ProtocolVersion int    `json:"control_protocol_version"`
-	PID             int    `json:"pid"`
-}
+type EngineIdentity = contracts.EngineIdentity
 
 type EngineStatus struct {
 	State     string         `json:"engine_state"`

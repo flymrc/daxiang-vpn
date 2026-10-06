@@ -1,46 +1,24 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { ResultDTO, StatusDTO } from "$lib/contracts.generated";
 
 // zhvpn `status --json`, with the GUI's persistent proxy-recovery diagnostic.
-export type Status = {
-  running: boolean;
-  proxy?: string;
-  proxy_reachable: boolean;
-  egress?: string;
-  egress_ip?: string;
-  egress_ipv4?: string;
-  egress_ipv6?: string;
-  error?: string;
-  error_code?: string;
+export type Status = StatusDTO & {
   system_proxy_error?: string;
 };
 
 // Mirrors zhvpn `login --json`.
-export type LoginResult = {
-  ok: boolean;
-  egress?: string;
-  proxy?: string;
-  error?: string;
-};
+export type LoginResult = ResultDTO;
 
 // connect/disconnect wrap `start`/`stop` (human output → {ok, message}).
 // connect(globalProxy=true) enables Windows system proxy; fast=true passes
 // `--fast` through to the sidecar and may trigger UAC.
-export type ActionResult = {
-  ok: boolean;
+export type ActionResult = ResultDTO & {
   message: string;
   warning?: string;
 };
 
 // Mirrors zhvpn `rotate-ip --json`.
-export type RotateResult = {
-  ok: boolean;
-  status?: string;
-  message?: string;
-  before?: string;
-  after?: string;
-  egress?: string;
-  error?: string;
-};
+export type RotateResult = ResultDTO;
 
 export const api = {
   status: () => invoke<Status>("status"),

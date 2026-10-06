@@ -10,10 +10,12 @@ from typing import Any, Dict, Mapping, Optional, Sequence, Union
 
 from .errors import (
     ZHVpnCommandError,
+    ZHVpnContractError,
     ZHVpnExecutableNotFound,
     ZHVpnJSONError,
     ZHVpnTimeout,
 )
+from .contracts import PRIVATE_FIELD_NAMES, SCHEMA_ID, validate_payload
 from .models import ActionResult, LoginResult, RotateResult, Status, VersionResult
 
 PathLike = Union[str, os.PathLike]
@@ -137,6 +139,28 @@ class Client:
     ) -> Dict[str, Any]:
         completed = self._run(args, timeout=timeout)
         payload = self._parse_json(completed, args)
+        try:
+            validate_payload("Status" if args and args[0] == "status" else "Result", payload)
+            if (
+                args and args[0] == "status" and "engine_state" in payload
+                and completed.returncode != 0 and not payload.get("error")
+            ):
+                raise ZHVpnContractError(
+                    "zhvpn contract violation: unsuccessful status exit has no diagnostic",
+                    field_path="$.error", schema_id=SCHEMA_ID,
+                )
+        except ZHVpnContractError as exc:
+            secrets = self._secret_values(payload, args)
+            raise ZHVpnContractError(
+                str(exc),
+                field_path=exc.field_path,
+                schema_id=exc.schema_id,
+                command=self._redact_command(args),
+                returncode=completed.returncode,
+                stdout=self._safe_output(completed.stdout, payload, secrets),
+                stderr=self._safe_text(completed.stderr, secrets),
+                payload=self._safe_payload(payload, secrets),
+            ) from None
         if check and (completed.returncode != 0 or payload.get("ok") is False):
             raise self._command_error(args, completed, payload)
         return payload
@@ -160,7 +184,8 @@ class Client:
         except FileNotFoundError as exc:
             raise ZHVpnExecutableNotFound(f"zhvpn executable not found: {self._command[0]}") from exc
         except subprocess.TimeoutExpired as exc:
-            raise ZHVpnTimeout(self._redact_command(args), effective_timeout) from exc
+            # The original exception embeds the unredacted full command.
+            raise ZHVpnTimeout(self._redact_command(args), effective_timeout) from None
 
     def _parse_json(self, completed: subprocess.CompletedProcess, args: Sequence[str]) -> Dict[str, Any]:
         line = ""
@@ -174,8 +199,10 @@ class Client:
                 "zhvpn did not return JSON",
                 command=self._redact_command(args),
                 returncode=completed.returncode,
-                stdout=self._safe_text(completed.stdout),
-                stderr=self._safe_text(completed.stderr),
+                # Invalid/no JSON cannot be safely inspected for private keys.
+                # Preserve command/exit diagnostics without echoing raw output.
+                stdout="",
+                stderr="",
             )
         try:
             payload = json.loads(line)
@@ -184,16 +211,16 @@ class Client:
                 f"zhvpn returned invalid JSON: {exc}",
                 command=self._redact_command(args),
                 returncode=completed.returncode,
-                stdout=self._safe_text(completed.stdout),
-                stderr=self._safe_text(completed.stderr),
-            ) from exc
+                stdout="",
+                stderr="",
+            ) from None
         if not isinstance(payload, dict):
             raise ZHVpnJSONError(
                 "zhvpn JSON response must be an object",
                 command=self._redact_command(args),
                 returncode=completed.returncode,
-                stdout=self._safe_text(completed.stdout),
-                stderr=self._safe_text(completed.stderr),
+                stdout="",
+                stderr="",
             )
         return payload
 
@@ -204,13 +231,14 @@ class Client:
         payload: Dict[str, Any],
     ) -> ZHVpnCommandError:
         message = str(payload.get("error") or completed.stderr or completed.stdout or "zhvpn command failed")
+        secrets = self._secret_values(payload, args)
         return ZHVpnCommandError(
-            self._safe_text(message),
+            self._safe_text(message, secrets),
             command=self._redact_command(args),
             returncode=completed.returncode,
-            stdout=self._safe_text(completed.stdout),
-            stderr=self._safe_text(completed.stderr),
-            payload=self._safe_payload(payload),
+            stdout=self._safe_output(completed.stdout, payload, secrets),
+            stderr=self._safe_text(completed.stderr, secrets),
+            payload=self._safe_payload(payload, secrets),
         )
 
     def _redact_command(self, args: Sequence[str]) -> Sequence[str]:
@@ -224,17 +252,46 @@ class Client:
             previous = arg
         return redacted
 
-    def _safe_text(self, value: Optional[str]) -> str:
-        return _TOKEN_RE.sub("ZH-<redacted>", value or "")
+    def _safe_text(self, value: Optional[str], secrets: Sequence[str] = ()) -> str:
+        result = _TOKEN_RE.sub("ZH-<redacted>", value or "")
+        for secret in secrets:
+            if secret:
+                result = result.replace(secret, "<redacted>")
+        return result
 
-    def _safe_payload(self, value: Any) -> Any:
+    def _safe_payload(self, value: Any, secrets: Sequence[str] = ()) -> Any:
         if isinstance(value, str):
-            return self._safe_text(value)
+            return self._safe_text(value, secrets)
         if isinstance(value, dict):
-            return {key: self._safe_payload(item) for key, item in value.items()}
+            return {
+                key: "<redacted>" if key in PRIVATE_FIELD_NAMES else self._safe_payload(item, secrets)
+                for key, item in value.items()
+            }
         if isinstance(value, list):
-            return [self._safe_payload(item) for item in value]
+            return [self._safe_payload(item, secrets) for item in value]
         return value
+
+    def _secret_values(self, payload: Any, args: Sequence[str]) -> Sequence[str]:
+        secrets = []
+        if args and args[0] == "login" and len(args) > 1:
+            secrets.append(str(args[1]))
+        def visit(value: Any) -> None:
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    if key in PRIVATE_FIELD_NAMES and isinstance(item, str):
+                        secrets.append(item)
+                    else:
+                        visit(item)
+            elif isinstance(value, list):
+                for item in value:
+                    visit(item)
+        visit(payload)
+        return secrets
+
+    def _safe_output(self, output: Optional[str], payload: Dict[str, Any], secrets: Sequence[str] = ()) -> str:
+        # A rejected response can contain forbidden private fields. Never copy
+        # their original values into exception stdout, even in diagnostic mode.
+        return json.dumps(self._safe_payload(payload, secrets), ensure_ascii=False)
 
     def _resolve_command(
         self,

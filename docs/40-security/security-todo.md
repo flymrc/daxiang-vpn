@@ -110,3 +110,9 @@ P0 各项已由 [Hub 安全审查报告 2026-06-04](../40-security/security-audi
 - 禁止监听 `0.0.0.0` 或蜂窝/WiFi 公网接口。
 - 只允许 SSH key 登录，禁用密码登录；真实 `authorized_keys` 和私钥不得入库。
 - 远程控制通道只作为运维入口，不替代 Hub 侧健康检查和本机 watchdog 自愈。
+
+## 2026-10-06 本地 Steelman 安全切片
+
+开发分支已建立 [CLI JSON 合同与 SDK 诊断脱敏](../30-implementation/cli-json-contract-v1.md)、[设备授权离线模型](../30-implementation/device-auth-foundation.md)和[CLI 代理租约核心](../30-implementation/system-proxy-lease-foundation.md)。数据库排队替换、过期 apply、策略 slice 别名以及损坏 journal 的拒绝路径已纳入回归。授权模型使用 fake 数据面，租约核心没有接入真实 CLI；不能据此勾选生产有效撤销、权限安装、reverse TLS 或全局代理集成。
+
+当前 token 的启停/到期只描述 API 授权判断，不能推定已经建立的 WG peer 或 reverse stream 同时失权。credential/API 接线、真实 WG 执行与到期调度、手机 mTLS、legacy 收口和正式发行继续按 [Steelman 清单](../30-implementation/zhvpn-steelman-refactor-plan.md)与既有 campaign 迁移门禁执行。

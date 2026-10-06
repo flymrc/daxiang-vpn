@@ -1,6 +1,6 @@
 # zhvpn Steelman 重构计划
 
-> 创建：2026-10-06 JST。状态：IN_PROGRESS；已启动隔离首切片，阶段门禁与生产实施分别登记。
+> 创建：2026-10-06 JST。状态：IN_PROGRESS；隔离首切片和后续合同/离线基础切片已实现，阶段门禁与生产实施分别登记。
 > 基线：[2026-10-05 多维审计](../90-history/worklogs/2026-10-05-zhvpn-project-audit.md)。49/100 是该日的工程成熟度评估，不能作为本日运行状态或后续验收结果。
 
 ## 1. Steelman 的完成定义
@@ -176,6 +176,7 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 | --- | --- | --- | --- | --- | --- |
 | 2026-10-06 | PLAN | 本计划 | 文档准备；代码/本地/实机/生产实施均未开始 | 当日 worklog | 全部实施 checkbox 未勾 |
 | 2026-10-06 | P0.1；P1/P2/P3 首切片 | 合流 `3c88880` 后的 `codex/zhvpn-steelman-runtime` | 最终本地门禁通过；Windows 真实 child、GUI Rust 30 项及 mock 浏览器；Windows/Darwin CLI 编译 | [首切片 worklog](../90-history/worklogs/2026-10-06-zhvpn-runtime-safety-slice.md)、[资产基线](../90-history/worklogs/2026-10-06-zhvpn-asset-baseline.md)、[客户端合同](client-runtime-safety-contract.md) | P0/P1 全阶段门禁、CLI 代理租约迁移、Mac 实机和生产仍未完成 |
+| 2026-10-06 | P1.6/P3.1/P4.2–P4.6 局部基础 | 基于首切片 `9113a3a`，共享合同/SDK、离线授权和代理租约核心 | 生成漂移及统一本地门禁通过；SDK 17、代理基础 24、授权 30 实质套件；独立反例修复 | [后续基础 worklog](../90-history/worklogs/2026-10-06-zhvpn-contracts-foundations.md) | 租约未接入 CLI；授权未接 API/真实 WG；Mac/手机 TLS/发行/生产未完成 |
 
 本轮切片检查点单独登记，不代替上面的完整任务/阶段门禁：
 
@@ -184,12 +185,15 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 - [x] Windows junction 规范化、hardlink/owner/权限负例；初始化保留现用配置与日志。
 - [x] Go test/vet/race、SDK 5 项、前端零错误/警告的首轮本地门禁；Windows CLI 与 Darwin 两架构编译。
 - [x] GUI 代理 journal、跨会话事务锁、ready 授权校验及登录页错误可见性完成补充复核与测试；真实用户代理/双登录会话尚未演练。
+- [x] CLI JSON 五份同源投影与生成漂移门禁、CLI/GUI 类型消费者及 SDK v1 校验/legacy unknown/安全异常回归，见后续基础 worklog；不代替完整 HTTP/Admin 合同。
+- [x] 离线设备授权/历史撤销/outbox/intent/fence；独立旧 DB 替换、过期 apply 与 policy alias 反例修复；不代替真实 API/WG 撤权。
+- [x] CLI 代理 v2 租约核心与合成 Windows adapter；Notify 后变更、journal 别名 panic、跨进程锁回归；不代替真实 phase gate/命令接线。
 - [ ] CLI 用户级代理租约、Mac 实机/真实安装升级、设备授权执行与手机 TLS 后续按阶段验收。
 
 | 里程碑 | 当前状态 |
 | --- | --- |
 | 计划 | 已编写，按切片执行中 |
-| 实现 | 隔离首切片；详见客户端合同与当日实施 worklog |
-| 新验证 | Windows 本机/合成最终门禁与独立复核通过；GUI 浏览器为 mock IPC，Darwin 仅编译；10-06 资产只读复核已记录 |
+| 实现 | 隔离首切片、CLI 同源合同、授权/代理离线基础；真实接线与发行按未完成清单推进 |
+| 新验证 | 后续统一门禁与独立反例修复通过；GUI 浏览器仍是首切片 mock IPC；授权用文件 fake 数据面，代理用合成 HKCU；跨平台仅编译；10-06 资产只读复核已记录 |
 | 生产切换 | 未开始，既有安全迁移仍遵循自己的 NO-GO 状态 |
 | Steelman 终验 | 未完成 |

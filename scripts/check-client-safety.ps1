@@ -1,4 +1,4 @@
-# Local gates for the first Steelman client safety slice. This is not the final
+# Local gates for implemented Steelman client/authorization slices. This is not the final
 # release/security/signing gate. Install GUI dependencies with npm ci first.
 [CmdletBinding()]
 param()
@@ -17,9 +17,11 @@ function Invoke-Gate {
 
 Push-Location $repoRoot
 try {
+    Invoke-Gate 'Generated CLI contracts' 'go' @('run', './shared/contracts/cmd/contractgen', '-check')
     Invoke-Gate 'Go tests (product build tags)' 'go' @('test', '-tags', 'with_gvisor', './...')
     Invoke-Gate 'Go vet' 'go' @('vet', '-tags', 'with_gvisor', './...')
     Invoke-Gate 'Client and reverse race tests' 'go' @('test', '-race', '-tags', 'with_gvisor', './clients/cli/...', './shared/...', './egress/reverse')
+    Invoke-Gate 'Offline authorization race tests' 'go' @('test', '-race', './hub/internal/deviceauth')
     Invoke-Gate 'Python SDK consumers' 'python' @('-m', 'unittest', 'discover', '-s', 'sdk/python/tests', '-v')
 
     Push-Location 'clients/desktop-gui'

@@ -10,6 +10,8 @@
 
 2026-10-06 衔接：[Steelman 重构计划](../30-implementation/zhvpn-steelman-refactor-plan.md)新增设备身份、有效 peer 撤销与 reverse 认证加密的待实施合同；本文件仍负责 legacy HTTPS/私钥收口，不改变当前 observation-only/readiness、campaign、观察窗口或不增加 hosted CI 政策。授权事实源接管须保留历史分母和 lineage，不能按计划提前宣称已部署。
 
+同日本地后续切片已建立 [CLI JSON 同源消费者](../30-implementation/cli-json-contract-v1.md)、[设备授权离线模型](../30-implementation/device-auth-foundation.md)与未接入控制面的代理租约核心。fake executor、合成注册表和模型回归均不计入生产 campaign、实际安装实例或真实撤权证据；现有 NO-GO 与观察窗口不因这些代码通过测试而改变。
+
 将仍在使用的客户端从迁移期兼容状态安全收口到以下目标状态：
 
 - 客户端只通过受信任的 HTTPS 入口调用 bootstrap/rotate。
