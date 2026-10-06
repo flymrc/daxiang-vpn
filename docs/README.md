@@ -65,6 +65,9 @@ Hub 管理控制台 v1 作为 `zhhub` 第二个 listener 运行,本机监听 `12
 
 ## 30 Implementation
 
+- [Steelman 重构 checkbox 计划](30-implementation/zhvpn-steelman-refactor-plan.md)
+- [客户端实例与代理恢复合同](30-implementation/client-runtime-safety-contract.md)
+- [P1 设备授权与撤销合同（待实施）](30-implementation/device-auth-revocation-contract.md)
 - [Android 出口节点实现](30-implementation/android-egress-agent.md)
 - [Android 出口极致加速研究](30-implementation/android-egress-performance-acceleration.md)
 - [Hub 授权 API MVP](30-implementation/auth-api-mvp.md)
@@ -86,5 +89,9 @@ Hub 管理控制台 v1 作为 `zhhub` 第二个 listener 运行,本机监听 `12
 
 ## 90 History
 
+- [2026-10-06 Steelman 客户端安全首切片](90-history/worklogs/2026-10-06-zhvpn-runtime-safety-slice.md)
+- [2026-10-06 资产与授权事实基线](90-history/worklogs/2026-10-06-zhvpn-asset-baseline.md)
+- [2026-10-06 Steelman 重构计划](90-history/worklogs/2026-10-06-zhvpn-steelman-refactor-plan.md)
+- [2026-10-05 项目多维审计](90-history/worklogs/2026-10-05-zhvpn-project-audit.md)
 - [2026-06-06 Android 出口节点上线](90-history/worklogs/2026-06-06-android-egress.md)
 - [2026-06-11 Pixel 7a 控制面迁移](90-history/worklogs/2026-06-11-pixel-control-plane-migration.md)

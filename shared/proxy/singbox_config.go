@@ -5,7 +5,6 @@ package proxy
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -120,7 +119,7 @@ func WriteSingBoxConfig(ctx paths.Context, cfg config.Config, systemTUN bool) er
 		return err
 	}
 	data = append(data, '\n')
-	return os.WriteFile(ctx.SingBoxConfig, data, 0600)
+	return writePrivateFile(ctx, ctx.SingBoxConfig, data)
 }
 
 func splitAddr(addr string) (string, string, error) {

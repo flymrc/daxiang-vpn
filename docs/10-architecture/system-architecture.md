@@ -49,6 +49,8 @@ local proxy 127.0.0.1:7890
 
 这样可以保持登录、连接、状态、换 IP、断开等行为只有一份实现，避免 GUI 和 SDK 产生第二套状态机。
 
+2026-10-06 开发分支的首批重构把实例认证、操作锁与停止控制放在 `shared/proxy` 的独立 runtime 文件中，由 CLI 使用；PID 仅用于诊断。GUI 系统代理仍暂用独立可恢复 journal，迁入 CLI 的用户级租约尚未完成。精确合同与平台验证边界见[客户端实例与代理恢复合同](../30-implementation/client-runtime-safety-contract.md)，不能把本分支实现当作已发行客户端。
+
 ### 基础拓扑
 
 ```text
@@ -73,7 +75,9 @@ Hub 不能作为最终公网出口或兜底出口。Hub 的职责是中转中国
 
 ### 当前 Android 出口数据面
 
-2026-10-05 Hub 部署补充：当前手机侧仍为 Motorola `dxreverse` 兼容客户端，以下 Pixel/`zhreverse` 手机端配置属于历史目标方案。Hub 服务端现启用 `proxy_preempt_idle=10s`：达到全局 96 或每客户端 48 条 CONNECT 上限时，把已进入转发且最久无流量、空闲至少 10 秒的隧道让位给新 CONNECT；每客户端上限只抢占该客户端，拨号中会话不参与。原 2 分钟空闲回收仍保留；拓扑、端口、手机软件和出口策略未改变。验收见[部署工作日志](../90-history/worklogs/2026-10-05-zhreverse-idle-preempt.md)。
+2026-10-06 09:40–09:45 JST 只读复核：`10.66.0.101` 当前是 Pixel 7a/Android 16，实际运行 `/data/adb/zhreverse/bin/zhreverse` 与 `/data/adb/zhandroid/bin/zhandroid-control`。手机配置为 TCP、双会话，现有二进制未提供 TCP TLS/mTLS 参数；QUIC pin 全零不能当作可用回滚凭据。见[本日资产基线](../90-history/worklogs/2026-10-06-zhvpn-asset-baseline.md)。
+
+Hub 服务端保留 2026-10-05 上线的 `proxy_preempt_idle=10s`：达到全局 96 或每客户端 48 条 CONNECT 上限时，把已进入转发且最久无流量、空闲至少 10 秒的隧道让位给新 CONNECT；每客户端上限只抢占该客户端，拨号中会话不参与。原 2 分钟空闲回收仍保留；本次基线检查未改变服务、端口或出口策略。部署记录见[工作日志](../90-history/worklogs/2026-10-05-zhreverse-idle-preempt.md)。
 
 Android 手机出口已从“手机在 WireGuard 内网监听 `10.66.0.101:1080`”迁到反向数据面:
 

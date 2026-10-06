@@ -38,7 +38,7 @@ func Run(args []string) error {
 
 	switch args[0] {
 	case proxy.EngineCommand:
-		return proxy.RunEngine(engineContext(ctx, args[1:]))
+		return proxy.RunDedicatedEngine(engineContext(ctx, args[1:]))
 	case proxy.KillCommand:
 		if len(args) < 2 {
 			return errors.New("缺少 pid")
@@ -116,18 +116,25 @@ type jsonResult struct {
 	Version         string `json:"version,omitempty"`
 	ProtocolVersion int    `json:"protocol_version,omitempty"`
 	Error           string `json:"error,omitempty"`
+	ErrorCode       string `json:"error_code,omitempty"`
 }
 
 // statusResult is the machine-readable result for status --json.
 type statusResult struct {
-	Running        bool   `json:"running"`
-	Proxy          string `json:"proxy,omitempty"`
-	ProxyReachable bool   `json:"proxy_reachable"`
-	Egress         string `json:"egress,omitempty"`
-	EgressIP       string `json:"egress_ip,omitempty"`
-	EgressIPv4     string `json:"egress_ipv4,omitempty"`
-	EgressIPv6     string `json:"egress_ipv6,omitempty"`
-	Error          string `json:"error,omitempty"`
+	Running                bool   `json:"running"`
+	Proxy                  string `json:"proxy,omitempty"`
+	ProxyReachable         bool   `json:"proxy_reachable"`
+	Egress                 string `json:"egress,omitempty"`
+	EgressIP               string `json:"egress_ip,omitempty"`
+	EgressIPv4             string `json:"egress_ipv4,omitempty"`
+	EgressIPv6             string `json:"egress_ipv6,omitempty"`
+	Error                  string `json:"error,omitempty"`
+	ErrorCode              string `json:"error_code,omitempty"`
+	EngineState            string `json:"engine_state"`
+	InstanceID             string `json:"instance_id,omitempty"`
+	ConfigGeneration       string `json:"config_generation,omitempty"`
+	ControlProtocolVersion int    `json:"control_protocol_version,omitempty"`
+	PortOccupied           bool   `json:"port_occupied,omitempty"`
 }
 
 func printJSON(v any) error {
@@ -140,7 +147,12 @@ func printJSON(v any) error {
 // ErrSilent so main exits non-zero quietly), or returns it verbatim otherwise.
 func reportErr(jsonOut bool, err error) error {
 	if jsonOut {
-		_ = printJSON(jsonResult{Error: err.Error()})
+		var runtimeErr *proxy.RuntimeError
+		code := ""
+		if errors.As(err, &runtimeErr) {
+			code = runtimeErr.Code
+		}
+		_ = printJSON(jsonResult{Error: err.Error(), ErrorCode: code})
 		return ErrSilent
 	}
 	return err
@@ -297,6 +309,9 @@ func logout(ctx paths.Context, args []string) error {
 	jsonOut, err := wantJSON(args)
 	if err != nil {
 		return err
+	}
+	if _, err := proxy.Stop(ctx); err != nil {
+		return reportErr(jsonOut, err)
 	}
 	if err := os.Remove(ctx.ConfigPath); err != nil && !os.IsNotExist(err) {
 		return reportErr(jsonOut, err)
@@ -502,6 +517,13 @@ func start(ctx paths.Context, args []string) error {
 	if err != nil {
 		return reportErr(jsonOut, err)
 	}
+	runtimeInfo, err := proxy.Inspect(ctx)
+	if err != nil {
+		return reportErr(opts.jsonOut, err)
+	}
+	if runtimeInfo.State != "stopped" && runtimeInfo.State != "ready" {
+		return reportErr(opts.jsonOut, &proxy.RuntimeError{Code: "engine_operation_pending", Message: "引擎仍在启动或停止，请等待该实例完成后重试"})
+	}
 
 	cached, err := loadLocalInstalledConfig(ctx)
 	if err != nil {
@@ -526,9 +548,9 @@ func start(ctx paths.Context, args []string) error {
 		return reportErr(opts.jsonOut, err)
 	}
 
-	running, _ := proxy.IsRunning(ctx)
+	running := runtimeInfo.State == "ready"
 	localReachable, _ := netcheck.TCP(cfg.LocalProxy.Addr(), netcheck.ShortTimeout)
-	if running && localReachable && runtimeConfigMatches(ctx, cfg, opts.fast) {
+	if running && runtimeInfo.ProxyAddr == cfg.LocalProxy.Addr() && localReachable && runtimeConfigMatches(ctx, cfg, opts.fast) {
 		if opts.jsonOut {
 			return printJSON(jsonResult{OK: true, Egress: cfg.Egress.CustomerName(), Proxy: cfg.LocalProxy.Addr(), Message: "已在运行"})
 		}
@@ -556,14 +578,8 @@ func start(ctx paths.Context, args []string) error {
 	if err := proxy.Start(ctx, cfg, opts.fast); err != nil {
 		return reportErr(opts.jsonOut, err)
 	}
-	// System TUN (--fast) takes longer to come up (driver + interface setup).
-	timeout := 8 * time.Second
-	if opts.fast {
-		timeout = 20 * time.Second
-	}
-	if !waitForTCP(cfg.LocalProxy.Addr(), timeout) {
-		return reportErr(opts.jsonOut, errors.New("代理启动失败，请重试"))
-	}
+	// Start succeeds only after the exact child completed data-plane startup
+	// and answered the authenticated control readiness handshake.
 	if err := writeRuntimeFingerprint(ctx, cfg, opts.fast); err != nil {
 		return reportErr(opts.jsonOut, err)
 	}
@@ -656,28 +672,48 @@ func status(ctx paths.Context, args []string) error {
 		return err
 	}
 
-	cfg, err := loadInstalledConfig(ctx)
+	cfg, err := loadLocalInstalledConfig(ctx)
 	if err != nil {
 		if opts.jsonOut {
-			_ = printJSON(statusResult{Error: err.Error()})
+			_ = printJSON(statusResult{Error: err.Error(), EngineState: "degraded", ErrorCode: "client_config_unavailable"})
 			return ErrSilent
 		}
 		return err
 	}
 
-	running, _ := proxy.IsRunning(ctx)
-	localReachable, _ := netcheck.TCP(cfg.LocalProxy.Addr(), netcheck.ShortTimeout)
+	runtimeInfo, runtimeErr := proxy.Inspect(ctx)
+	running := runtimeErr == nil && runtimeInfo.State == "ready"
+	proxyAddr := cfg.LocalProxy.Addr()
+	if running {
+		proxyAddr = runtimeInfo.ProxyAddr
+	}
+	portReachable, _ := netcheck.TCP(proxyAddr, netcheck.ShortTimeout)
+	localReachable := running && portReachable
 
 	if opts.jsonOut {
 		res := statusResult{
-			Running:        running || localReachable,
-			Proxy:          cfg.LocalProxy.Addr(),
-			ProxyReachable: localReachable,
-			Egress:         cfg.Egress.CustomerName(),
+			Running:                running,
+			Proxy:                  proxyAddr,
+			ProxyReachable:         localReachable,
+			Egress:                 cfg.Egress.CustomerName(),
+			EngineState:            runtimeInfo.State,
+			InstanceID:             runtimeInfo.Identity.InstanceID,
+			ConfigGeneration:       runtimeInfo.Identity.Generation,
+			ControlProtocolVersion: runtimeInfo.Identity.ProtocolVersion,
+			PortOccupied:           !running && portReachable,
+		}
+		if runtimeErr != nil {
+			res.Error = runtimeErr.Error()
+			var failure *proxy.RuntimeError
+			if errors.As(runtimeErr, &failure) {
+				res.ErrorCode = failure.Code
+			}
+			_ = printJSON(res)
+			return ErrSilent
 		}
 		if localReachable {
 			if opts.checkIP {
-				if ips, err := netcheck.PublicIPsViaHTTPProxy(cfg.LocalProxy.Addr()); err == nil {
+				if ips, err := netcheck.PublicIPsViaHTTPProxy(proxyAddr); err == nil {
 					res.EgressIPv4 = ips.IPv4
 					res.EgressIPv6 = ips.IPv6
 					if publicIPMatchesEndpoint(res.EgressIPv4, cfg.Hub.Endpoint) {
@@ -694,17 +730,20 @@ func status(ctx paths.Context, args []string) error {
 		return printJSON(res)
 	}
 
-	if running || localReachable {
+	if runtimeErr != nil {
+		return runtimeErr
+	}
+	if running {
 		fmt.Println("状态：运行中")
 	} else {
 		fmt.Println("状态：未运行")
 	}
-	fmt.Printf("代理：%s", cfg.LocalProxy.Addr())
+	fmt.Printf("代理：%s", proxyAddr)
 	printBool(localReachable)
 	fmt.Printf("出口：%s\n", cfg.Egress.CustomerName())
 	if localReachable {
 		if opts.checkIP {
-			if ips, err := netcheck.PublicIPsViaHTTPProxy(cfg.LocalProxy.Addr()); err == nil {
+			if ips, err := netcheck.PublicIPsViaHTTPProxy(proxyAddr); err == nil {
 				if publicIPMatchesEndpoint(ips.IPv4, cfg.Hub.Endpoint) {
 					ips.IPv4 = ""
 				}

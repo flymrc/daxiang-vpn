@@ -23,19 +23,19 @@
 
 ```text
 客户端 --WireGuard--> Hub(36.50.84.68 / wg0 10.66.0.1/24)
-  +--> Mac mini 出口:    10.66.0.100:1080
+  +--> Mac mini 历史出口: 10.66.0.100:1080（弃用；仍保护管理资产）
   +--> Android 手机出口: Hub/WireGuard zhreverse proxy 10.66.0.1:18081
 ```
 
 按角色分顶层,Go 代码统一在根 module `zongheng-vpn` 下:
 
-- `clients/` — **客户端**(终端用户侧)。`clients/cli/` = CLI 客户端;`clients/desktop-gui/` = mac/windows PC 单一跨平台 GUI(🅿️ 预留)。
+- `clients/` — **客户端**(终端用户侧)。`clients/cli/` = CLI 客户端;`clients/desktop-gui/` = mac/windows PC 单一跨平台 GUI。客户 Android App 必须放在 `clients/android/`；其既有受控 canary/未发行状态不因本轮桌面重构改变。
 - `hub/` — **Hub 服务端**(授权 API)。
-- `egress/` — **出口节点**(基础设施侧,非终端客户端)。`egress/reverse/` = Android 反向 QUIC 出口数据面(`zhreverse`,当前生产路径,Android 主动连 Hub);`egress/proxy/` = sing-box 出口代理(Mac/PC 出口🅿️预留,不再用于 Android 生产);`egress/android-status/` = 安卓出口监控 App;`egress/android-control/` = 安卓出口远程控制+自愈(自研 Go SSH 服务 `zhandroid-control` 绑隧道 IP 10.66.0.101:2022、仅公钥 + 看门狗)。
+- `egress/` — **出口节点**(基础设施侧,非终端客户端)。`egress/reverse/` = Android 反向 TCP/yamux 出口数据面；2026-10-06 只读实机证据为 Pixel 7a 运行 `zhreverse`，QUIC 仅实验且现有全零 pin 不构成可用回滚。`egress/proxy/` = sing-box 出口代理(Mac/PC 出口🅿️预留,不再用于 Android 生产);`egress/android-status/` = 安卓出口监控 App;`egress/android-control/` = 安卓出口远程控制+自愈，当前 Pixel 7a 运行 `zhandroid-control`，绑隧道 IP 10.66.0.101:2022、仅公钥。具体运行路径/hash 以[本日基线](docs/90-history/worklogs/2026-10-06-zhvpn-asset-baseline.md)为准。
 - `shared/` — 客户端与出口共用的 Go 包(`config`、`paths`、`proxy`)。
 - `scripts/` — 运维脚本(如 `check-android-egress-health.ps1`、`measure-android-egress.ps1`)。
 
-> 重要:安卓相关都在 `egress/` 下,是**出口**不是终端客户端。新增组件先归到对的角色目录。
+> 重要:现有 `egress/android-*` 是**出口基础设施**，客户 Android App 放 `clients/android/`。新增组件先按角色归类，不能因同为 Android 就混在一起。
 
 ## 操作纪律
 

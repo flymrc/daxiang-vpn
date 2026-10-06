@@ -79,7 +79,7 @@
     try {
       const s = await api.status();
       status = s;
-      view = s.error && s.error.includes("未找到配置") ? "login" : "main";
+      view = s.error_code === "client_config_unavailable" || s.error?.includes("未找到配置") ? "login" : "main";
       if (view === "login") loadLastToken();
       if (!isConnected(s)) {
         lastIPv4 = "";
@@ -156,7 +156,11 @@
     errMsg = "";
     info = "";
     try {
-      await api.logout();
+      const r = await api.logout();
+      if (!r.ok) {
+        errMsg = r.message || "登出失败";
+        return;
+      }
       await refresh();
     } catch (e) {
       errMsg = String(e);
@@ -192,7 +196,9 @@
     api.appVersion().then((v) => (appVersion = v)).catch(() => {});
     refresh(true);
     poll = setInterval(() => {
-      if (view === "main" && !busy) refresh();
+      // Read-only status also carries startup/tray recovery failures when the
+      // configuration is missing. Keep observing while the login page is open.
+      if (!busy) refresh();
     }, 5000);
     return () => clearInterval(poll);
   });
@@ -265,8 +271,8 @@
   {#if info}
     <p class="info-msg">{info}</p>
   {/if}
-  {#if errMsg}
-    <p class="error">{errMsg}</p>
+  {#if errMsg || status?.system_proxy_error}
+    <p class="error" role="alert">{status?.system_proxy_error || errMsg}</p>
   {/if}
 </main>
 
@@ -430,6 +436,10 @@
     text-align: center;
     margin: 0;
     word-break: break-all;
+    white-space: pre-line;
+    min-height: 0;
+    max-height: 150px;
+    overflow-y: auto;
   }
   @media (prefers-color-scheme: dark) {
     :root {

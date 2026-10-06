@@ -8,6 +8,8 @@
 
 ## 1. 目标
 
+2026-10-06 衔接：[Steelman 重构计划](../30-implementation/zhvpn-steelman-refactor-plan.md)新增设备身份、有效 peer 撤销与 reverse 认证加密的待实施合同；本文件仍负责 legacy HTTPS/私钥收口，不改变当前 observation-only/readiness、campaign、观察窗口或不增加 hosted CI 政策。授权事实源接管须保留历史分母和 lineage，不能按计划提前宣称已部署。
+
 将仍在使用的客户端从迁移期兼容状态安全收口到以下目标状态：
 
 - 客户端只通过受信任的 HTTPS 入口调用 bootstrap/rotate。
@@ -537,12 +539,13 @@ last_reconciled_at
 ### 回滚原则
 
 - [ ] 每个阶段已有精确、已演练的回滚步骤。
-- [ ] 私钥批次只恢复受影响 token，不整体覆盖 token 配置。
+- [ ] 私钥批次只恢复仍授权且重新核验的受影响 token，不整体覆盖 token 配置；撤销、禁用、过期凭证及被替换公钥不得因回滚复活。
 - [ ] WireGuard 只恢复受影响 peer 映射，不整体覆盖运行态 `wg0`。
+- [ ] 设备授权执行边界按 Steelman P4 启用后，旧版服务恢复也必须经过该边界核验最新授权/撤销记录，不能直接 `wg set` 绕过。
 - [ ] listener 和防火墙按正确依赖顺序恢复。
 - [ ] HTTPS 故障优先修复 Caddy/DNS/证书，不默认长期恢复明文入口。
 - [ ] 临时恢复公网 HTTP 必须限制来源、设置自动到期，并重新开始迁移静默窗口。
-- [ ] 优先升级或换发 token；恢复服务端 legacy 私钥只作为最后且有期限的应急措施。
+- [ ] 优先升级或换发 token；恢复服务端 legacy 私钥只作为仍授权且重新核验对象的最后、有期限应急措施，不能恢复已撤销权限。
 
 ## 17. 最终 Go/No-Go 检查表
 

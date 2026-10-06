@@ -4,9 +4,8 @@ import (
 	"context"
 	"os"
 	"os/signal"
-	"path/filepath"
-	"strconv"
 	"syscall"
+	"time"
 
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter/endpoint"
@@ -36,20 +35,53 @@ import (
 // dozens of protocols (vmess/vless/trojan/shadowsocks/tor/...) that the full
 // sing-box ships with, which is what keeps the binary small.
 func RunEngine(ctx paths.Context) error {
-	// Record our own PID so Stop can find us — works whether we were launched
-	// normally or elevated (where the parent can't capture the child PID).
-	_ = os.MkdirAll(filepath.Dir(ctx.PIDPath), 0700)
-	if err := os.WriteFile(ctx.PIDPath, []byte(strconv.Itoa(os.Getpid())), 0600); err != nil {
-		return err
-	}
+	return runEngine(ctx, nil)
+}
 
-	content, err := os.ReadFile(ctx.SingBoxConfig)
+// RunDedicatedEngine is only for the hidden CLI child-process entrypoint.
+// A stuck start/close can self-exit after authenticated cancellation or lease
+// expiry. General library/GUI callers of RunEngine are never terminated.
+func RunDedicatedEngine(ctx paths.Context) error {
+	return runEngine(ctx, func() { os.Exit(1) })
+}
+
+func runEngine(ctx paths.Context, exitDedicated func()) error {
+	finished := make(chan struct{})
+	defer close(finished)
+	ctx, err := canonicalContext(ctx)
 	if err != nil {
 		return err
 	}
+	content, err := readPrivateFile(ctx, ctx.SingBoxConfig)
+	if err != nil {
+		return err
+	}
+	control, err := beginEngineControl(ctx, content)
+	if err != nil {
+		return err
+	}
+	defer control.close()
+	engineCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		select {
+		case <-control.done:
+			cancel()
+			if exitDedicated != nil {
+				timer := time.NewTimer(3 * time.Second)
+				defer timer.Stop()
+				select {
+				case <-finished:
+				case <-timer.C:
+					exitDedicated()
+				}
+			}
+		case <-engineCtx.Done():
+		}
+	}()
 
 	boxCtx := box.Context(
-		context.Background(),
+		engineCtx,
 		inboundRegistry(),
 		outboundRegistry(),
 		endpointRegistry(),
@@ -71,10 +103,15 @@ func RunEngine(ctx paths.Context) error {
 		return err
 	}
 	defer instance.Close()
+	control.ready()
 
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
-	<-signals
+	defer signal.Stop(signals)
+	select {
+	case <-signals:
+	case <-control.done:
+	}
 	return nil
 }
 

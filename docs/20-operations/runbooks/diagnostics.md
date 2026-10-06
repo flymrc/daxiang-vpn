@@ -461,6 +461,8 @@ tail -n 50 /usr/local/var/log/zhvpn/*.log
 
 ## 4.1 客户端重复与 token 冲突排查
 
+2026-10-06 开发分支开始以认证实例身份诊断引擎；先用 `zhvpn status --json --no-ip-check` 读取公开状态，端口/PID 只作辅助。`engine_legacy_state` 需要人工核验旧引擎的可执行路径、home 与真实运行身份，确认退出后归档旧记录，不能按 PID 自动强杀。`engine_identity_unverified`、`engine_control_unavailable` 和停止超时均保留恢复状态，不宣称停止成功。系统代理 journal 异常按[恢复合同](../../30-implementation/client-runtime-safety-contract.md)核对并重试；不要 dump `engine-state.json` 或运行 session 配置，它们可能含控制密钥或 WG 私钥。这些行为尚未发行。
+
 本机是否启动了两个客户端，优先在 Windows 看监听端口和进程树：
 
 ```powershell
@@ -479,7 +481,7 @@ wg show wg0 endpoints
 
 - `bootstrap 拒绝 ... reason=token_in_use` 表示同 token 在不同公网来源的 30 秒租约内被拒绝。
 - `wg show wg0 endpoints` 里客户 peer 的 endpoint 是当前 WireGuard 最后来源。若这个 IP 等于本机直连公网 IP，不能单独判断为异地登录。
-- Hub 只信任本机或内网反代传入的 `X-Forwarded-For`；公网客户端伪造 XFF 不会影响 token 冲突判断。
+- 当前实现对部分私网来源也接受 `X-Forwarded-For`，不等于这些来源都是真正可信反代；已知 WG 客户可伪造租约来源的风险仍待 P4 修复。不能用 XFF 推断设备归属；未来只在明确 trusted listener 和明确代理边界赋值。
 
 ---
 

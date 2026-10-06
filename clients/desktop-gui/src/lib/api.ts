@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-// Mirrors zhvpn `status --json`.
+// zhvpn `status --json`, with the GUI's persistent proxy-recovery diagnostic.
 export type Status = {
   running: boolean;
   proxy?: string;
@@ -10,6 +10,8 @@ export type Status = {
   egress_ipv4?: string;
   egress_ipv6?: string;
   error?: string;
+  error_code?: string;
+  system_proxy_error?: string;
 };
 
 // Mirrors zhvpn `login --json`.

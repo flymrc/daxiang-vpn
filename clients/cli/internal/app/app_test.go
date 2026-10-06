@@ -3,10 +3,12 @@ package app
 import (
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"zongheng-vpn/clients/cli/internal/buildinfo"
@@ -37,6 +39,62 @@ func testClientConfig(token string) config.Config {
 	}
 	cfg.ApplyDefaults()
 	return cfg
+}
+
+func TestStatusRejectsUnownedTCPListener(t *testing.T) {
+	ctx := paths.FromRoot(t.TempDir())
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	cfg := testClientConfig("")
+	cfg.LocalProxy.ListenPort = listener.Addr().(*net.TCPAddr).Port
+	if err := config.Save(ctx.ConfigPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+	output := captureStdout(t, func() {
+		if err := status(ctx, []string{"--json", "--no-ip-check"}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	var result statusResult
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Running || result.ProxyReachable || !result.PortOccupied || result.EngineState != "stopped" {
+		t.Fatalf("unowned TCP listener reported engine readiness: %+v", result)
+	}
+}
+
+func TestStatusTokenOnlyCacheDoesNotBootstrap(t *testing.T) {
+	ctx := paths.FromRoot(t.TempDir())
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	t.Setenv("ZHVPN_API_BASE", server.URL)
+	cfg := config.Config{License: config.LicenseConfig{Token: "ZH-SYNTHETIC-STATUS-ONLY"}, LocalProxy: config.LocalProxyConfig{ListenAddr: "127.0.0.1", ListenPort: 1}}
+	if err := config.Save(ctx.ConfigPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+	output := captureStdout(t, func() {
+		if err := status(ctx, []string{"--json", "--no-ip-check"}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if calls.Load() != 0 {
+		t.Fatal("status contacted bootstrap service")
+	}
+	var result statusResult
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Running || result.EngineState != "stopped" {
+		t.Fatal("token-only cache was treated as an active instance")
+	}
 }
 
 func bootstrapTestServer(t *testing.T, cfg config.Config, calls *int) *httptest.Server {

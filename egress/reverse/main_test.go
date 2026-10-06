@@ -902,14 +902,7 @@ func TestOpenCommandDropsStaleSession(t *testing.T) {
 			time.Sleep(200 * time.Millisecond)
 		},
 	}
-	healthy := &fakeTunnelSession{
-		remote: dummyAddr("healthy"),
-		handler: func(conn net.Conn) {
-			defer conn.Close()
-			_, _ = bufio.NewReader(conn).ReadString('\n')
-			_, _ = io.WriteString(conn, "OK\n")
-		},
-	}
+	healthy := okTunnelSession("healthy")
 	manager := &sessionManager{sessions: []tunnelSession{stale, healthy}}
 
 	stream, _, status, err := manager.openCommand("CONNECT example.com:443")
@@ -1218,8 +1211,17 @@ func okTunnelSession(name string) *fakeTunnelSession {
 		remote: dummyAddr(name),
 		handler: func(conn net.Conn) {
 			defer conn.Close()
-			_, _ = bufio.NewReader(conn).ReadString('\n')
-			_, _ = io.WriteString(conn, "OK\n")
+			reader := bufio.NewReader(conn)
+			if _, err := reader.ReadString('\n'); err != nil {
+				return
+			}
+			if _, err := io.WriteString(conn, "OK\n"); err != nil {
+				return
+			}
+			// A successful CONNECT keeps the stream open until its caller closes
+			// it. Closing immediately after OK races openCommand's deadline reset
+			// and makes scheduler tests accidentally exercise failover instead.
+			_, _ = io.Copy(io.Discard, reader)
 		},
 	}
 }

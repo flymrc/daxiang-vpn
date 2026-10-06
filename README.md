@@ -2,7 +2,9 @@
 
 纵横 VPN 是一个 Hub + Android 手机出口 + Windows 客户端的代理网络项目。
 
-2026-10-05 Hub `zhreverse` 已上线满额空闲 CONNECT 抢占（阈值 10 秒；并发上限仍为全局 96 / 每客户端 48）。生产校验与备份见[服务器访问文档](docs/20-operations/runbooks/server-access.md)；手机数据面未在本次部署中变更，当前仍运行 Motorola `dxreverse` 兼容客户端。
+2026-10-05 Hub `zhreverse` 已上线满额空闲 CONNECT 抢占（阈值 10 秒；并发上限仍为全局 96 / 每客户端 48）。生产校验与备份见[服务器访问文档](docs/20-operations/runbooks/server-access.md)；该次部署未更改手机。2026-10-06 只读复核确认控制地址 `10.66.0.101` 当前是 Pixel 7a，运行 `zhreverse/zhandroid-control`，TCP 尚无 TLS；以[本日资产基线](docs/90-history/worklogs/2026-10-06-zhvpn-asset-baseline.md)为准。
+
+2026-10-06 开始 [Steelman 重构](docs/30-implementation/zhvpn-steelman-refactor-plan.md)。首切片在隔离开发分支实现实例认证/安全停止、保留运行日志及 Windows 代理恢复 journal；协议、兼容与验证边界见[客户端合同](docs/30-implementation/client-runtime-safety-contract.md)。这些客户端变化尚未发行或部署。
 
 ## 目录
 

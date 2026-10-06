@@ -1,3 +1,4 @@
+mod proxy_journal;
 mod sysproxy;
 
 use serde_json::{json, Value};
@@ -10,7 +11,49 @@ use tauri_plugin_shell::ShellExt;
 use tokio::sync::Mutex;
 
 static STATUS_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static ACTION_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static INSTANCE_MUTEX: OnceLock<WindowsInstanceMutex> = OnceLock::new();
+static SYSTEM_PROXY_ERROR: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+fn record_proxy_result(result: Result<(), String>) -> Result<(), String> {
+    let mut error = SYSTEM_PROXY_ERROR
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    *error = result.as_ref().err().cloned();
+    if let Err(message) = &result {
+        eprintln!("{message}");
+    }
+    result
+}
+
+fn with_proxy_error(mut status: Value) -> Value {
+    let error = SYSTEM_PROXY_ERROR
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    if let (Some(message), Some(object)) = (error.as_ref(), status.as_object_mut()) {
+        object.insert("system_proxy_error".to_string(), json!(message));
+    }
+    status
+}
+
+fn proxy_status_result(result: Result<Value, String>) -> Result<Value, String> {
+    match result {
+        Ok(status) => Ok(with_proxy_error(status)),
+        Err(message) => {
+            let error = SYSTEM_PROXY_ERROR
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner());
+            match error.as_ref() {
+                Some(recovery) => Err(format!("{recovery}\n状态读取失败：{message}")),
+                None => Err(message),
+            }
+        }
+    }
+}
+
+fn restore_system_proxy(app: &AppHandle) -> Result<(), String> {
+    record_proxy_result(sysproxy::restore(app))
+}
 
 #[cfg(windows)]
 struct WindowsInstanceMutex(winapi::shared::ntdef::HANDLE);
@@ -141,29 +184,81 @@ fn connected_in(status: &Value) -> bool {
             .unwrap_or(false)
 }
 
-async fn enable_system_proxy_from_status(app: &AppHandle) -> Result<(), String> {
-    let (_ok, s_out, s_err) = sidecar(app, &["status", "--json", "--no-ip-check"]).await?;
-    let v = parse_json(&s_out, &s_err)?;
-    let (host, port) = v
+fn ready_proxy_address(command_ok: bool, status: &Value) -> Result<(String, u16), String> {
+    let refuse = |reason: &str| {
+        format!("system_proxy_enable_refused: 未启用全局代理（{reason}）；请确认客户端引擎就绪后重试连接")
+    };
+    if !command_ok {
+        return Err(refuse("zhvpn 状态命令失败"));
+    }
+    // These are the CLI statusResult fields, not the configured proxy address
+    // alone. Missing/incorrectly typed or contradictory observations fail closed.
+    if status.get("running").and_then(Value::as_bool) != Some(true) {
+        return Err(refuse("引擎未运行或运行状态缺失"));
+    }
+    if status.get("engine_state").and_then(Value::as_str) != Some("ready") {
+        return Err(refuse("引擎未就绪或引擎状态缺失"));
+    }
+    if status.get("proxy_reachable").and_then(Value::as_bool) != Some(true) {
+        return Err(refuse("本地代理不可达或可达状态缺失"));
+    }
+    // The CLI omits these fields on success. Even a present empty/malformed
+    // error is not accepted as evidence that it is safe to change Windows.
+    if status.get("error").is_some() || status.get("error_code").is_some() {
+        return Err(refuse("状态包含错误"));
+    }
+    status
         .get("proxy")
-        .and_then(|x| x.as_str())
+        .and_then(Value::as_str)
         .and_then(split_host_port)
-        .ok_or_else(|| "未从状态里读到本地代理地址".to_string())?;
-    sysproxy::enable(app, &host, port).map_err(|e| e.to_string())
+        .filter(|(_, port)| *port != 0)
+        .ok_or_else(|| refuse("本地代理地址缺失或无效"))
+}
+
+fn enable_proxy_from_observation(
+    observation: Result<(bool, Value), String>,
+    enable: impl FnOnce(&str, u16) -> Result<(), String>,
+) -> Result<(), String> {
+    let (command_ok, status) = observation.map_err(|error| {
+        format!(
+            "system_proxy_enable_refused: 无法确认引擎状态，未启用全局代理；请重试连接：{error}"
+        )
+    })?;
+    let (host, port) = ready_proxy_address(command_ok, &status)?;
+    // Validation is completed before the adapter can access a journal/registry.
+    // The engine can still fail after observation: this is not an atomic lease
+    // shared with the CLI controller (that migration remains pending).
+    enable(&host, port)
+}
+
+async fn enable_system_proxy_from_status(app: &AppHandle) -> Result<(), String> {
+    let observation = match sidecar(app, &["status", "--json", "--no-ip-check"]).await {
+        Ok((ok, stdout, stderr)) => parse_json(&stdout, &stderr).map(|status| (ok, status)),
+        Err(error) => Err(error),
+    };
+    record_proxy_result(enable_proxy_from_observation(observation, |host, port| {
+        sysproxy::enable(app, host, port)
+    }))
 }
 
 // ---- shared action implementations (used by both #[command]s and the tray) ----
 
 async fn status_impl(app: &AppHandle) -> Result<Value, String> {
     let _guard = STATUS_LOCK.get_or_init(|| Mutex::new(())).lock().await;
-    let (_ok, stdout, stderr) = sidecar(app, &["status", "--json", "--no-ip-check"]).await?;
-    parse_json(&stdout, &stderr)
+    let result = match sidecar(app, &["status", "--json", "--no-ip-check"]).await {
+        Ok((_ok, stdout, stderr)) => parse_json(&stdout, &stderr),
+        Err(error) => Err(error),
+    };
+    proxy_status_result(result)
 }
 
 async fn status_ip_impl(app: &AppHandle) -> Result<Value, String> {
     let _guard = STATUS_LOCK.get_or_init(|| Mutex::new(())).lock().await;
-    let (_ok, stdout, stderr) = sidecar(app, &["status", "--json"]).await?;
-    parse_json(&stdout, &stderr)
+    let result = match sidecar(app, &["status", "--json"]).await {
+        Ok((_ok, stdout, stderr)) => parse_json(&stdout, &stderr),
+        Err(error) => Err(error),
+    };
+    proxy_status_result(result)
 }
 
 async fn login_impl(app: &AppHandle, token: &str) -> Result<Value, String> {
@@ -172,6 +267,7 @@ async fn login_impl(app: &AppHandle, token: &str) -> Result<Value, String> {
 }
 
 async fn connect_impl(app: &AppHandle, global_proxy: bool, fast: bool) -> Result<Value, String> {
+    let _guard = ACTION_LOCK.get_or_init(|| Mutex::new(())).lock().await;
     let mut args = vec!["start"];
     if fast {
         args.push("--fast");
@@ -185,7 +281,7 @@ async fn connect_impl(app: &AppHandle, global_proxy: bool, fast: bool) -> Result
             return Ok(json!({
                 "ok": true,
                 "message": msg,
-                "warning": format!("已连接，但自动设置系统代理失败：{e}")
+                "warning": format!("未能安全启用全局代理：{e}")
             }));
         }
     }
@@ -193,7 +289,14 @@ async fn connect_impl(app: &AppHandle, global_proxy: bool, fast: bool) -> Result
 }
 
 async fn disconnect_impl(app: &AppHandle) -> Result<Value, String> {
-    let _ = sysproxy::restore(app);
+    let _guard = ACTION_LOCK.get_or_init(|| Mutex::new(())).lock().await;
+    disconnect_inner(app).await
+}
+
+async fn disconnect_inner(app: &AppHandle) -> Result<Value, String> {
+    // Keep the engine available while recovery is unresolved. A failed restore
+    // must not leave Windows pointing at an engine that we then silently stop.
+    restore_system_proxy(app)?;
     let (ok, stdout, stderr) = sidecar(app, &["stop"]).await?;
     Ok(json!({ "ok": ok, "message": message(ok, stdout, stderr) }))
 }
@@ -204,8 +307,12 @@ async fn rotate_impl(app: &AppHandle) -> Result<Value, String> {
 }
 
 async fn logout_impl(app: &AppHandle) -> Result<Value, String> {
+    let _guard = ACTION_LOCK.get_or_init(|| Mutex::new(())).lock().await;
     // 先断开（还原系统代理 + 停引擎），再清掉配置，回到登录页。
-    let _ = disconnect_impl(app).await;
+    let disconnected = disconnect_inner(app).await?;
+    if disconnected.get("ok").and_then(Value::as_bool) != Some(true) {
+        return Ok(disconnected);
+    }
     let (ok, stdout, stderr) = sidecar(app, &["logout", "--json"]).await?;
     parse_json(&stdout, &stderr)
         .or_else(|_| Ok(json!({ "ok": ok, "message": message(ok, stdout, stderr) })))
@@ -316,8 +423,17 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => show_main(app),
                     "quit" => {
-                        let _ = sysproxy::restore(app);
-                        app.exit(0);
+                        let a = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let _guard = ACTION_LOCK.get_or_init(|| Mutex::new(())).lock().await;
+                            if restore_system_proxy(&a).is_ok() {
+                                a.exit(0);
+                            } else {
+                                // Persistent status diagnostic + recovery file,
+                                // not a transient notification lost on exit.
+                                show_main(&a);
+                            }
+                        });
                     }
                     "connect" => {
                         let a = app.clone();
@@ -328,7 +444,9 @@ pub fn run() {
                     "disconnect" => {
                         let a = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            let _ = disconnect_impl(&a).await;
+                            if disconnect_impl(&a).await.is_err() {
+                                show_main(&a);
+                            }
                         });
                     }
                     "rotate" => {
@@ -359,10 +477,23 @@ pub fn run() {
             let rotate_i = rotate_item.clone();
             tauri::async_runtime::spawn(async move {
                 // 启动对账：上次会话遗留代理备份且代理实际未运行（崩溃残留）则还原。
-                if sysproxy::has_backup(&handle) {
-                    if let Ok(v) = status_impl(&handle).await {
-                        if !connected_in(&v) {
-                            let _ = sysproxy::restore(&handle);
+                {
+                    let _guard = ACTION_LOCK.get_or_init(|| Mutex::new(())).lock().await;
+                    match sysproxy::has_backup(&handle) {
+                        Ok(true) => match status_impl(&handle).await {
+                            Ok(v) if !connected_in(&v) => {
+                                if restore_system_proxy(&handle).is_err() { show_main(&handle); }
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                let _ = record_proxy_result(Err(format!("无法确认代理是否仍在运行，恢复记录已保留；请重试断开或退出：{e}")));
+                                show_main(&handle);
+                            }
+                        },
+                        Ok(false) => {}
+                        Err(e) => {
+                            let _ = record_proxy_result(Err(e));
+                            show_main(&handle);
                         }
                     }
                 }
@@ -404,4 +535,164 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Synthetic JSON matching clients/cli/internal/app.statusResult. No sidecar
+    // or user's Internet Settings is used by these readiness-gate tests.
+    fn ready_cli_status() -> Value {
+        json!({
+            "running": true,
+            "proxy": "127.0.0.1:7890",
+            "proxy_reachable": true,
+            "egress": "synthetic CLI DTO",
+            "engine_state": "ready",
+            "instance_id": "0123456789abcdef0123456789abcdef",
+            "config_generation": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "control_protocol_version": 1
+        })
+    }
+
+    #[test]
+    fn ready_cli_observation_authorizes_exactly_one_proxy_enable() {
+        let mut calls = 0;
+        enable_proxy_from_observation(Ok((true, ready_cli_status())), |host, port| {
+            calls += 1;
+            assert_eq!((host, port), ("127.0.0.1", 7890));
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn failed_command_or_invalid_output_never_enters_the_proxy_adapter() {
+        for observation in [
+            Ok((false, ready_cli_status())),
+            Err("status execution failed".to_string()),
+            parse_json("invalid synthetic status", "").map(|status| (true, status)),
+        ] {
+            let mut calls = 0;
+            let error = enable_proxy_from_observation(observation, |_, _| {
+                calls += 1;
+                Ok(())
+            })
+            .unwrap_err();
+            assert!(error.contains("system_proxy_enable_refused"));
+            assert_eq!(calls, 0);
+        }
+    }
+
+    #[test]
+    fn stopped_degraded_or_incomplete_cli_status_never_enters_the_proxy_adapter() {
+        let mut observations = Vec::new();
+        for state in ["stopped", "degraded", "starting", "stopping"] {
+            let mut status = ready_cli_status();
+            status["engine_state"] = json!(state);
+            observations.push(status);
+        }
+        for field in ["running", "engine_state", "proxy_reachable", "proxy"] {
+            let mut missing = ready_cli_status();
+            missing.as_object_mut().unwrap().remove(field);
+            observations.push(missing);
+            let mut wrong_type = ready_cli_status();
+            wrong_type[field] = json!(42);
+            observations.push(wrong_type);
+        }
+        for field in ["running", "proxy_reachable"] {
+            let mut status = ready_cli_status();
+            status[field] = json!(false);
+            observations.push(status);
+        }
+        let mut stopped = ready_cli_status();
+        stopped["running"] = json!(false);
+        stopped["engine_state"] = json!("stopped");
+        stopped["proxy_reachable"] = json!(false);
+        stopped["port_occupied"] = json!(true);
+        observations.push(stopped);
+        for status in observations {
+            let mut calls = 0;
+            let error = enable_proxy_from_observation(Ok((true, status)), |_, _| {
+                calls += 1;
+                Ok(())
+            })
+            .unwrap_err();
+            assert!(error.contains("system_proxy_enable_refused"));
+            assert_eq!(calls, 0);
+        }
+    }
+
+    #[test]
+    fn cli_error_or_invalid_proxy_address_never_enters_the_proxy_adapter() {
+        let mut observations = Vec::new();
+        for field in ["error", "error_code"] {
+            for value in [
+                json!("engine_control_unavailable"),
+                json!(""),
+                Value::Null,
+                json!(false),
+            ] {
+                let mut status = ready_cli_status();
+                status[field] = value;
+                observations.push(status);
+            }
+        }
+        for address in ["", "127.0.0.1", "127.0.0.1:0", "127.0.0.1:not-a-port"] {
+            let mut status = ready_cli_status();
+            status["proxy"] = json!(address);
+            observations.push(status);
+        }
+        for status in observations {
+            let mut calls = 0;
+            assert!(enable_proxy_from_observation(Ok((true, status)), |_, _| {
+                calls += 1;
+                Ok(())
+            })
+            .is_err());
+            assert_eq!(calls, 0);
+        }
+    }
+
+    #[test]
+    fn proxy_adapter_failure_after_readiness_validation_is_propagated() {
+        let mut calls = 0;
+        let error = enable_proxy_from_observation(Ok((true, ready_cli_status())), |_, _| {
+            calls += 1;
+            Err("system_proxy_write_failed: synthetic denial".to_string())
+        })
+        .unwrap_err();
+        assert_eq!(calls, 1);
+        assert!(error.contains("system_proxy_write_failed"));
+    }
+
+    #[test]
+    fn recovery_error_remains_in_status_until_a_successful_retry() {
+        let message = "system_proxy_restore_failed: 请保留恢复记录并重试退出";
+        assert!(record_proxy_result(Err(message.to_string())).is_err());
+        let status = with_proxy_error(json!({ "running": true, "proxy_reachable": true }));
+        assert_eq!(
+            status.get("system_proxy_error").and_then(Value::as_str),
+            Some(message)
+        );
+        assert_eq!(status.get("running").and_then(Value::as_bool), Some(true));
+        assert!(proxy_status_result(Err("sidecar unavailable".to_string()))
+            .unwrap_err()
+            .contains(message));
+        assert!(record_proxy_result(Ok(())).is_ok());
+        assert!(with_proxy_error(json!({ "running": false }))
+            .get("system_proxy_error")
+            .is_none());
+        let refused = ready_proxy_address(false, &ready_cli_status()).unwrap_err();
+        assert!(record_proxy_result(Err(refused.clone())).is_err());
+        assert_eq!(
+            with_proxy_error(ready_cli_status())
+                .get("system_proxy_error")
+                .and_then(Value::as_str),
+            Some(refused.as_str())
+        );
+        record_proxy_result(Ok(())).unwrap();
+    }
 }

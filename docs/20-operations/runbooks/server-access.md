@@ -2,6 +2,8 @@
 
 > 敏感信息：本文档包含服务器登录凭据。请保持私有，不要提交到公开仓库。
 
+> 2026-10-06 09:40–09:45 JST 只读基线：手机控制地址 `10.66.0.101` 当前实机为 Pixel 7a/Android 16，运行 `zhreverse/zhandroid-control`；Mac 是 macOS 26.6.2/arm64，仍运行旧 `/usr/local/etc/dxvpn` 路径的 WireGuard/sing-box 基础设施。Hub reverse hash 与 10-05 部署一致。客户配置、运行 peer 和 RDP 基础设施必须分开登记，未知 peer 不自动删除；完整事实和版本缺口见[本日资产记录](../../90-history/worklogs/2026-10-06-zhvpn-asset-baseline.md)。以下历史段落中的版本/路径不能自动当作本日事实。
+
 ## Hub 服务器
 
 - 角色：流量 Hub / WireGuard 中转服务器
