@@ -36,4 +36,6 @@ Windows/WSL 集成均证实只验证本次字节和落水位，候选原生程�
 
 root的Context lock/Create正式4项及PrivateState既有负例Windows race通过；独立Windows race/WSL普通还验证保护读写与existing外部hardlink无变化。主线程另做[线上只读资产复核](2026-10-07-live-readonly-inventory.md)，没有把这些旧binary健康事实当作第四波部署或授权迁移。
 
+第四波源码本地提交为 `a2ecd68865d3c7c5e9ba39924d51258a62e4a9bc`。该clean SHA上九目标 `build-steelman-dev.ps1` exit0，逐项manifest SHA-256核对完成；Windows实际CLI `version --json`为该完整SHA、clean、Go1.26.7、protocol2/contract1。产物/原始日志在私有 `development-wave4-final/`、`build-wave4-final.log`；全部unsigned/compile_only且release_ready=false。Darwin交叉编译不称macOS运行；后续文档提交不改写产物source SHA。
+
 没有外部 publisher 信任批准、signed release、staging immutable copy、安装/升级/业务健康、macOS 实机或生产启用。原子 state replacement 没有父目录 fsync 的跨平台断电证据；同 UID 管理员可整体还原/删除状态。OS mounted filesystem 的网络或内核 blocked I/O 不在应用 deadline 可强制中断的保证内。生产客户授权/手机 TLS/campaign 与连续观察窗完全未变化。
