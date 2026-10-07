@@ -1,6 +1,6 @@
 # zhvpn Steelman 重构计划
 
-> 创建：2026-10-06 JST。状态：IN_PROGRESS；前五波已本地提交；第六波固定 provisional 清册/持久观察缺口/管理台消费者已通过冻结v8统一门禁，源码提交与clean构建收据分开登记。阶段门禁与生产实施分别记录。
+> 创建：2026-10-06 JST。状态：IN_PROGRESS；前六波已本地提交；第六波 `bf0f608` 固定provisional清册/持久观察缺口/管理台消费者，冻结v8统一门禁exit0、十目标clean开发构建与hash一致。源码、实机、生产实施分别记录。
 > 基线：[2026-10-05 多维审计](../90-history/worklogs/2026-10-05-zhvpn-project-audit.md)。49/100 是该日的工程成熟度评估，不能作为本日运行状态或后续验收结果。
 
 ## 1. Steelman 的完成定义
@@ -181,6 +181,7 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 | 2026-10-07 | 第三波兼容执行/共享准入与unknown | `947c5f5`、build receipt `3e4502a` | 冻结v4 gate exit0、九目标clean开发构建、Windows race/Linux native、独立原幽灵lease与编译Chrome负例通过 | [执行预算worklog](../90-history/worklogs/2026-10-07-legacy-control-process-budget.md) | 远端结果/跨重启unknown、设备租约身份、生产容量仍未完成 |
 | 2026-10-07 | 第四波离线更新水位与当前只读资产 | `a2ecd68` | 冻结v5 gate exit0、九目标clean开发构建、实际CLI八进程/31条独立检查、Windows race/Linux普通；Hub/本机运行binary只读复核 | [更新worklog](../90-history/worklogs/2026-10-07-zhvpn-trusted-update-state.md)、[当前资产](../90-history/worklogs/2026-10-07-live-readonly-inventory.md) | 安装/签名/外部防回滚、Mac/手机、全部生产门禁仍未完成 |
 | 2026-10-07 | 第五波 v2 设备凭据与真实代理数据面 | `17e7689` | 冻结v6 gate exit0；九目标clean开发构建/hash一致；Windows实际 CLI/TLS/SQLite/sing-box/WG/owned proxy/target 与撤销；WSL实际 WG/TLS、native control 与初始 Service 负例 | [第五波 worklog](../90-history/worklogs/2026-10-07-v2-proxy-bootstrap.md)、[设备启动合同](v2-proxy-bootstrap.md) | 初始对账部分失败时外部旧 WG peer 仍可达的实际反例；持续租约/撤销 SLA、迁移、实机与生产仍未完成 |
+| 2026-10-07 | 第六波provisional清册/单调历史/持久observer | `bf0f608` | 冻结v8 gate exit0、十目标clean/hash一致；actual SQLite/HTTP、9原生children与旧坏metadata洗白修复；Admin43/编译Chrome21条分页和五旧页签 | [第六波worklog](../90-history/worklogs/2026-10-07-migration-inventory.md)、[清册合同](migration-inventory.md) | 真实lineage/受控导入、逐负类别时间/T0连续窗口、外部数据面屏障、日志/恢复/实机/签名与生产未完成 |
 
 本轮切片检查点单独登记，不代替上面的完整任务/阶段门禁：
 
@@ -210,7 +211,7 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 | --- | --- |
 | 计划 | 已编写，按切片执行中 |
 | 实现 | CLI/GUI/SDK代理接线、Hub v2 authority及监督、设备消费者、reverse mTLS、本地门禁；第六波provisional清册/单调事实/持久observer及只读页面；生产迁移与跨平台余项仍推进 |
-| 新验证 | 第六波冻结v8统一gate通过；前五波九目标clean开发构建；Windows实际CLI/WG及撤销、WSL WG/TLS；第六actual SQLite/HTTP/原生进程与编译Chrome消费者通过，十目标clean构建待登记。10-07线上只读仍为旧binary。owned fixture和合成HKCU不替代生产/真实用户代理/实机证据 |
+| 新验证 | 第六波冻结v8统一gate通过、十目标clean/hash一致；前五波九目标clean构建；Windows实际CLI/WG及撤销、WSL WG/TLS；第六actual SQLite/HTTP/原生进程与编译Chrome消费者通过。10-07线上只读仍为旧binary。owned fixture和合成HKCU不替代生产/真实用户代理/实机证据 |
 | 生产切换 | 未开始，既有安全迁移仍遵循自己的 NO-GO 状态 |
 | Steelman 终验 | 未完成 |
 

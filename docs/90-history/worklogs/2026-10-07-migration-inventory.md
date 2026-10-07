@@ -30,7 +30,9 @@
 
 统一 `check-steelman.ps1`：v7 exit0仅登记为中间结果，分页CSS变化后以全新 evidence/log重跑最终v8 exit0。包括全部Go产品tags/test/vet/race、真实CLI/WG/初始service/清册SQLite故障与重启/离线updateCLI、SDK33、Rust41、安装模板与builders负例、GUI/Admin零type错误和Admin43消费者。Go六OS/arch扫描symbol/package=0、module=1的未导入OpenPGP既有例外保留到2026-11-06；两npm含dev树为0、Rust四target无vulnerability或未复核warning。没有缩小原门禁。
 
-最终源码提交后，以新的 development-wave6-final 目录做十目标 clean compile/hash收据，完成后单独登记。原工作区79个dirty文件hash未变化。私有原始证据留在外层 `.local/zongheng-vpn/steelman/2026-10-07/`、`admin-migration-v6-9172/browser-receipts.json`，真实客户/凭据/路径清册不进入Git。
+最终源码提交 `bf0f6080544c09262b08ff7bd2f56144b55182ad`（51 files，3757 insertions/173 deletions）。新的 development-wave6-final 十目标 clean build exit0，包括新增Linux清册登记工具；manifest的source_state=clean/Go1.26.7，十个artifact SHA256逐一比对0 mismatch。实际Windows amd64 executable `version --json`返回同一完整SHA/clean/protocol2/CLI contract1；device-start contract2另行维护。全为未签名compile_only、release_ready=false，未运行Linux/macOS产品或发行。私有 build-wave6-final.log/manifest收据与v8 evidence分别保存，文档收据提交不改变已构建产品代码。
+
+原工作区79个dirty文件hash未变化。私有原始证据留在外层 `.local/zongheng-vpn/steelman/2026-10-07/`、`admin-migration-v6-9172/browser-receipts.json`，真实客户/凭据/路径清册不进入Git。
 
 ## 完整余项与后续顺序
 

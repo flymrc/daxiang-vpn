@@ -112,7 +112,7 @@ Hub 管理控制台 v1 作为 `zhhub` 第二个 listener 运行,本机监听 `12
 - [2026-10-07 兼容控制面执行预算](90-history/worklogs/2026-10-07-legacy-control-process-budget.md)
 - [2026-10-07 离线可信更新状态](90-history/worklogs/2026-10-07-zhvpn-trusted-update-state.md)
 - [2026-10-07 设备真实 WG 代理链](90-history/worklogs/2026-10-07-v2-proxy-bootstrap.md)
-- [2026-10-07 固定清册与观察缺口（实施中）](90-history/worklogs/2026-10-07-migration-inventory.md)
+- [2026-10-07 固定清册与观察缺口](90-history/worklogs/2026-10-07-migration-inventory.md)
 - [2026-10-07 当前运行二进制只读复核](90-history/worklogs/2026-10-07-live-readonly-inventory.md)
 - [2026-10-07 桌面独立复核](90-history/worklogs/2026-10-07-desktop-independent-review.md)
 - [2026-10-06 CLI 合同、授权与代理租约基础](90-history/worklogs/2026-10-06-zhvpn-contracts-foundations.md)
