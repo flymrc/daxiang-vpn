@@ -16,7 +16,7 @@ type PrivateState struct {
 }
 
 func NewPrivateState(home paths.Context, name string) (*PrivateState, error) {
-	if name != "device-v2-state.json" && name != "config.yaml" && name != "wireguard/client.key" {
+	if name != "device-v2-state.json" && name != "config.yaml" && name != "wireguard/client.key" && name != "update-v1-registration.json" && name != "update-v1-state.json" {
 		return nil, fmt.Errorf("unsupported private state name")
 	}
 	root, err := paths.CanonicalRoot(home.Root)

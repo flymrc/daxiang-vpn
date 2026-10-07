@@ -606,3 +606,5 @@ last_reconciled_at
 第二波补齐 legacy listener 来源伪造防护、读取预算、管理台真实状态和公钥输入检查，以及离线恢复/更新 metadata 的审阅能力；见[第二波记录](../90-history/worklogs/2026-10-07-zhvpn-security-boundaries.md)。恢复 planner 不自证 latest checkpoint，也不执行恢复；纯 update verifier 不持久提交 watermark 或安装。没有实际客户迁移、现场撤权/恢复和旧入口退役证据，NO-GO、campaign 窗口和分母保持原定义。
 
 第三波补齐指定昂贵 HTTP 入口的来源准入与本地 WG/SSH 子进程预算，明确未启动的失败才补偿 lease，未知派发结果不自动重试。Admin 显示服务端 unknown 并跨页面重载阻断；该标记尚无跨 Hub 重启持久性，来源 IP 也没有升级为设备身份。此切片不关闭 campaign、受控导入或生产授权切换门禁，见[执行边界](../30-implementation/legacy-control-process-budget.md)。
+
+第四波本地离线update CLI已保存明确批准Policy/Previous和累计floor；缺失登记/提交未知拒绝继续，旧候选不能重放覆盖较新水位。它尚未接入实际安装或外部防回滚锚，同存储owner恢复旧快照仍可回滚。本片不替代现有campaign分母/窗口、现场授权撤销或生产迁移。[更新状态边界](../30-implementation/trusted-update-state.md)。

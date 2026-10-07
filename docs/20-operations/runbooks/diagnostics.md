@@ -512,7 +512,7 @@ Admin npm 与 desktop 分别扫描，统一 gate 显式纳入 dev/optional/peer�
 
 离线恢复先取得受保护完整快照和独立核验的 latest checkpoint，再按[规划合同](../../30-implementation/device-authority-offline-restore-plan.md)执行。程序仅比较和输出计划，源只读但会创建本次私有 scratch 副本；不执行恢复 SQL/WG，`ready_to_restore=false`。禁止把旧 snapshot 的 revoke/outbox 已完成状态当作现场数据面确认。
 
-更新 verifier 只验证 staging metadata/实际产物，不安装、不保存 watermark；不得把未签名开发包或一份缓存 receipt 当作正式更新批准。边界见[可信更新合同](../../30-implementation/trusted-update-metadata-verifier.md)。
+纯更新 verifier 只验证 staging metadata/实际产物；第四波[离线CLI](../../30-implementation/trusted-update-state.md)已在显式策略批准后持久保存水位，仍不安装。不得把未签名开发包或一份缓存receipt当作正式更新批准。
 
 ## 4.4 兼容执行与结果未知（尚未部署）
 
@@ -521,6 +521,12 @@ Admin npm 与 desktop 分别扫描，统一 gate 显式纳入 dev/optional/peer�
 `process_supervision_unknown` 表示本次 native cleanup尚不能确认，该名额隔离保留。先核验对应服务版本和本次受管树，不按进程名/历史PID强杀，不通过重启假装完成。Linux helper本身毁坏且descendant已脱离session时，本地父进程可能无法认领它；运行库返回unknown，不承诺所有树都能停止。
 
 Admin `rotate_state=unknown` 表示可能已经派发；普通冷却过去、页面刷新/重载都不允许重派。没有安全clear API，当前标记也不跨Hub重启持久保存；不得以重启清标记绕过结果核验。手机端后台恢复脚本必须保留，SSH超时不证明其未启动。完整限制与负例见[执行合同](../../30-implementation/legacy-control-process-budget.md)。
+
+## 4.5 离线更新状态（尚未发行）
+
+`zhvpn update inspect --product <产品> --platform <平台> --architecture <CPU> --channel <渠道> --json`取得受保护当前Policy revision与累计floor，和写入口共用操作锁；它不生成新的staging回执。`registration_required/incomplete/corrupt_state`不得自动删文件或重新登记以绕过历史。初始enroll与policy-approve需要独立审核Policy原始字节及明确批准的SHA-256；对候选附带公钥自行算hash不建立publisher信任。
+
+verify只使用已批准状态，全量重验签名/期限/key和产物后提交staging水位。`commit_unknown`或输出丢失先inspect，再对同一包核验；不能补偿回旧state、执行候选或降低floor。整组旧快照恢复可能回滚本地水位，实际恢复仍须外部最新事实核验。路径/命令示例、平台与断电/内核IO限制见[状态合同](../../30-implementation/trusted-update-state.md)。
 
 ## 5. 历史基线（2026-06-03 实测,Mac 出口已弃用）
 

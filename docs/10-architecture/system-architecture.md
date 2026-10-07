@@ -504,6 +504,8 @@ NAT 来源：10.66.0.0/24
 
 同日第三波在兼容/trusted/Admin 昂贵入口共享有限 `Admission`，WG/SSH 由独立固定名额的 `processbudget.Runner` 执行。Linux 子树监督使用当前 Hub 的固定内部子命令，Windows 使用本次 Job；无新增生产端口或独立可启动服务。换 IP 启动后失败标记 process-local unknown，Admin 显式投影；它不构成跨重启 durable receipt，也不证明远端恢复完成。详见[兼容执行预算](../30-implementation/legacy-control-process-budget.md)。
 
+第四波由CLI消费纯更新verifier：明确批准Policy与最近staging receipt保存在同一protected state，固定registration anchor和home操作锁约束初次登记/跨进程提交。没有在线更新服务、安装副作用或新的生产进程；同OS账户恢复旧状态仍在本地信任边界之外。[更新状态合同](../30-implementation/trusted-update-state.md)。
+
 1. 保持 Android `zhreverse` 作为默认数据面。
 2. 确认新 token / bootstrap 配置默认指向 `10.66.0.1:18081`。
 3. 增加基于清单的配置渲染。

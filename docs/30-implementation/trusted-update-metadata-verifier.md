@@ -1,6 +1,6 @@
 # 可信更新元数据：纯 staging 验证边界
 
-> 2026-10-07 JST，LOCAL_IMPLEMENTED。对应 Steelman P7.6 的离线验证切片；尚未接入安装、SDK、GUI、发布签名或生产更新渠道。
+> 2026-10-07 JST，LOCAL_IMPLEMENTED。对应 Steelman P7.6 的纯验证切片；第四波已由[离线 update CLI](trusted-update-state.md)接入受保护 Policy/Previous 与跨进程水位。安装、SDK/GUI、发布签名和生产更新渠道仍待完成。
 
 `shared/updateverify.Verify` 接收候选 envelope、调用者持有的 artifact reader、可信 Policy/Previous Receipt 和时钟，验证后只返回 `verified_for_staging`。它不打开文件路径、不联网、不安装、不修改当前版本、授权 DB 或 WireGuard，也不自行保存防重放状态。
 
@@ -57,7 +57,7 @@ Previous 必须是同一 Scope 下受保护保存的最近 staging receipt。验
 - 幂等仍重新检查当前 key、有效期、Policy、floor，并重新读取实际产物；缓存 receipt 不能绕过 key 撤销、到期或提升的安全下限。
 - 当前边界不提供旧版本回退例外。未来受控恢复必须有单独的合同和批准，不能重置序列/Previous 或降低 floor。
 
-调用者要在协调锁下原子保存 receipt 与新的 watermark/floor；并发审批、安装成功/失败、机器重启后的持久防重放仍属后续集成。`VerifiedAt` 表示本次校验时间，不表示安装、恢复或业务健康。
+调用者要在协调锁下原子保存 receipt 与新的 watermark/floor。第四波 CLI 已复用当前用户的私有存储及操作锁，初始策略需显式批准，登记缺失/提交未知拒绝；见[状态合同](trusted-update-state.md)。它证明进程重开和程序级并发不会丢弃已保存水位，不证明任意断电耐久性或抵抗存储 owner 恢复旧快照。安装成功/失败仍需单独集成。`VerifiedAt` 表示本次校验时间，不表示安装、恢复或业务健康。
 
 ## 产物读取与证据边界
 
@@ -66,7 +66,7 @@ Previous 必须是同一 Scope 下受保护保存的最近 staging receipt。验
 本片覆盖 canonical/schema 漂移、跨包/平台/渠道/协议、过期/未来/超 TTL、key 窗口/撤销/换发、scope 不同的旧 receipt、重放/equivocation、版本及安全 floor 回退、strict JSON、SemVer 溢出/prerelease 排序、实际 size/hash/读失败/取消、弱公钥配置及并发验证。
 
 - [x] 纯验签、策略、严格正文和实际产物检查；schema 漂移测试；Windows race/vet。
-- [ ] 可信 Policy 与 Previous 的实际受保护持久化、跨进程 watermark 提交。
+- [x] 显式批准 Policy 与 Previous 的本地受保护持久化、跨进程 watermark 提交；Windows/Linux真实CLI与独立负例通过，scope/权限及系统级回滚限制见状态合同。
 - [ ] 发布签名身份、Windows Authenticode、macOS 签名/公证与批准密钥管理。
 - [ ] staging 到安装的原子接线、已有安装升级、分批、故障恢复及真实健康检查。
 - [ ] 实际更新服务、平台实机、生产上线与观察验收。

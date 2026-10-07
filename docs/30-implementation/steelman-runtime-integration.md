@@ -53,7 +53,7 @@ reverse 的实际双端 `tcp-tls`、角色 URI/Hub hostname/登记 egress 与 le
 
 基于本地提交 `072bbc4` 继续实现共同 HTTP 来源/读取预算、Admin generation 状态与 runtime consumer、canonical Admin 漂移门禁及两棵 npm tree 扫描。具体默认值和 legacy 外部执行/页内 mutation 的限制见 [HTTP/Admin 合同](steelman-http-admin-boundaries.md)。
 
-`shared/signingkey` 统一 device Ed25519 公钥和可信 update ring 的非 canonical/small-order 输入拒绝。纯 `shared/updateverify` 只校验签名 metadata 与产物，返回 `verified_for_staging`；安装、水位持久化和 release 签名仍未接入。[更新边界](trusted-update-metadata-verifier.md)。
+`shared/signingkey` 统一 device Ed25519 公钥和可信 update ring 的非 canonical/small-order 输入拒绝。纯 `shared/updateverify` 只校验签名 metadata 与产物，返回 `verified_for_staging`；第二波时尚无水位consumer，第四波接线见下。安装与release签名仍未接入。[更新边界](trusted-update-metadata-verifier.md)。
 
 `zhhub-device-restore-plan` 只比较两个离线 authority snapshot 与 caller 核验 checkpoint；源身份全程固定，查询受保护 scratch 副本，输出不含凭据或路径。时间、字段/JSON 资源预算与 immutable negative facts 严格核验，仍恒 `ready_to_restore=false`；实际最新事实保管链、现场切换/恢复未完成。[恢复边界](device-authority-offline-restore-plan.md)。
 
@@ -64,6 +64,12 @@ reverse 的实际双端 `tcp-tls`、角色 URI/Hub hostname/登记 egress 与 le
 legacy/trusted 客户端与 Admin 的昂贵入口共享固定来源准入，健康快照不占该池。WG 与 SSH 分别采用固定在飞名额，request context 贯通 bootstrap、carrier 与 rotate；无排队、有限输出、固定错误类别。Windows 通过 suspended child + Job 管树；Linux 在同一 Hub 二进制的内部 helper 中用 subreaper/pidfd 与私有 parent lifetime/cleanup receipt 监督，不新增公开服务或额外部署目标。
 
 明确未启动的 WG 失败补偿自己的 pending lease；并发失败链标记与回滚不能复活更早已失败的 claim。已经启动的换 IP 失败保留本进程 unknown，Admin 投影并阻止冷却到期/页面重载后再次触发。失去本地监督时名额 quarantine，不能假称 native 树已停；本地 SSH 结束也不能证明手机端后台脚本停止。远端 RID/确认后解锁与跨重启 unknown 保管仍待实现。默认预算、真实故障测试及这些限制见[兼容执行合同](legacy-control-process-budget.md)。
+
+## 第四波：离线更新水位接线
+
+`zhvpn update enroll|policy-approve|verify|inspect` 复用原 home 的私有文件与同一操作锁。registration anchor原子no-replace，单一state共同保存人类批准Policy、revision、Previous和累计版本/协议/序列/安全下限；candidate不能提交Policy override。跨进程序列竞争、响应丢失、提交失败、登记断链及当前key/期限重验已用真实CLI和独立OS反例验证。成功只表示新的 staging水位已提交，不执行或保留候选产物，不返回安装完成。
+
+这条调用路径补齐第二波纯函数的本地Policy/Previous责任，但不证明父目录断电耐久性、同owner整体回滚防护、publisher签名身份、安装恢复或生产更新渠道。详见[状态合同](trusted-update-state.md)及[第四波记录](../90-history/worklogs/2026-10-07-zhvpn-trusted-update-state.md)。
 
 ## 依赖扫描的证据层级
 

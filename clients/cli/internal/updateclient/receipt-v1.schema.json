@@ -1,0 +1,364 @@
+{
+  "$id": "urn:zhvpn:update-receipt:v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Exact non-null UTF-8 keys; duplicate keys and trailing input refused. Go validators enforce semantic correlations, bounded SemVer/key authorization, digest/floors and provenance. This schema never authorizes installation or establishes initial policy trust.",
+  "properties": {
+    "code": {
+      "enum": [
+        "invalid_arguments",
+        "policy_approval_mismatch",
+        "invalid_policy",
+        "policy_revision_refused",
+        "scope_mismatch",
+        "registration_required",
+        "registration_incomplete",
+        "already_registered",
+        "corrupt_state",
+        "local_storage_failure",
+        "invalid_input_file",
+        "metadata_refused",
+        "signature_refused",
+        "previous_refused",
+        "replay_refused",
+        "rollback_refused",
+        "artifact_refused",
+        "command_cancelled",
+        "commit_unknown"
+      ],
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "command": {
+      "enum": [
+        "enroll",
+        "policy-approve",
+        "verify",
+        "inspect",
+        "unknown"
+      ],
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "commit_unknown": {
+      "type": "boolean"
+    },
+    "contract_version": {
+      "const": 1,
+      "maximum": 253402300799,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "floors": {
+      "additionalProperties": false,
+      "properties": {
+        "min_protocol": {
+          "maximum": 1024,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "min_sequence": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "min_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "security_floor": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "security_version": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "min_version",
+        "min_protocol",
+        "min_sequence",
+        "security_floor",
+        "security_version"
+      ],
+      "type": "object"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "outcome": {
+      "enum": [
+        "enrolled",
+        "policy_approved",
+        "watermark_committed",
+        "inspected",
+        "rejected",
+        "result_unknown"
+      ],
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "policy_revision": {
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "policy_sha256": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "registration_id": {
+      "maxLength": 32,
+      "minLength": 1,
+      "pattern": "^[a-f0-9]{32}$",
+      "type": "string"
+    },
+    "scope": {
+      "additionalProperties": false,
+      "properties": {
+        "architecture": {
+          "enum": [
+            "amd64",
+            "arm64"
+          ],
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "channel": {
+          "enum": [
+            "stable",
+            "beta",
+            "development"
+          ],
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "platform": {
+          "enum": [
+            "windows",
+            "darwin",
+            "linux",
+            "android"
+          ],
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "product": {
+          "enum": [
+            "cli",
+            "desktop-gui",
+            "python-sdk",
+            "hub",
+            "reverse",
+            "android-control"
+          ],
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "product",
+        "platform",
+        "architecture",
+        "channel"
+      ],
+      "type": "object"
+    },
+    "staging": {
+      "additionalProperties": false,
+      "properties": {
+        "idempotent": {
+          "type": "boolean"
+        },
+        "key_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9-]{0,63}$",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": false,
+          "properties": {
+            "architecture": {
+              "enum": [
+                "amd64",
+                "arm64"
+              ],
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "artifact_name": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+              "type": "string"
+            },
+            "artifact_sha256": {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            "artifact_size": {
+              "maximum": 8589934592,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "channel": {
+              "enum": [
+                "stable",
+                "beta",
+                "development"
+              ],
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "expires_at": {
+              "maximum": 253402300799,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "issued_at": {
+              "maximum": 253402300799,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "platform": {
+              "enum": [
+                "windows",
+                "darwin",
+                "linux",
+                "android"
+              ],
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "product": {
+              "enum": [
+                "cli",
+                "desktop-gui",
+                "python-sdk",
+                "hub",
+                "reverse",
+                "android-control"
+              ],
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "protocol": {
+              "maximum": 1024,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "release_sequence": {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "security_floor": {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "security_version": {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "source_commit": {
+              "maxLength": 40,
+              "minLength": 1,
+              "pattern": "^[a-f0-9]{40}$",
+              "type": "string"
+            },
+            "version": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "product",
+            "platform",
+            "architecture",
+            "channel",
+            "version",
+            "protocol",
+            "source_commit",
+            "artifact_name",
+            "artifact_size",
+            "artifact_sha256",
+            "issued_at",
+            "expires_at",
+            "release_sequence",
+            "security_version",
+            "security_floor"
+          ],
+          "type": "object"
+        },
+        "metadata_sha256": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "maximum": 253402300799,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "status": {
+          "const": "verified_for_staging",
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "verified_at": {
+          "maximum": 253402300799,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "status",
+        "key_id",
+        "metadata_sha256",
+        "metadata",
+        "verified_at",
+        "idempotent"
+      ],
+      "type": "object"
+    },
+    "watermark_committed": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "contract_version",
+    "command",
+    "ok",
+    "outcome",
+    "commit_unknown",
+    "watermark_committed"
+  ],
+  "type": "object"
+}

@@ -19,6 +19,7 @@ Push-Location $repoRoot
 try {
     Invoke-Gate 'Generated CLI contracts' 'go' @('run', './shared/contracts/cmd/contractgen', '-check')
     Invoke-Gate 'Trusted update metadata schema' 'go' @('run', './shared/updateverify/cmd/schemagen', '-check')
+    Invoke-Gate 'Protected update policy and receipt schemas' 'go' @('run', './clients/cli/internal/updateclient/cmd/schemagen', '-check')
     & (Join-Path $PSScriptRoot 'check-device-contract.ps1')
     if ($LASTEXITCODE -ne 0) { throw 'Device OpenAPI contract gate failed.' }
     & (Join-Path $PSScriptRoot 'check-admin-contract.ps1')
@@ -29,6 +30,7 @@ try {
     Invoke-Gate 'Device authority/API race tests' 'go' @('test', '-race', './hub/internal/deviceauth', './hub/internal/deviceapi')
     Invoke-Gate 'Hub compatibility and admin race tests' 'go' @('test', '-race', './hub/internal/auth', './hub/admin/...', './hub/internal/httpboundary', './hub/internal/processbudget')
     Invoke-Gate 'Actual CLI and Hub TLS interoperability' 'go' @('test', '-race', '-tags', 'integration', './hub/internal/deviceapi', '-run', 'TestRealCLIAndHubTLSRecoverLostMutationResponses', '-count=1')
+    Invoke-Gate 'Actual offline update CLI and cross-process watermarks' 'go' @('test', '-race', '-tags', 'integration', './clients/cli/internal/updateclient', '-run', '^TestCLIUpdate', '-count=1')
     Invoke-Gate 'Python SDK consumers' 'python' @('-m', 'unittest', 'discover', '-s', 'sdk/python/tests', '-v')
     Invoke-Gate 'Security evidence parser' 'python' @('-m', 'unittest', 'discover', '-s', 'scripts/tests', '-v')
     Invoke-Gate 'Real npm audit refuses inherited dev omission' 'pwsh' @('-NoProfile', '-File', 'scripts/test-npm-audit-policy.ps1')

@@ -1,0 +1,174 @@
+{
+  "$id": "urn:zhvpn:update-approved-policy:v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Exact non-null UTF-8 keys; duplicate keys and trailing input refused. Go validators enforce semantic correlations, bounded SemVer/key authorization, digest/floors and provenance. This schema never authorizes installation or establishes initial policy trust.",
+  "properties": {
+    "keys": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "key_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9-]{0,63}$",
+            "type": "string"
+          },
+          "max_sequence": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "min_sequence": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "public_key": {
+            "maxLength": 44,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9+/]{43}=$",
+            "type": "string"
+          },
+          "valid_from": {
+            "maximum": 253402300799,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "valid_until": {
+            "maximum": 253402300799,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key_id",
+          "public_key",
+          "valid_from",
+          "valid_until",
+          "min_sequence",
+          "max_sequence"
+        ],
+        "type": "object"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "type": "array"
+    },
+    "max_artifact_size": {
+      "maximum": 8589934592,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "max_protocol": {
+      "maximum": 1024,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "max_validity_seconds": {
+      "maximum": 2592000,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "min_protocol": {
+      "maximum": 1024,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "min_sequence": {
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "min_version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "policy_revision": {
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 1,
+      "maximum": 253402300799,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "scope": {
+      "additionalProperties": false,
+      "properties": {
+        "architecture": {
+          "enum": [
+            "amd64",
+            "arm64"
+          ],
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "channel": {
+          "enum": [
+            "stable",
+            "beta",
+            "development"
+          ],
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "platform": {
+          "enum": [
+            "windows",
+            "darwin",
+            "linux",
+            "android"
+          ],
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "product": {
+          "enum": [
+            "cli",
+            "desktop-gui",
+            "python-sdk",
+            "hub",
+            "reverse",
+            "android-control"
+          ],
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "product",
+        "platform",
+        "architecture",
+        "channel"
+      ],
+      "type": "object"
+    },
+    "security_floor": {
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "policy_revision",
+    "scope",
+    "min_version",
+    "min_protocol",
+    "max_protocol",
+    "min_sequence",
+    "security_floor",
+    "max_artifact_size",
+    "max_validity_seconds",
+    "keys"
+  ],
+  "type": "object"
+}

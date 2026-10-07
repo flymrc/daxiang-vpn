@@ -1,6 +1,6 @@
 # zhvpn Steelman 重构计划
 
-> 创建：2026-10-06 JST。状态：IN_PROGRESS；首波运行时接线及第二波 HTTP/Admin、离线恢复规划与更新 metadata 纯验证已本地提交；第三波兼容执行/准入、租约失败链与服务端 unknown 投影独立复核及冻结v4统一门禁通过。阶段门禁与生产实施分别登记。
+> 创建：2026-10-06 JST。状态：IN_PROGRESS；首三波已本地提交；第四波离线update CLI的批准Policy/Previous、跨进程水位与严格输入独立复核及冻结v5统一门禁通过。阶段门禁与生产实施分别登记。
 > 基线：[2026-10-05 多维审计](../90-history/worklogs/2026-10-05-zhvpn-project-audit.md)。49/100 是该日的工程成熟度评估，不能作为本日运行状态或后续验收结果。
 
 ## 1. Steelman 的完成定义
@@ -129,7 +129,7 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 ### P6 — 模块整理、依赖与可观测性
 
 - [ ] **P6.1** 按已验证的责任边界拆分 app/reverse 编排、协议、状态、调度与平台适配；每次机械迁移与行为变化分开核验，不为了行数重写全部实现。
-- [x] **P6.2** 按实际支持平台/build tags 更新工具链及受影响依赖；分别核查 module/package/symbol 报告的可达性，保留有期限与依据的例外，不盲目全量升级 major 或 `audit fix --force`。10-07冻结v4：6个Go OS/arch、desktop/Admin两棵含dev的npm tree、4个Rust target tree通过，有效例外截止2026-11-06；见第二波及执行预算worklog。
+- [x] **P6.2** 按实际支持平台/build tags 更新工具链及受影响依赖；分别核查 module/package/symbol 报告的可达性，保留有期限与依据的例外，不盲目全量升级 major 或 `audit fix --force`。10-07冻结v5：6个Go OS/arch、desktop/Admin两棵含dev的npm tree、4个Rust target tree通过，有效例外截止2026-11-06；见各波worklog。
 - [ ] **P6.3** 凭据经 Windows/macOS 受保护存储与访问控制适配；引擎优先通过可信本地通道取得秘密，配置迁移失败可恢复，提权/不同用户不静默扩大访问。
 - [ ] **P6.4** 初始化不删除现用日志；统一轮转、容量、脱敏和受控诊断包，记录 operation ID、状态 generation、出口身份与构建标识；不输出 token、私钥或完整敏感配置。
 - [ ] **P6.5** 指标区分建立、转发、异常结束、出口验证与撤销延迟；提供明确告警及恢复命令。在受控条件比较 CPU/内存、连接建立 p95、吞吐和恢复时间，安全切换不能以关闭认证换取性能。
@@ -137,7 +137,7 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 
 ### P7 — 本地自动门禁与可追踪发行
 
-- [x] **P7.1** 建立一个本地自动门禁入口，失败立即中止发行：合同/生成漂移、Go test/vet、可用环境的 race、GUI check、Rust test/check、SDK 测试与安全扫描；各失败保持原始输出和证据。10-07冻结v4 `check-steelman.ps1` exit0；SDK33/Rust41、真实CLI-HubTLS、CLI/SDK builder9/16、NSIS13+完整模板、Admin消费者20及npm省略负例，兼容执行/准入加入正式race。Linux race不可用，正式签名/发行仍在P7.G。
+- [x] **P7.1** 建立一个本地自动门禁入口，失败立即中止发行：合同/生成漂移、Go test/vet、可用环境的 race、GUI check、Rust test/check、SDK 测试与安全扫描；各失败保持原始输出和证据。10-07冻结v5 `check-steelman.ps1` exit0；SDK33/Rust41、真实CLI-HubTLS与离线更新CLI、CLI/SDK builder9/16、NSIS13+完整模板、Admin消费者20及npm省略负例，兼容执行/准入和update Policy/receipt漂移已接正式gate。Linux race不可用，正式签名/发行仍在P7.G。
 - [ ] **P7.2** Windows/macOS 与 Hub/Android 目标组合均有编译检查；需要行为证据的 OS 用实机/受控 VM 运行，交叉编译不勾平台验收。用可控时钟/同步条件修复计时敏感测试，不能放宽断言掩盖失败。
 - [ ] **P7.3** 干净 worktree 使用锁定依赖、显式产品/版本/协议/完整 SHA/工具链和空产物目录构建；本地 dev 可标 dev，release 不接受不可追踪的 `local` 或错误父仓库 VCS 标记。
 - [ ] **P7.4** 发布清单记录构建与源码关系、hash、依赖清单/SBOM、安全扫描及有期限的例外、兼容矩阵和批准产物；明确可复现/可追溯边界，不以不同 OS/工具链必须字节相同作为未经证明的承诺。
@@ -178,6 +178,8 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 | 2026-10-06 | P0.1；P1/P2/P3 首切片 | 合流 `3c88880` 后的 `codex/zhvpn-steelman-runtime` | 最终本地门禁通过；Windows 真实 child、GUI Rust 30 项及 mock 浏览器；Windows/Darwin CLI 编译 | [首切片 worklog](../90-history/worklogs/2026-10-06-zhvpn-runtime-safety-slice.md)、[资产基线](../90-history/worklogs/2026-10-06-zhvpn-asset-baseline.md)、[客户端合同](client-runtime-safety-contract.md) | P0/P1 全阶段门禁、CLI 代理租约迁移、Mac 实机和生产仍未完成 |
 | 2026-10-06 | P1.6/P3.1/P4.2–P4.6 局部基础 | 基于首切片 `9113a3a`，共享合同/SDK、离线授权和代理租约核心 | 生成漂移及统一本地门禁通过；SDK 17、代理基础 24、授权 30 实质套件；独立反例修复 | [后续基础 worklog](../90-history/worklogs/2026-10-06-zhvpn-contracts-foundations.md) | 租约未接入 CLI；授权未接 API/真实 WG；Mac/手机 TLS/发行/生产未完成 |
 | 2026-10-07 | 运行时/设备消费者与第二波边界 | `072bbc4`、`490e9fd` | 冻结v3统一gate exit0；第二波独立恢复/HTTP/公钥与Chrome管理台反例通过；两份九目标clean开发编译 | [第二波worklog](../90-history/worklogs/2026-10-07-zhvpn-security-boundaries.md) | 实机、当前授权迁移、真正备份恢复、更新水位/安装与生产仍未完成；legacy执行预算继续实施 |
+| 2026-10-07 | 第三波兼容执行/共享准入与unknown | `947c5f5`、build receipt `3e4502a` | 冻结v4 gate exit0、九目标clean开发构建、Windows race/Linux native、独立原幽灵lease与编译Chrome负例通过 | [执行预算worklog](../90-history/worklogs/2026-10-07-legacy-control-process-budget.md) | 远端结果/跨重启unknown、设备租约身份、生产容量仍未完成 |
+| 2026-10-07 | 第四波离线更新水位与当前只读资产 | 本地第四波提交另登记 | 冻结v5 gate exit0、实际CLI八进程/31条独立检查、Windows race/Linux普通；Hub/本机运行binary只读复核 | [更新worklog](../90-history/worklogs/2026-10-07-zhvpn-trusted-update-state.md)、[当前资产](../90-history/worklogs/2026-10-07-live-readonly-inventory.md) | 安装/签名/外部防回滚、Mac/手机、全部生产门禁仍未完成 |
 
 本轮切片检查点单独登记，不代替上面的完整任务/阶段门禁：
 
@@ -197,6 +199,7 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 - [x] 指定昂贵入口共享有限准入、request context 到 WG/SSH、Windows Job/Linux helper native 监督；明确未启动的并发失败链不复活 lease，服务端 unknown 到期/重载不解锁。Windows race/Linux普通、独立原反例及编译 Admin Chrome 通过。设备/会话身份、远端 RID/跨重启 unknown、所有入口与生产容量未闭合，P4.5 保持未完成。
 - [x] Admin 合同/生成配置 guard、npm omission 拒绝和真实状态消费者；Chrome 编译页面合成 API 验证空数据、失败、迟到权限和 mutation 刷新并发。生产消费者与完整 durable operation 仍未完成。
 - [x] 更新 metadata 纯验签、scope/版本/安全 floor/Previous 与实际产物检查；Windows race/vet/schema drift 及独立反例通过。不代替可信持久水位、签名发行或安装。
+- [x] update CLI明确批准Policy、protected registration anchor+单一Policy/Previous/floors状态、同home跨进程锁与水位提交接线；实际CLI八进程/重开、31独立check、NTFS unknown与Linux FIFO负例通过，schema同源门禁已接入。同owner旧快照回滚、安装/签名和生产仍未完成。
 - [x] device Ed25519 输入共享 canonical/small-order 拒绝；离线 authority 恢复比较、保护文件读取及极端时间/非法 UTF-8/超大 TEXT 独立反例通过。`ready_to_restore=false`，实际恢复/最新事实保管链未完成。
 - [ ] Mac 实机/真实 WinINET/已安装升级、生产授权导入/campaign、备份恢复撤销合并、手机迁移及签名/更新链按阶段继续验收。
 
@@ -204,7 +207,7 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 | --- | --- |
 | 计划 | 已编写，按切片执行中 |
 | 实现 | CLI/GUI/SDK 真实代理接线、Hub v2 authority及监督、设备消费者、reverse mTLS与本地门禁；生产迁移与跨平台余项仍推进 |
-| 新验证 | 冻结v4统一gate通过；前两波九目标clean开发构建、Windows race/WSL普通fixture/编译Admin Chrome合成API与独立反例通过；第三波native监督、共享准入、失败链与unknown页面负例通过；授权fake数据面、代理合成HKCU，实机证据另验 |
+| 新验证 | 冻结v5统一gate通过；前三波九目标clean开发构建及Windows race/WSL普通/编译Admin Chrome通过；第四波真实CLI更新水位/独立反例通过；10-07线上只读证明仍为旧binary，授权fake数据面与代理合成HKCU不替代实机证据 |
 | 生产切换 | 未开始，既有安全迁移仍遵循自己的 NO-GO 状态 |
 | Steelman 终验 | 未完成 |
 
@@ -214,4 +217,4 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 
 后续依赖按实际顺序：完成本轮源冻结门禁/开发产物 → 受控凭据/平台适配与迁移清册 → 干净可信发布/签名及更新协议 → 逐实例 canary与手机迁移 → 当前授权事实源切换和完整观察 → P9多维独立评分。生产切换、30天连续窗口、Mac/手机物理证据不能由本地测试或代码量勾选；全部 G01–G05 仍未达终验。
 
-剩余不仅是硬件验收：Mac OS adapter、v2 credential到实际代理bootstrap、campaign固定分母/installation lineage与完整阻断投影、受控导入、最新撤销事实保管链与实际恢复、更新水位持久提交/安装维护协议、设备/会话租约身份及远端结果确认、日志容量与性能指标仍有源码缺口。第二波已处理F7/F13的来源/HTTP预算、离线恢复规划和纯更新验证；第三波补指定昂贵入口准入及本地执行监督。不能把局部完成勾作整个阶段或生产安全迁移。见[第二波worklog](../90-history/worklogs/2026-10-07-zhvpn-security-boundaries.md)与[执行预算worklog](../90-history/worklogs/2026-10-07-legacy-control-process-budget.md)。
+剩余不仅是硬件验收：Mac OS adapter、v2 credential到实际代理bootstrap、campaign固定分母/installation lineage与完整阻断投影、受控导入、最新撤销事实保管链与实际恢复、安装维护协议/外部更新防回滚、设备/会话租约身份及远端结果确认、日志容量与性能指标仍有源码缺口。第二波处理来源/HTTP预算、离线恢复规划和纯更新验证；第三波补指定昂贵入口准入及本地执行监督；第四波补本地更新策略/Previous持久提交。不能把局部完成勾作整个阶段或生产安全迁移。见[第二波worklog](../90-history/worklogs/2026-10-07-zhvpn-security-boundaries.md)、[执行预算worklog](../90-history/worklogs/2026-10-07-legacy-control-process-budget.md)及[更新worklog](../90-history/worklogs/2026-10-07-zhvpn-trusted-update-state.md)。

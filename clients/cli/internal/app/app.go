@@ -26,6 +26,7 @@ import (
 	"zongheng-vpn/clients/cli/internal/netcheck"
 	"zongheng-vpn/clients/cli/internal/runtime/leasecontrol"
 	lease "zongheng-vpn/clients/cli/internal/runtime/systemproxy"
+	"zongheng-vpn/clients/cli/internal/updateclient"
 	"zongheng-vpn/shared/config"
 	"zongheng-vpn/shared/contracts"
 	"zongheng-vpn/shared/paths"
@@ -40,6 +41,13 @@ func Run(args []string) error {
 
 	ctx, err := paths.NewContext()
 	if err != nil {
+		if args[0] == "update" {
+			err := updateclient.ReportSetupFailure(os.Stdout)
+			if errors.Is(err, updateclient.ErrReported) {
+				return ErrSilent
+			}
+			return err
+		}
 		return err
 	}
 
@@ -77,6 +85,12 @@ func Run(args []string) error {
 			return ErrSilent
 		}
 		return err
+	case "update":
+		err := updateclient.Run(context.Background(), ctx, args[1:], os.Stdout, os.Stderr)
+		if errors.Is(err, updateclient.ErrReported) {
+			return ErrSilent
+		}
+		return err
 	case "rotate-ip":
 		return rotateIP(ctx, args[1:])
 	case "logout":
@@ -104,6 +118,7 @@ func printUsage() {
   %[1]s stop
   %[1]s system-proxy acquire|release|inspect|recover [--lease-id <ID>] [--json]
   %[1]s device activate|apply|disable|revoke|status|rotate-credential|recover|cancel-pending [参数]
+  %[1]s update enroll|verify|policy-approve|inspect [参数]
   %[1]s logout
   %[1]s version
   %[1]s help
