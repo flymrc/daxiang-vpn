@@ -23,3 +23,5 @@
 - 私有原始日志目录为 `.local/zongheng-vpn/steelman/2026-10-07/`（位于原workspace父目录）：`unified-final-frozen-v4.log`、`security-final-frozen-v4/`、`admission-integration-final.log`、`admin-state-cases-third.log`、`admin-authority-refresh-third.log`、`admin-rotate-unknown-final.log`、`processbudget-independent-native-final-{windows-race,linux}.log`；不将证据、私钥、可执行产物或DB入Git。
 
 这些结果不改变生产参数/授权事实源，也不证明跨重启at-most-once、真实OS代理、Linux race或远端恢复完成。Steelman G01–G05仍需完整后续验收。
+
+第三波源码已本地提交为 `947c5f53ff3a00db63d082dc29496487396e60b6`。随后在该 clean SHA 运行 `build-steelman-dev.ps1` exit0：CLI Windows/Darwin两架构、Hub/helper Linux amd64、reverse Linux两架构及android-control Linux arm64共9个未签名开发产物，逐一核对manifest SHA-256。实际Windows CLI `version --json`输出该完整SHA、clean、Go1.26.7、protocol2/contract1。私有产物/日志为 `development-947c5f5/` 与 `build-947c5f5.log`；`release_ready=false`、全部 `compile_only`，不冒充平台运行或正式发行。本文后续文档提交不会改写上述产物来源SHA。
