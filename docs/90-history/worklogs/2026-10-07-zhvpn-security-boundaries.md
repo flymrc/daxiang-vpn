@@ -33,7 +33,7 @@
 
 冻结v3 `pwsh -NoProfile -File scripts/check-steelman.ps1 -EvidenceDirectory <新私有目录>` exit0，原始日志 `unified-final-frozen-v3.log`，扫描目录 `security-final-frozen-v3/`。完整 Go test/vet/race、实际 CLI↔Hub TLS、SDK33/Rust41、CLI builder9/SDK builder16、NSIS13与完整模板编译、Admin消费者19/两端Svelte check 全通过。6个Go OS/arch 均 symbol=0/package=0/module=1，仅现有OpenPGP module-tier例外；两棵npm均0；4个Rust target tree已审计，0 vulnerability、无未处置 warning，有效例外仍到2026-11-06。该 gate 不提供缺失的Linux race或实机/生产证据。
 
-上一提交 `072bbc4` 的九目标干净开发构建已完成：CLI Windows/Darwin amd64/arm64、Hub/helper Linux amd64、reverse Linux amd64/arm64、android-control Linux arm64。清单有 full SHA、Go 1.26.7、clean source、artifact hash，Windows CLI 的实际 `version --json` 身份匹配。第二波产物将在代码提交后记录确切SHA。所有产物 unsigned、`release_ready=false`、`compile_only`；不能外推 Mac/Android/Linux 运行验收。
+第二波本地提交为 `490e9fd5998ec49b3a107ad3fea86f9910e0fd9e`（70 files）。该确切提交和上一提交 `072bbc4` 的九目标干净开发构建均已完成：CLI Windows/Darwin amd64/arm64、Hub/helper Linux amd64、reverse Linux amd64/arm64、android-control Linux arm64。第二波构建日志 `build-490e9fd.log`、产物/清单 `development-490e9fd/`，exit0。清单有 full SHA、Go 1.26.7、clean source、artifact hash；重新核对9个产物hash，Windows CLI 实际 `version --json` 的协议2/合同1/SHA/clean身份匹配。所有产物 unsigned、`release_ready=false`、`compile_only`；不能外推 Mac/Android/Linux 运行验收。后续文档提交不改变这些产物对应的源码提交。
 
 原工作区保护清册79个既有dirty文件按上一份最终hash重新核对，无本轮变化；私有原始证据和已启动的本任务Chrome/Vite已保留/按归属关闭。
 

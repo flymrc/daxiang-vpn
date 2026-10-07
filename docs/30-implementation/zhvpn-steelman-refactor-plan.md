@@ -177,6 +177,7 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 | 2026-10-06 | PLAN | 本计划 | 文档准备；代码/本地/实机/生产实施均未开始 | 当日 worklog | 全部实施 checkbox 未勾 |
 | 2026-10-06 | P0.1；P1/P2/P3 首切片 | 合流 `3c88880` 后的 `codex/zhvpn-steelman-runtime` | 最终本地门禁通过；Windows 真实 child、GUI Rust 30 项及 mock 浏览器；Windows/Darwin CLI 编译 | [首切片 worklog](../90-history/worklogs/2026-10-06-zhvpn-runtime-safety-slice.md)、[资产基线](../90-history/worklogs/2026-10-06-zhvpn-asset-baseline.md)、[客户端合同](client-runtime-safety-contract.md) | P0/P1 全阶段门禁、CLI 代理租约迁移、Mac 实机和生产仍未完成 |
 | 2026-10-06 | P1.6/P3.1/P4.2–P4.6 局部基础 | 基于首切片 `9113a3a`，共享合同/SDK、离线授权和代理租约核心 | 生成漂移及统一本地门禁通过；SDK 17、代理基础 24、授权 30 实质套件；独立反例修复 | [后续基础 worklog](../90-history/worklogs/2026-10-06-zhvpn-contracts-foundations.md) | 租约未接入 CLI；授权未接 API/真实 WG；Mac/手机 TLS/发行/生产未完成 |
+| 2026-10-07 | 运行时/设备消费者与第二波边界 | `072bbc4`、`490e9fd` | 冻结v3统一gate exit0；第二波独立恢复/HTTP/公钥与Chrome管理台反例通过；两份九目标clean开发编译 | [第二波worklog](../90-history/worklogs/2026-10-07-zhvpn-security-boundaries.md) | 实机、当前授权迁移、真正备份恢复、更新水位/安装与生产仍未完成；legacy执行预算继续实施 |
 
 本轮切片检查点单独登记，不代替上面的完整任务/阶段门禁：
 
