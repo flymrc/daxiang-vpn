@@ -22,8 +22,8 @@ sing-box `PlatformLogWriter` 会隐式开启Cache/Clash服务，与本产品最�
 - [x] 专用child接线typed启动/初始化/运行/退出事件与build引用；原始多行/跨块输出丢弃，一般RunEngine与CLI JSON行为保持。
 - [x] 独立认证日志health RPC与CLI/SDK/GUI同源投影；旧控制MAC兼容、旧engineunknown、伪造/错实例/迟到响应拒绝。
 - [x] Windows实际后台child和sing-box故障留存；真实安全文件/容量/并发/失败负例，Linux实际运行与Darwin交叉编译分别登记。
-- [ ] 冻结统一门禁、clean开发构建/hash、架构/安全/运维文档和worklog，本地提交收据。
+- [x] 冻结统一门禁、clean开发构建/hash、架构/安全/运维文档和worklog，本地提交收据。
 
 不承诺磁盘/内核IO硬截止、SIGKILL/panic/断电前最后记录已flush，或恢复全部旧日志。实际Mac运行、Hub/手机日志、跨组件operation/出口指标与完整诊断包仍独立验收，P6.4/P6.G保持未完成。
 
-前六项证据为[本波worklog](../90-history/worklogs/2026-10-07-client-engine-observability.md)的冻结Windows v13和Linux v3结果；构建/提交收据完成后才勾最后一项。
+全部本片证据为[本波worklog](../90-history/worklogs/2026-10-07-client-engine-observability.md)：源码本地提交3b5a2c5、冻结Windows v13/Linux v3、十目标clean开发构建/hash一致。开发构建不代表签名发行或Mac/手机实机。

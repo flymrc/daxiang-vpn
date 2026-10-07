@@ -7,8 +7,8 @@
 - [x] 取消后未来/clear deadline拒绝；已获permit但迟到完成的deadline修复为past，随后command/relay write不可重新获permit。
 - [x] Close实际返回且此前permit完成才允许Release/closed ACK；公开误用Release/Untrack不能擦掉fenced资源预算。
 - [x] 同一真实HTTP/yamux/TCP fixture同步复现旧源码两个窗口失败，新实现通过，已有retained连接保持echo；阻塞Close/Write保持quarantine直至真实完成。
-- [ ] 同源schema、Windows race、Linux产品/WG门禁、十目标clean构建及实现/安全/运维文档收据完成。
+- [x] 同源schema、Windows race、Linux产品/WG门禁、十目标clean构建及实现/安全/运维文档收据完成。
 
 取消前获准的Write是在途IO，不能撤回内核已提交bytes；closed ACK只约束本批登记连接、Close调用和permit完成，不证明yamux内部stream/closeTimer全部消失。contextual Open、每stream reset/内部容量、全部WG路径和持续撤销SLA仍是后续工作。
 
-前五项分别有Windows race与Linux实际产品新旧对照，见[本波worklog](../90-history/worklogs/2026-10-07-client-engine-observability.md)；最后一项等待clean开发构建/提交收据，不将中间门禁当作最终交付。
+六项分别有Windows race、Linux实际产品新旧对照、最终Windows v13/Linux v3及源码3b5a2c5十目标clean构建/hash收据，见[本波worklog](../90-history/worklogs/2026-10-07-client-engine-observability.md)。中间失败仍保留，源码/编译不代称生产持续授权。

@@ -36,4 +36,12 @@ Linux首轮门禁错误覆盖整个shared/proxy，调用尚未支持的Linux产�
 
 `sh scripts/check-proxy-barrier-linux.sh`最终v3 exit0：本轮shared/proxy slice21.859s、proxygate1.848s、reverse2.674s、deviceapi8.217s、deviceauth0.190s及schema/vet通过。实际native父/namespace中的八项原WG/产品屏障均PASS，namespace6.07s；顶层helper-only SKIP是由父测试重新exec进自有namespace后的正常结构，不是跳过所需能力。Linux为CGO=0普通测试，未运行race或Linux产品client launch；Darwin arm64测试包编译单独通过，Mac行为未验。`wave8-linux-final-v3.log`为最终证据。
 
-冻结v13开始至全部门禁结束661项完整源码清单SHA漂移0。原工作区HEAD仍e69645a1bee6bb28927e18caa3e43b2021296129，保护基线79项逐文件hash漂移0；current status89行包括另10项RDP独立工作，未动。私有收据/日志/产物在Git树外 `.local/zongheng-vpn/steelman/2026-10-07/`，不入Git。本波源码本地提交和clean十目标构建/hash收据在下节完成后补登。
+冻结v13开始至全部门禁结束661项完整源码清单SHA漂移0。原工作区HEAD仍e69645a1bee6bb28927e18caa3e43b2021296129，保护基线79项逐文件hash漂移0；current status89行包括另10项RDP独立工作，未动。私有收据/日志/产物在Git树外 `.local/zongheng-vpn/steelman/2026-10-07/`，不入Git。
+
+## 本地源码与构建收据
+
+源码提交 `3b5a2c576aa344f907031b2c35c31c69499424b2`，61文件、5181新增/73删除；提交前最终gate源码没有漂移，仅补本波文档。提交后worktree clean，再运行 `build-steelman-dev.ps1 -OutputDirectory <私有新目录>/development-wave8-final` exit0；661项全源码清单构建中漂移0，十个产物SHA逐一匹配manifest。Node/Admin与Device生成gate有旧OpenAPI3.1工具warning，但当前投影确定性/消费者门禁通过，本波未改HTTP契约。
+
+实际Windows AMD64 CLI version child返回完整源码SHA、source_state=clean、product=cli/version=dev、Go1.26.7、contract_version=1/protocol_version=2。构建signed=false、acceptance=compile_only、release_ready=false；未签名、未发行、未推送、未部署或生产验收。
+
+开发manifest SHA256 `38069728adbc66468d164095be09ee79aed560d4d8b453d1301be6bc308213dd`；source-manifest SHA256 `2bbbf3c709eaed5155b0adc3948b91ac6ee8553c4165fefe4fb91209e683903f`。完整内容为私有 `development-wave8-final/manifest.json` / `acceptance-receipt.json`；随后文档收据提交仅修改本清单/日志和总计划，不改变已验收产品源码。
