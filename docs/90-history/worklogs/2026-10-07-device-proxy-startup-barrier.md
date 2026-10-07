@@ -42,4 +42,8 @@ ctx.Err检查与SetDeadline/command写入之间尚无原子write fence，取消�
 
 原工作区HEAD仍 `e69645a1bee6bb28927e18caa3e43b2021296129`；基线79项逐文件SHA漂移0。当前all-untracked status为89行，新增10项RDP文档/脚本独立工作也未动，不能把基线79说成当前总文件数。
 
-clean十目标开发构建、source/hash和本地提交收据随后补登。私有日志/产物位于外层`.local/zongheng-vpn/steelman/2026-10-07/`，不入Git。
+本地源码提交 `8323ca1f3e717ccf4ce49016ba1a249850467b71`（47文件、6269新增/83删除）；所有权分工/独立复核结束后冻结，无私有日志/密钥/二进制进入Git。
+
+`build-steelman-dev.ps1 -OutputDirectory <私有新目录>/development-wave7-final` exit0，631项完整源码清单无构建中漂移，十个产物SHA256逐一与manifest一致，source_state=clean、Go1.26.7、signed=false、acceptance=compile_only、release_ready=false。Windows实际version child确认完整源码SHA、product=cli/version=dev、contract_version=1/protocol_version=2和clean。合同生成、manifest/source-manifest摘要复核也通过；这不是Mac/手机行为、GUI安装或正式签名验证。
+
+开发manifest SHA256 `c8cc23f471b963673c48f65db6cbd454078bbec8b462e7d566efdc35bf1f785d`；source-manifest SHA256 `d3594b117c18a54e4aae920e5ad1cba829127228af6ae991ade789f326604054`。实际值以 `development-wave7-final/manifest.json` 和私有 `acceptance-receipt.json` 为准。私有日志/产物位于外层`.local/zongheng-vpn/steelman/2026-10-07/`，不入Git。

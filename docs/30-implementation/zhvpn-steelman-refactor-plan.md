@@ -1,6 +1,6 @@
 # zhvpn Steelman 重构计划
 
-> 创建：2026-10-06 JST。状态：IN_PROGRESS；第七波已实现受管proxy启动/续期屏障，冻结v11统一门禁exit0与Linux真实产品/WG验收通过；clean开发构建和本地提交见本波worklog。源码、实机、生产实施分别记录。
+> 创建：2026-10-06 JST。状态：IN_PROGRESS；第七波源码 `8323ca1` 已本地提交，冻结v11统一门禁exit0与Linux真实产品/WG验收通过；十目标clean开发构建/hash一致，见本波worklog。源码、实机、生产实施分别记录。
 > 基线：[2026-10-05 多维审计](../90-history/worklogs/2026-10-05-zhvpn-project-audit.md)。49/100 是该日的工程成熟度评估，不能作为本日运行状态或后续验收结果。
 
 ## 1. Steelman 的完成定义
@@ -182,7 +182,7 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 | 2026-10-07 | 第四波离线更新水位与当前只读资产 | `a2ecd68` | 冻结v5 gate exit0、九目标clean开发构建、实际CLI八进程/31条独立检查、Windows race/Linux普通；Hub/本机运行binary只读复核 | [更新worklog](../90-history/worklogs/2026-10-07-zhvpn-trusted-update-state.md)、[当前资产](../90-history/worklogs/2026-10-07-live-readonly-inventory.md) | 安装/签名/外部防回滚、Mac/手机、全部生产门禁仍未完成 |
 | 2026-10-07 | 第五波 v2 设备凭据与真实代理数据面 | `17e7689` | 冻结v6 gate exit0；九目标clean开发构建/hash一致；Windows实际 CLI/TLS/SQLite/sing-box/WG/owned proxy/target 与撤销；WSL实际 WG/TLS、native control 与初始 Service 负例 | [第五波 worklog](../90-history/worklogs/2026-10-07-v2-proxy-bootstrap.md)、[设备启动合同](v2-proxy-bootstrap.md) | 初始对账部分失败时外部旧 WG peer 仍可达的实际反例；持续租约/撤销 SLA、迁移、实机与生产仍未完成 |
 | 2026-10-07 | 第六波provisional清册/单调历史/持久observer | `bf0f608` | 冻结v8 gate exit0、十目标clean/hash一致；actual SQLite/HTTP、9原生children与旧坏metadata洗白修复；Admin43/编译Chrome21条分页和五旧页签 | [第六波worklog](../90-history/worklogs/2026-10-07-migration-inventory.md)、[清册合同](migration-inventory.md) | 真实lineage/受控导入、逐负类别时间/T0连续窗口、外部数据面屏障、日志/恢复/实机/签名与生产未完成 |
-| 2026-10-07 | 第七波真实proxy启动/续期屏障 | 本地源码与构建收据见worklog | 冻结v11统一gate exit0；Linux真实产品/内核WG八项验收、Shared/Reverse专项和vet通过；半撤销、跨expiry、ACK丢失、真实SIGKILL/重启正负对照 | [第七波worklog](../90-history/worklogs/2026-10-07-device-proxy-startup-barrier.md)、[屏障合同](device-proxy-startup-barrier.md) | 其他WG路径/同IP公钥、完整设备会话与生产撤销SLA、日志/恢复/实机/签名/正式campaign继续未完成 |
+| 2026-10-07 | 第七波真实proxy启动/续期屏障 | `8323ca1`；本地构建收据见worklog | 冻结v11统一gate exit0、十目标clean/hash一致；Linux真实产品/内核WG八项验收、Shared/Reverse专项和vet通过；半撤销、跨expiry、ACK丢失、真实SIGKILL/重启正负对照 | [第七波worklog](../90-history/worklogs/2026-10-07-device-proxy-startup-barrier.md)、[屏障合同](device-proxy-startup-barrier.md) | 其他WG路径/同IP公钥、完整设备会话与生产撤销SLA、日志/恢复/实机/签名/正式campaign继续未完成 |
 
 本轮切片检查点单独登记，不代替上面的完整任务/阶段门禁：
 
@@ -213,7 +213,7 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 | --- | --- |
 | 计划 | 已编写，按切片执行中 |
 | 实现 | CLI/GUI/SDK代理接线、Hub v2 authority及监督、设备消费者、reverse mTLS、本地门禁；第六波provisional清册/持久observer及只读页面；第七波真实proxy启动/续期屏障与有限quarantine；生产迁移与跨平台余项仍推进 |
-| 新验证 | 第七波冻结v11统一gate及Linux实际产品/内核WG八项屏障验收通过，clean开发构建见本波worklog；第六actual SQLite/HTTP/原生进程与编译Chrome消费者通过。10-07线上只读仍为旧binary。owned fixture和合成HKCU不替代生产/真实用户代理/实机证据 |
+| 新验证 | 第七波冻结v11统一gate及Linux实际产品/内核WG八项屏障验收通过，十目标clean/hash一致；第六actual SQLite/HTTP/原生进程与编译Chrome消费者通过。10-07线上只读仍为旧binary。owned fixture和合成HKCU不替代生产/真实用户代理/实机证据 |
 | 生产切换 | 未开始，既有安全迁移仍遵循自己的 NO-GO 状态 |
 | Steelman 终验 | 未完成 |
 

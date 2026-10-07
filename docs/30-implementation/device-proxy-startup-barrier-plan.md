@@ -8,7 +8,7 @@
 - [x] deviceapi Service先取得closed ACK，再initialTick和fenced最终desired/applied/outbox/runtime收敛证明，最后grant/Listen；失败/取消关闭controller、不继续grant。真实supervised内核Snapshot跨expiry复现Tick nil、generation2/applied1、旧peer仍在；proof callback0、三路径503。下一Tick实际移除后才收敛grant。
 - [x] 实际产品proxy+WG正负对照：旧.2移除、第二Snapshot失败时.4虽仍WGpresent但三路径503/target0；protected.3与scope外unknown.7成功。原生firstSnapshot/remove失败同样live-WG拒绝；DB outbox done写入ABORT时peer已移除，单列nogrant/noTLS/target0，不称SQL commit故障或live-WG拒绝。实际receiver字节通道丢弃closed/grant ACK后拒绝并回收，Service专项另验证取消/ACK失败顺序。
 - [x] 实际CONNECT后controller SIGKILL/UDS EOF关闭managed既有流、拒绝新流，retained既有流保持。Linux receiver/产品流专项覆盖lease到期、迟到旧grant、profile/scope/epoch及容量拒绝。reverse SIGKILL自然断所有旧socket；重启无controller时managed默认拒绝、retained重新连接成功、WG不变，不冒称retained旧socket跨进程存活。启用gate仅TCP/TCP-TLS，实际二进制默认/显式QUIC在load/bind前拒绝。
-- [ ] 冻结canonical合同/实现，Windows合适负例与Linux真实进程/产品reverse/WG通过，统一门禁/clean构建/架构与运维安全文档收据后本地提交。
+- [x] 冻结canonical合同/实现，Windows race/实际ACK负例与Linux真实进程/产品reverse/WG通过；v11统一门禁、Linux final-v2、clean十目标/631项源码hash一致，架构/运维/安全文档与worklog同步。本地源码 `8323ca1`，未签名compile_only，release_ready=false；不代称正式发行或生产迁移。
 
 该片先闭合受管proxy路径，不自动关闭同WG接口其它INPUT/FORWARD、独立未受管proxy，也不证明持续设备授权或生产撤销SLA。RemoteAddr只有来源IP，无法把同一来源IP同时认作owned客户和unknown/admin公钥；此类hosting须拒绝或另做可证明的身份/namespace分离。完整WG屏障仍需实际产品的隔离interface/原子scoped内核规则和启动单writer，不由proxy测试代称。
 
