@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { AdminApi, ApiError } from "$lib/api";
+  import * as validate from "$lib/validation";
   import type { AuditEvent, AuthMe, EgressExitIPResponse, EgressSummary, LeaseSummary, Overview, TokenSummary } from "$lib/api";
 
   type View = "overview" | "tokens" | "egress" | "clients" | "logs";
@@ -182,6 +183,20 @@
   ];
 
   let ready = false;
+  // Demo data is an explicit local preview, never a fallback for live empty/error results.
+  const previewEnabled = import.meta.env.DEV && new URLSearchParams(window.location.search).get("preview") === "1";
+  let dataReady = false;
+  let dataError = "";
+  let refreshing = false;
+  let activeRefresh: object | null = null;
+  let dataGeneration = 0;
+  let mutationPending = false;
+  let mutationUnknown = false;
+  const unknownOverview: Overview = {
+    hub: { public_ip: "未知", wg_ip: "未知", version: "状态未知", uptime_seconds: 0 },
+    stats: { token_count: 0, enabled_token_count: 0, active_lease_count: 0, egress_online_count: 0, rotate_today_count: 0 },
+    updated_at: "",
+  };
   let authed = false;
   let view: View = "overview";
   let me: AuthMe | null = null;
@@ -216,18 +231,19 @@
     window.addEventListener("hashchange", onHashChange);
 
     void (async () => {
+      if (previewEnabled) {
+        me = { username: "preview", csrf_token: "", expires_at: new Date(Date.now() + 86400000).toISOString() };
+        authed = true;
+        loadDemoData();
+        ready = true;
+        return;
+      }
       try {
         me = await api.me();
         authed = true;
         await refreshAll();
       } catch {
-        if (import.meta.env.DEV) {
-          me = { username: "root", csrf_token: "dev-preview", expires_at: new Date(Date.now() + 86400000).toISOString() };
-          authed = true;
-          loadDemoData();
-        } else {
-          authed = false;
-        }
+        authed = false;
       } finally {
         ready = true;
       }
@@ -245,11 +261,13 @@
     swatch: themeSwatches[name],
     active: name === theme,
   }));
-  $: displayOverview = overview || demoOverview;
-  $: displayTokens = tokens.length > 0 ? tokens : demoTokens;
-  $: displayLeases = leases.length > 0 ? leases : demoLeases;
-  $: displayEgress = egress.length > 0 ? egress : demoEgress;
-  $: displayEvents = events.length > 0 ? events : demoEvents;
+  $: displayOverview = dataReady ? (overview ?? unknownOverview) : unknownOverview;
+  $: displayTokens = dataReady ? tokens : [];
+  $: displayLeases = dataReady ? leases : [];
+  $: displayEgress = dataReady ? egress : [];
+  $: displayEvents = dataReady ? events : [];
+  $: canOperate = dataReady && !previewEnabled && !loading && !mutationPending;
+  $: canRotate = canOperate && !mutationUnknown;
   $: enabledTokens = displayTokens.filter((token) => token.enabled).length;
   $: tokenLastActiveByID = buildTokenLastActiveByID(displayLeases);
   $: sortedTokens = sortTokens(displayTokens, tokenLastActiveByID, tokenSortKey, tokenSortDirection);
@@ -260,10 +278,10 @@
   $: pagedTokens = sortedTokens.slice(Math.max(0, tokenRangeStart - 1), tokenRangeEnd);
   $: tokenPageItems = pageItems(tokenPage, tokenPageCount);
   $: stats = [
-    { label: "在线客户端", value: String(displayOverview.stats.active_lease_count || displayLeases.length), sub: `共 ${enabledTokens} 个启用授权码`, dot: "ok" },
-    { label: "启用授权码", value: String(displayOverview.stats.enabled_token_count || enabledTokens), sub: `共 ${displayTokens.length} 个 token`, dot: "ok" },
-    { label: "出口在线", value: String(displayOverview.stats.egress_online_count || displayEgress.filter((node) => node.status === "online").length), sub: `${displayEgress.filter((node) => node.status === "online").length} 生产 · ${displayEgress.filter((node) => node.status === "deprecated").length} 已弃用`, dot: "ok" },
-    { label: "今日换 IP", value: String(displayOverview.stats.rotate_today_count), sub: "客户端 · 管理员", dot: displayOverview.stats.rotate_today_count > 0 ? "idle" : "ok" },
+    { label: "在线客户端", value: dataReady ? String(displayOverview.stats.active_lease_count) : "—", sub: dataReady ? `共 ${enabledTokens} 个启用授权码` : "状态未验证", dot: dataReady ? "ok" : "idle" },
+    { label: "启用授权码", value: dataReady ? String(displayOverview.stats.enabled_token_count) : "—", sub: dataReady ? `共 ${displayTokens.length} 个 token` : "状态未验证", dot: dataReady ? "ok" : "idle" },
+    { label: "出口在线", value: dataReady ? String(displayOverview.stats.egress_online_count) : "—", sub: dataReady ? `${displayEgress.filter((node) => node.status === "online").length} 在线 · ${displayEgress.filter((node) => node.status === "deprecated").length} 已弃用` : "状态未验证", dot: dataReady ? "ok" : "idle" },
+    { label: "今日换 IP", value: dataReady ? String(displayOverview.stats.rotate_today_count) : "—", sub: dataReady ? "客户端 · 管理员" : "状态未验证", dot: dataReady && displayOverview.stats.rotate_today_count === 0 ? "ok" : "idle" },
   ];
 
   async function login() {
@@ -282,7 +300,20 @@
   }
 
   async function refreshAll() {
+    if (refreshing) return;
+    if (previewEnabled) { loadDemoData(); return; }
+    refreshing = true;
+    const refreshOwner = {};
+    activeRefresh = refreshOwner;
+    const generation = ++dataGeneration;
     loading = true;
+    dataReady = false;
+    dataError = "";
+    modal = null;
+    tokenSecrets = {};
+    exitIPSecrets = {};
+    revealingTokenID = "";
+    revealingExitIPID = "";
     try {
       const [nextOverview, nextTokens, nextLeases, nextEgress, nextEvents] = await Promise.all([
         api.overview(),
@@ -291,23 +322,30 @@
         api.egress(),
         api.events(),
       ]);
+      validate.snapshot(nextOverview, nextTokens, nextLeases, nextEgress, nextEvents);
+      if (generation !== dataGeneration || activeRefresh !== refreshOwner) return;
       overview = nextOverview;
       tokens = nextTokens.tokens;
       leases = nextLeases.leases;
       egress = nextEgress.egress;
       events = nextEvents.events;
       updatedAt = new Date().toLocaleTimeString();
+      dataReady = true;
     } catch (err) {
-      if (import.meta.env.DEV) {
-        loadDemoData();
-        showToast("开发预览模式 · 使用原型数据");
-      } else if (err instanceof ApiError && err.status === 401) {
-        authed = false;
-      } else {
-        showToast("刷新失败，当前显示原型占位数据");
+      if (err instanceof ApiError && [401, 403].includes(err.status)) {
+        authorityFailure(err);
+        return;
       }
+      if (generation !== dataGeneration || activeRefresh !== refreshOwner) return;
+      overview = null;
+      tokens = []; leases = []; egress = []; events = [];
+      dataError = "数据读取失败，当前状态未知；请重新刷新";
     } finally {
-      loading = false;
+      if (activeRefresh === refreshOwner) {
+        activeRefresh = null;
+        refreshing = false;
+        loading = false;
+      }
     }
   }
 
@@ -318,6 +356,8 @@
     egress = demoEgress;
     events = demoEvents;
     updatedAt = new Date().toLocaleTimeString();
+    dataReady = true;
+    dataError = "";
   }
 
   function pickTheme(name: ThemeName) {
@@ -363,7 +403,21 @@
     }, 2800);
   }
 
+  function authorityFailure(err: unknown) {
+    if (!(err instanceof ApiError) || ![401, 403].includes(err.status)) return;
+    dataGeneration++;
+    dataReady = false;
+    overview = null;
+    tokens = []; leases = []; egress = []; events = [];
+    tokenSecrets = {}; exitIPSecrets = {};
+    revealingTokenID = ""; revealingExitIPID = "";
+    modal = null;
+    dataError = "访问权限已失效，请重新登录";
+    if (err.status === 401) authed = false;
+  }
+
   function openRotate(node: EgressSummary) {
+    if (!canRotate) return;
     const lockedUntil = activeRotateLockUntil(node);
     if (lockedUntil) {
       showToast(`换 IP 正在进行中，${remainingRetryText(lockedUntil)}`);
@@ -375,6 +429,7 @@
   }
 
   async function toggleTokenSecret(tokenID: string) {
+    if (!canOperate || revealingTokenID) return;
     if (tokenSecrets[tokenID]) {
       const next = { ...tokenSecrets };
       delete next[tokenID];
@@ -382,17 +437,21 @@
       return;
     }
     revealingTokenID = tokenID;
+    const generation = dataGeneration;
     try {
-      const result = await api.revealToken(tokenID);
+      const result = validate.tokenSecret(await api.revealToken(tokenID), tokenID);
+      if (generation !== dataGeneration || !dataReady || refreshing) return;
       tokenSecrets = { ...tokenSecrets, [tokenID]: result.token };
-    } catch {
+    } catch (err) {
+      authorityFailure(err);
       showToast("授权码读取失败");
     } finally {
-      revealingTokenID = "";
+      if (generation === dataGeneration && revealingTokenID === tokenID) revealingTokenID = "";
     }
   }
 
   async function toggleExitIP(node: EgressSummary) {
+    if (!canOperate || revealingExitIPID) return;
     if (exitIPSecrets[node.id]) {
       const next = { ...exitIPSecrets };
       delete next[node.id];
@@ -400,26 +459,35 @@
       return;
     }
     revealingExitIPID = node.id;
+    const generation = dataGeneration;
     try {
-      const result = await api.revealEgressExitIP(node.id);
+      const result = validate.exitIP(await api.revealEgressExitIP(node.id), node.id);
+      if (generation !== dataGeneration || !dataReady || refreshing) return;
       exitIPSecrets = { ...exitIPSecrets, [node.id]: result };
-    } catch {
+    } catch (err) {
+      authorityFailure(err);
       showToast("出口 IP 探测失败，请稍后再试");
     } finally {
-      revealingExitIPID = "";
+      if (generation === dataGeneration && revealingExitIPID === node.id) revealingExitIPID = "";
     }
   }
 
   async function confirmRotate() {
+    if (!canRotate || mutationPending) { modal = null; return; }
+    mutationPending = true;
+    const target = rotateTarget;
     modal = null;
     loading = true;
     try {
-      const result = await api.rotateIP(rotateTarget, 8);
+      const result = validate.rotate(await api.rotateIP(target, 8), target, 8);
       showToast(result.status === "busy" ? `换 IP 冷却中 ${result.retry_after_seconds || 1}s` : "换 IP 已触发 · down_seconds=8");
       await refreshAll();
     } catch (err) {
-      showToast(err instanceof ApiError ? err.code : "换 IP 失败");
+      authorityFailure(err);
+      mutationUnknown = true;
+      showToast("换 IP 结果未确认，请查询状态后再处理");
     } finally {
+      mutationPending = false;
       loading = false;
     }
   }
@@ -652,8 +720,8 @@
 
   function latency(node: EgressSummary) {
     const raw = node.raw_health || {};
-    const value = raw.latency_ms || raw.latency;
-    return typeof value === "number" ? `${value}ms` : "42ms";
+    const value = raw.latency_ms ?? raw.latency;
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? `${value}ms` : "—";
   }
 
   function todayAt(hms: string) {
@@ -751,22 +819,22 @@
           <div class="mark"></div>
           <div class="brand">纵横 Hub<span class="dim"> 控制台</span></div>
         </div>
-        <span class="vchip mono">{displayOverview.hub.version || "zhhub v0.4.2"}</span>
+        <span class="vchip mono">{displayOverview.hub.version || "版本未知"}</span>
       </div>
       <div class="fx ac gap14">
         <div class="hubpill fx ac gap8">
-          <span class="livedot"></span>
-          <span class="dim">Hub 在线</span>
+          {#if dataReady}<span class="livedot"></span>{/if}
+          <span class="dim">{previewEnabled ? "本地预览" : dataReady ? "管理 API 已响应" : "Hub 状态未知"}</span>
           <span class="mono hubip">{displayOverview.hub.public_ip}</span>
           <span class="muted">·</span>
           <span class="mono dim">{displayOverview.hub.wg_ip}</span>
           <span class="muted">·</span>
-          <span class="muted">uptime {uptimeLabel(displayOverview.hub.uptime_seconds)}</span>
+          <span class="muted">uptime {dataReady ? uptimeLabel(displayOverview.hub.uptime_seconds) : "—"}</span>
         </div>
       </div>
       <div class="fx ac gap10">
         <div class="fx ac gap6 muted topupdate">
-          <span class="livedot tiny"></span>{loading ? "同步中" : `更新于 ${updatedAt || "刚刚"}`}
+          {#if dataReady}<span class="livedot tiny"></span>{/if}{loading ? "同步中" : dataReady ? `更新于 ${updatedAt}` : "尚未验证"}
         </div>
         <button class="iconbtn fx ac jc" on:click={refreshAll} title="刷新" disabled={loading}>
           <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -846,6 +914,10 @@
       </aside>
 
       <main class="content f1 col gap16">
+        {#if dataError}<div class="warnbox" role="status">{dataError}</div>{/if}
+        {#if mutationPending}<div class="warnbox" role="status">换 IP 请求正在确认；暂不能再次提交</div>{/if}
+        {#if mutationUnknown}<div class="warnbox" role="status">换 IP 结果未确认，暂不能再次提交；请核实操作日志和出口状态</div>{/if}
+        {#if previewEnabled}<div class="warnbox" role="status">本地预览 · 演示数据 · 操作已禁用</div>{/if}
         {#if view === "overview"}
           <div class="fx ac jb">
             <div>
@@ -853,7 +925,7 @@
               <div class="sub">纵横 VPN · Hub 实时状态</div>
             </div>
             <div class="fx ac gap10">
-              <span class="tag">生产环境</span>
+              <span class="tag">{previewEnabled ? "演示数据" : "管理视图"}</span>
               <button class="btn ghost btnxs" on:click={refreshAll}>刷新数据</button>
             </div>
           </div>
@@ -880,8 +952,8 @@
                       </div>
                     </div>
                     <div class="fx ac gap16 healthmetrics">
-                      <div class="tc"><div class="note">会话</div><div class="mono strong">{node.session_count ?? 0}</div></div>
-                      <div class="tc"><div class="note">连接</div><div class="mono strong">{node.active_connections ?? 0}</div></div>
+                      <div class="tc"><div class="note">会话</div><div class="mono strong">{node.session_count ?? "—"}</div></div>
+                      <div class="tc"><div class="note">连接</div><div class="mono strong">{node.active_connections ?? "—"}</div></div>
                       {#if node.raw_health}
                         <div class="tc"><div class="note">延迟</div><div class="mono strong">{latency(node)}</div></div>
                       {/if}
@@ -970,7 +1042,7 @@
                           aria-label={tokenSecrets[row.id] ? "隐藏授权码" : "显示授权码"}
                           title={tokenSecrets[row.id] ? "隐藏授权码" : "显示授权码"}
                           aria-pressed={Boolean(tokenSecrets[row.id])}
-                          disabled={revealingTokenID === row.id}
+                          disabled={!canOperate || revealingTokenID === row.id}
                           on:click|stopPropagation={() => toggleTokenSecret(row.id)}
                         >
                           {#if tokenSecrets[row.id]}
@@ -1028,11 +1100,11 @@
                   <div class="fx ac gap12">
                     <span class={`dot ${dotClass(node.status)} bigdot`}></span>
                     <div>
-                      <div class="fx ac gap10"><span class="node-title">{node.id}</span><span class={`pill ${statusPill(node.status)}`}>{statusLabel(node.status)}</span><span class="tag">生产</span></div>
+                      <div class="fx ac gap10"><span class="node-title">{node.id}</span><span class={`pill ${statusPill(node.status)}`}>{statusLabel(node.status)}</span><span class="tag">{previewEnabled ? "演示" : "已登记"}</span></div>
                       <div class="note mono node-sub">日本手机出口 · Rakuten Mobile · zhreverse TCP/yamux</div>
                     </div>
                   </div>
-                  <div class="fx ac gap8"><button class="btn primary" on:click={() => openRotate(node)}>换 IP</button><button class="btn" disabled>重连隧道</button><button class="btn ghost" disabled>控制台 SSH</button></div>
+                  <div class="fx ac gap8"><button class="btn primary" disabled={!canRotate} on:click={() => openRotate(node)}>换 IP</button><button class="btn" disabled>重连隧道</button><button class="btn ghost" disabled>控制台 SSH</button></div>
                 </div>
                 <div class="kv flat">
                   <div class="kvc ipcard">
@@ -1054,7 +1126,7 @@
                         aria-label={exitIPSecrets[node.id] ? "隐藏出口 IP" : "显示出口 IP"}
                         title={exitIPSecrets[node.id] ? "隐藏出口 IP" : "显示出口 IP"}
                         aria-pressed={Boolean(exitIPSecrets[node.id])}
-                        disabled={revealingExitIPID === node.id}
+                        disabled={!canOperate || revealingExitIPID === node.id}
                         on:click|stopPropagation={() => toggleExitIP(node)}
                       >
                         {#if exitIPSecrets[node.id]}
@@ -1084,7 +1156,7 @@
         {:else if view === "clients"}
           <div class="fx ac jb">
             <div><div class="h1">在线客户端</div><div class="sub">实时租约 · lease TTL 30s · 一个 token 同时只允许一个源 IP</div></div>
-            <div class="fx ac gap6 muted client-count"><span class="livedot tiny"></span>{displayLeases.length} 个会话</div>
+            <div class="fx ac gap6 muted client-count">{#if dataReady}<span class="livedot tiny"></span>{displayLeases.length} 个会话{:else}会话状态未知{/if}</div>
           </div>
           <div class="card flush">
             <table class="tbl">
@@ -1101,7 +1173,7 @@
                           aria-label={tokenSecrets[row.token_id] ? "隐藏授权码" : "显示授权码"}
                           title={tokenSecrets[row.token_id] ? "隐藏授权码" : "显示授权码"}
                           aria-pressed={Boolean(tokenSecrets[row.token_id])}
-                          disabled={revealingTokenID === row.token_id}
+                          disabled={!canOperate || revealingTokenID === row.token_id}
                           on:click|stopPropagation={() => toggleTokenSecret(row.token_id)}
                         >
                           {#if tokenSecrets[row.token_id]}
@@ -1162,7 +1234,7 @@
             </div>
             <div class="warnbox fx ac gap8"><span class="dot warn"></span>触发后 45s 内将加锁,期间重复请求会返回 busy。</div>
           </div>
-          <div class="mft fx ac jend gap10"><button class="btn ghost" on:click={() => (modal = null)}>取消</button><button class="btn primary" on:click={confirmRotate}>确认换 IP</button></div>
+          <div class="mft fx ac jend gap10"><button class="btn ghost" on:click={() => (modal = null)}>取消</button><button class="btn primary" disabled={!canRotate} on:click={confirmRotate}>确认换 IP</button></div>
         </div>
       </div>
     {/if}

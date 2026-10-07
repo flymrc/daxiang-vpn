@@ -4,7 +4,7 @@
 
 2026-10-05 Hub `zhreverse` 已上线满额空闲 CONNECT 抢占（阈值 10 秒；并发上限仍为全局 96 / 每客户端 48）。生产校验与备份见[服务器访问文档](docs/20-operations/runbooks/server-access.md)；该次部署未更改手机。2026-10-06 只读复核确认控制地址 `10.66.0.101` 当前是 Pixel 7a，运行 `zhreverse/zhandroid-control`，TCP 尚无 TLS；以[本日资产基线](docs/90-history/worklogs/2026-10-06-zhvpn-asset-baseline.md)为准。
 
-2026-10-06 开始 [Steelman 重构](docs/30-implementation/zhvpn-steelman-refactor-plan.md)。2026-10-07 隔离开发分支继续接入真实引擎代理租约、GUI typed commands、设备 v2 签名 API/调度与受限执行者、reverse 双端 mTLS，并补本地安全扫描和可追踪开发构建；具体状态与平台边界见[运行时接线](docs/30-implementation/steelman-runtime-integration.md)。这些变化尚未发行或部署，未接管当前生产授权或退役 raw TCP。
+2026-10-06 开始 [Steelman 重构](docs/30-implementation/zhvpn-steelman-refactor-plan.md)。2026-10-07 隔离开发分支已接入真实引擎代理租约、GUI typed commands、设备 v2 签名 API/调度与受限执行者、reverse 双端 mTLS。第二波补齐兼容 HTTP 来源/预算、管理台真实状态与合同门禁、离线恢复规划和纯更新元数据验证；具体状态与平台边界见[运行时接线](docs/30-implementation/steelman-runtime-integration.md)及[第二波记录](docs/90-history/worklogs/2026-10-07-zhvpn-security-boundaries.md)。这些变化尚未发行或部署，未接管当前生产授权或退役 raw TCP。
 
 ## 目录
 

@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"zongheng-vpn/hub/internal/httpboundary"
 )
 
 type Server struct {
@@ -186,20 +188,26 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request, ingress Clien
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method_not_allowed"})
 		return
 	}
+	src, err := clientIPForIngress(r, ingress)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad_request"})
+		return
+	}
 
 	var req bootstrapRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad_request"})
+	if err := httpboundary.DecodeJSON(w, r, &req); err != nil {
+		status, code := httpboundary.DecodeError(err)
+		writeJSON(w, status, map[string]string{"error": code})
 		return
 	}
 
 	record, ok := s.store.Resolve(req.Token, time.Now())
 	if !ok {
-		log.Printf("bootstrap 拒绝 src=%s token=%q reason=invalid_token", clientIP(r), maskToken(req.Token))
+		log.Printf("bootstrap 拒绝 src=%s token=%q reason=invalid_token", src, maskToken(req.Token))
 		s.audit(AuditEvent{
 			OccurredAt: time.Now(),
 			Actor:      maskToken(req.Token),
-			SourceIP:   clientIP(r),
+			SourceIP:   src,
 			EventType:  "client.bootstrap",
 			Target:     "token:" + maskToken(req.Token),
 			DetailJSON: `{"reason":"invalid_token"}`,
@@ -209,7 +217,6 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request, ingress Clien
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_token"})
 		return
 	}
-	src := clientIP(r)
 	if !s.claimToken(req.Token, src, time.Now()) {
 		log.Printf("bootstrap 拒绝 src=%s token=%q client=%s reason=token_in_use", src, maskToken(req.Token), record.ClientName)
 		s.audit(AuditEvent{
@@ -632,14 +639,33 @@ func carrierCacheTTLFromEnv() time.Duration {
 }
 
 func (s *Server) RotateIP(w http.ResponseWriter, r *http.Request) {
+	s.rotateIP(w, r, ClientIngressCompat)
+}
+
+func (s *Server) RotateIPHandler(ingress ClientIngress) http.HandlerFunc {
+	if ingress != ClientIngressCompat && ingress != ClientIngressTrustedProxy {
+		panic("invalid client ingress: " + string(ingress))
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		s.rotateIP(w, r, ingress)
+	}
+}
+
+func (s *Server) rotateIP(w http.ResponseWriter, r *http.Request, ingress ClientIngress) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method_not_allowed"})
 		return
 	}
+	src, err := clientIPForIngress(r, ingress)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad_request"})
+		return
+	}
 
 	var req rotateIPRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad_request"})
+	if err := httpboundary.DecodeJSON(w, r, &req); err != nil {
+		status, code := httpboundary.DecodeError(err)
+		writeJSON(w, status, map[string]string{"error": code})
 		return
 	}
 	if req.DownSeconds == 0 {
@@ -649,7 +675,7 @@ func (s *Server) RotateIP(w http.ResponseWriter, r *http.Request) {
 		s.audit(AuditEvent{
 			OccurredAt: time.Now(),
 			Actor:      maskToken(req.Token),
-			SourceIP:   clientIP(r),
+			SourceIP:   src,
 			EventType:  "client.rotate_ip",
 			Target:     "egress:unknown",
 			DetailJSON: fmt.Sprintf(`{"down_seconds":%d}`, req.DownSeconds),
@@ -662,11 +688,11 @@ func (s *Server) RotateIP(w http.ResponseWriter, r *http.Request) {
 
 	record, ok := s.store.Resolve(req.Token, time.Now())
 	if !ok {
-		log.Printf("rotate-ip 拒绝 src=%s token=%q reason=invalid_token", clientIP(r), maskToken(req.Token))
+		log.Printf("rotate-ip 拒绝 src=%s token=%q reason=invalid_token", src, maskToken(req.Token))
 		s.audit(AuditEvent{
 			OccurredAt: time.Now(),
 			Actor:      maskToken(req.Token),
-			SourceIP:   clientIP(r),
+			SourceIP:   src,
 			EventType:  "client.rotate_ip",
 			Target:     "egress:unknown",
 			DetailJSON: `{"reason":"invalid_token"}`,
@@ -678,11 +704,11 @@ func (s *Server) RotateIP(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.RotateEgress(record.Egress, req.DownSeconds)
 	if errors.Is(err, ErrUnsupportedEgress) {
-		log.Printf("rotate-ip 拒绝 src=%s token=%q client=%s egress=%s reason=unsupported_egress", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name)
+		log.Printf("rotate-ip 拒绝 src=%s token=%q client=%s egress=%s reason=unsupported_egress", src, maskToken(req.Token), record.ClientName, record.Egress.Name)
 		s.audit(AuditEvent{
 			OccurredAt: time.Now(),
 			Actor:      record.ClientName,
-			SourceIP:   clientIP(r),
+			SourceIP:   src,
 			EventType:  "client.rotate_ip",
 			Target:     "egress:" + record.Egress.Name,
 			DetailJSON: `{"reason":"unsupported_egress"}`,
@@ -693,11 +719,11 @@ func (s *Server) RotateIP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, ErrRotateBusy) {
-		log.Printf("rotate-ip 跳过 src=%s token=%q client=%s egress=%s reason=busy retry_after_seconds=%d", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name, result.RetryAfterSeconds)
+		log.Printf("rotate-ip 跳过 src=%s token=%q client=%s egress=%s reason=busy retry_after_seconds=%d", src, maskToken(req.Token), record.ClientName, record.Egress.Name, result.RetryAfterSeconds)
 		s.audit(AuditEvent{
 			OccurredAt: time.Now(),
 			Actor:      record.ClientName,
-			SourceIP:   clientIP(r),
+			SourceIP:   src,
 			EventType:  "client.rotate_ip",
 			Target:     "egress:" + record.Egress.Name,
 			DetailJSON: fmt.Sprintf(`{"down_seconds":%d,"retry_after_seconds":%d}`, req.DownSeconds, result.RetryAfterSeconds),
@@ -714,11 +740,11 @@ func (s *Server) RotateIP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		log.Printf("rotate-ip 失败 src=%s token=%q client=%s egress=%s err=%v", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name, err)
+		log.Printf("rotate-ip 失败 src=%s token=%q client=%s egress=%s err=%v", src, maskToken(req.Token), record.ClientName, record.Egress.Name, err)
 		s.audit(AuditEvent{
 			OccurredAt: time.Now(),
 			Actor:      record.ClientName,
-			SourceIP:   clientIP(r),
+			SourceIP:   src,
 			EventType:  "client.rotate_ip",
 			Target:     "egress:" + record.Egress.Name,
 			DetailJSON: fmt.Sprintf(`{"down_seconds":%d}`, req.DownSeconds),
@@ -729,11 +755,11 @@ func (s *Server) RotateIP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("rotate-ip 触发 src=%s token=%q client=%s egress=%s down_seconds=%d lock_until=%s", clientIP(r), maskToken(req.Token), record.ClientName, record.Egress.Name, req.DownSeconds, result.LockUntil.Format(time.RFC3339))
+	log.Printf("rotate-ip 触发 src=%s token=%q client=%s egress=%s down_seconds=%d lock_until=%s", src, maskToken(req.Token), record.ClientName, record.Egress.Name, req.DownSeconds, result.LockUntil.Format(time.RFC3339))
 	s.audit(AuditEvent{
 		OccurredAt: time.Now(),
 		Actor:      record.ClientName,
-		SourceIP:   clientIP(r),
+		SourceIP:   src,
 		EventType:  "client.rotate_ip",
 		Target:     "egress:" + record.Egress.Name,
 		DetailJSON: fmt.Sprintf(`{"down_seconds":%d,"lock_until":%q}`, req.DownSeconds, result.LockUntil.Format(time.RFC3339)),
@@ -888,29 +914,20 @@ func splitHostPortDefault(value string, defaultPort string) (string, string) {
 	return value, defaultPort
 }
 
-// clientIP only trusts X-Forwarded-For from local/private reverse proxies.
-// Public clients connect directly today, so a client-supplied XFF must not
-// affect token lease ownership.
+// clientIP is the direct compatibility ingress: headers never choose its source.
 func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	remoteIP := net.ParseIP(strings.Trim(host, "[]"))
-	if remoteIP != nil && trustedForwarderIP(remoteIP) {
-		xff := r.Header.Get("X-Forwarded-For")
-		if i := indexComma(xff); i >= 0 {
-			xff = xff[:i]
-		}
-		if forwarded := trimSpace(xff); forwarded != "" {
-			return forwarded
-		}
-	}
-	return host
+	source, _ := httpboundary.ClientSource(r, httpboundary.Direct)
+	return source
 }
 
-func trustedForwarderIP(ip net.IP) bool {
-	return ip.IsLoopback() || ip.IsPrivate()
+func clientIPForIngress(r *http.Request, ingress ClientIngress) (string, error) {
+	policy := httpboundary.Direct
+	if ingress == ClientIngressTrustedProxy {
+		policy = httpboundary.LoopbackProxy
+	} else if ingress != ClientIngressCompat {
+		return "", errors.New("invalid client ingress")
+	}
+	return httpboundary.ClientSource(r, policy)
 }
 
 // maskToken 只保留首尾，避免把完整授权码写进日志。

@@ -500,6 +500,8 @@ NAT 来源：10.66.0.0/24
 
 ## 近期下一步
 
+2026-10-07 隔离开发新增共同 `httpboundary`、Admin runtime 校验及 canonical generator gate、共享身份公钥输入校验、离线恢复规划器和纯签名更新 verifier。HTTP 来源来自固定 listener/精确代理策略；Admin snapshot 有 generation/owner 防止权限失效后迟到响应复活。恢复规划器不执行 DB/WG 切换，update verifier 只返回 staging receipt；当前生产 listener、授权事实源、出口和 peer 没有因此变更。边界与未完成事项见[第二波合同](../30-implementation/steelman-http-admin-boundaries.md)及[运行时集成](../30-implementation/steelman-runtime-integration.md)。
+
 1. 保持 Android `zhreverse` 作为默认数据面。
 2. 确认新 token / bootstrap 配置默认指向 `10.66.0.1:18081`。
 3. 增加基于清单的配置渲染。

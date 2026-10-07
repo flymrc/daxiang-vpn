@@ -11,6 +11,7 @@ import (
 	dbstore "zongheng-vpn/hub/admin/internal/db"
 	webui "zongheng-vpn/hub/admin/web"
 	"zongheng-vpn/hub/internal/auth"
+	"zongheng-vpn/hub/internal/httpboundary"
 )
 
 const sessionCookieName = "zhhub_admin_session"
@@ -77,7 +78,14 @@ func (s *Server) Close() error {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.mux.ServeHTTP(w, r)
+	// This server is the explicitly registered Caddy/admin listener. Its policy
+	// does not derive listener identity from request headers or private source IPs.
+	verified, err := httpboundary.RequestWithSource(r, httpboundary.LoopbackProxy)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request", "")
+		return
+	}
+	s.mux.ServeHTTP(w, verified)
 }
 
 func (s *Server) routes() {

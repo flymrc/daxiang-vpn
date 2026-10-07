@@ -56,3 +56,30 @@ func TestClientMuxAssignsBootstrapIngress(t *testing.T) {
 		})
 	}
 }
+
+func TestClientMuxAssignsRotateIngress(t *testing.T) {
+	for _, ingress := range []auth.ClientIngress{auth.ClientIngressCompat, auth.ClientIngressTrustedProxy} {
+		t.Run(string(ingress), func(t *testing.T) {
+			store := &auth.TokenStore{Tokens: map[string]auth.TokenRecord{
+				"ZH-OK": {Enabled: true, ClientName: "test-client", Egress: auth.Egress{Name: "jp-android-01"}},
+			}}
+			server := auth.NewServer(store)
+			server.SetRotateTrigger(func(string, int) error { return nil })
+			var event auth.AuditEvent
+			server.SetAuditSink(func(v auth.AuditEvent) { event = v })
+			req := httptest.NewRequest(http.MethodPost, "/api/client/rotate-ip", bytes.NewBufferString(`{"token":"ZH-OK"}`))
+			req.RemoteAddr = "127.0.0.1:1"
+			req.Header.Set("X-Forwarded-For", "203.0.113.20")
+			req.Header.Set("X-ZHVPN-Ingress", "trusted_proxy")
+			rec := httptest.NewRecorder()
+			clientMux(server, ingress).ServeHTTP(rec, req)
+			want := "127.0.0.1"
+			if ingress == auth.ClientIngressTrustedProxy {
+				want = "203.0.113.20"
+			}
+			if rec.Code != http.StatusOK || event.SourceIP != want {
+				t.Fatalf("status=%d source=%q, want %q", rec.Code, event.SourceIP, want)
+			}
+		})
+	}
+}

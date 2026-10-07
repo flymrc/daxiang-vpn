@@ -49,6 +49,16 @@ reverse 的实际双端 `tcp-tls`、角色 URI/Hub hostname/登记 egress 与 le
 
 本地测试不改变既有生产安全 campaign、30 天观察窗或 NO-GO。Mac 实机、真实 WinINET、手机 canary、签名/公证与更新链、当前客户授权迁移、长期存储维护和最终九维审计仍须按 [checkbox 计划](zhvpn-steelman-refactor-plan.md)验收。
 
+## 第二波：兼容边界与离线能力
+
+基于本地提交 `072bbc4` 继续实现共同 HTTP 来源/读取预算、Admin generation 状态与 runtime consumer、canonical Admin 漂移门禁及两棵 npm tree 扫描。具体默认值和 legacy 外部执行/页内 mutation 的限制见 [HTTP/Admin 合同](steelman-http-admin-boundaries.md)。
+
+`shared/signingkey` 统一 device Ed25519 公钥和可信 update ring 的非 canonical/small-order 输入拒绝。纯 `shared/updateverify` 只校验签名 metadata 与产物，返回 `verified_for_staging`；安装、水位持久化和 release 签名仍未接入。[更新边界](trusted-update-metadata-verifier.md)。
+
+`zhhub-device-restore-plan` 只比较两个离线 authority snapshot 与 caller 核验 checkpoint；源身份全程固定，查询受保护 scratch 副本，输出不含凭据或路径。时间、字段/JSON 资源预算与 immutable negative facts 严格核验，仍恒 `ready_to_restore=false`；实际最新事实保管链、现场切换/恢复未完成。[恢复边界](device-authority-offline-restore-plan.md)。
+
+本轮包含真实 Chrome 编译 Admin 的合成 API 回归及独立恶劣返回顺序验证；它不能代替生产 Admin 或真实客户代理验收。完整独立发现、修复和证据见 [第二波 worklog](../90-history/worklogs/2026-10-07-zhvpn-security-boundaries.md)。
+
 ## 依赖扫描的证据层级
 
 本轮使用 Go 1.26.7、govulncheck 1.8.0 与 cargo-audit 0.22.2。Windows/Linux/Darwin 的 amd64/arm64 源码扫描分别登记，不能外推其他 build tags 或架构。前端 npm audit 检查包括 devDependencies；Rust 所有已知 vulnerability 均阻断，warning 必须逐条有限期处置。当前 5 个 UNIC unmaintained warning 来自 Tauri URL pattern 依赖；proc-macro-error unmaintained 与 glib unsound 仅在对应 Windows/macOS target tree 不包含时允许。全部例外到 2026-11-06，不允许例外覆盖新的漏洞、实际目标包含或更强可达证据。

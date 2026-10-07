@@ -1,4 +1,5 @@
 import type { components } from "./openapi";
+import * as validate from "./validation";
 
 export type AuthMe = components["schemas"]["AuthMeResponse"];
 export type Overview = components["schemas"]["OverviewResponse"];
@@ -24,7 +25,7 @@ export class ApiError extends Error {
 export class AdminApi {
   csrfToken = "";
 
-  async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  async request<T>(path: string, init: RequestInit = {}, allowBusy = false): Promise<T> {
     const method = init.method || "GET";
     const headers = new Headers(init.headers);
     headers.set("Accept", "application/json");
@@ -44,18 +45,21 @@ export class AdminApi {
       return undefined as T;
     }
     const text = await res.text();
-    const data = text ? JSON.parse(text) : {};
-    if (!res.ok) {
-      throw new ApiError(res.status, data.error || "request_failed");
+    let data: unknown;
+    try { data = text ? JSON.parse(text) : {}; }
+    catch { throw new ApiError(res.ok ? 502 : res.status, "response_invalid"); }
+    const result = data !== null && typeof data === "object" ? data as Record<string, unknown> : {};
+    if (!res.ok && !(allowBusy && res.status === 409 && result.status === "busy")) {
+      throw new ApiError(res.status, typeof result.error === "string" ? result.error : "request_failed");
     }
     return data as T;
   }
 
   async login(username: string, password: string): Promise<AuthMe> {
-    const me = await this.request<AuthMe>("/auth/login", {
+    const me = validate.session(await this.request<AuthMe>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ username, password }),
-    });
+    }));
     this.csrfToken = me.csrf_token;
     return me;
   }
@@ -66,7 +70,7 @@ export class AdminApi {
   }
 
   async me(): Promise<AuthMe> {
-    const me = await this.request<AuthMe>("/auth/me");
+    const me = validate.session(await this.request<AuthMe>("/auth/me"));
     this.csrfToken = me.csrf_token;
     return me;
   }
@@ -103,6 +107,6 @@ export class AdminApi {
     return this.request<RotateIPResponse>(`/egress/${encodeURIComponent(egressId)}/rotate-ip`, {
       method: "POST",
       body: JSON.stringify({ down_seconds: downSeconds }),
-    });
+    }, true);
   }
 }

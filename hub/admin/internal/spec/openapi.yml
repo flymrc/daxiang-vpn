@@ -21,6 +21,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthMeResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '413':
+          $ref: '#/components/responses/Error'
         '401':
           $ref: '#/components/responses/Error'
         '429':
@@ -209,6 +213,8 @@ paths:
         '401':
           $ref: '#/components/responses/Error'
         '403':
+          $ref: '#/components/responses/Error'
+        '413':
           $ref: '#/components/responses/Error'
         '409':
           description: Egress is already rotating.

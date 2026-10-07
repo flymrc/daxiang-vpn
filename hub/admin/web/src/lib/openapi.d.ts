@@ -426,7 +426,9 @@ export interface operations {
                     "application/json": components["schemas"]["AuthMeResponse"];
                 };
             };
+            400: components["responses"]["Error"];
             401: components["responses"]["Error"];
+            413: components["responses"]["Error"];
             429: components["responses"]["Error"];
         };
     };
@@ -708,6 +710,7 @@ export interface operations {
                     "application/json": components["schemas"]["RotateIPResponse"];
                 };
             };
+            413: components["responses"]["Error"];
         };
     };
 }

@@ -14,6 +14,7 @@ import (
 	adminpanel "zongheng-vpn/hub/admin"
 	"zongheng-vpn/hub/internal/auth"
 	"zongheng-vpn/hub/internal/deviceapi"
+	"zongheng-vpn/hub/internal/httpboundary"
 )
 
 func main() {
@@ -55,7 +56,7 @@ func main() {
 		defer adminServer.Close()
 		go func() {
 			log.Printf("zhhub 控制台已启动：%s", adminConfig.ListenAddr)
-			if err := http.ListenAndServe(adminConfig.ListenAddr, adminServer); err != nil {
+			if err := httpboundary.NewServer(adminConfig.ListenAddr, adminServer).ListenAndServe(); err != nil {
 				log.Fatalf("控制台服务退出：%v", err)
 			}
 		}()
@@ -70,11 +71,11 @@ func main() {
 	}
 	go func() {
 		log.Printf("zhhub 兼容入口已启动：%s", compatListenAddr)
-		errCh <- http.ListenAndServe(compatListenAddr, compatMux)
+		errCh <- httpboundary.NewServer(compatListenAddr, compatMux).ListenAndServe()
 	}()
 	go func() {
 		log.Printf("zhhub 可信代理入口已启动：%s", trustedProxyListenAddr)
-		errCh <- http.ListenAndServe(trustedProxyListenAddr, trustedProxyMux)
+		errCh <- httpboundary.NewServer(trustedProxyListenAddr, trustedProxyMux).ListenAndServe()
 	}()
 	log.Fatalf("客户端服务退出：%v", <-errCh)
 }
@@ -104,7 +105,7 @@ func clientMux(server *auth.Server, ingress auth.ClientIngress) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", server.Health)
 	mux.HandleFunc("/api/client/bootstrap", server.BootstrapHandler(ingress))
-	mux.HandleFunc("/api/client/rotate-ip", server.RotateIP)
+	mux.HandleFunc("/api/client/rotate-ip", server.RotateIPHandler(ingress))
 	return mux
 }
 

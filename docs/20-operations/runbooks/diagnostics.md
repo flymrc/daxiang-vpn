@@ -483,7 +483,7 @@ wg show wg0 endpoints
 
 - `bootstrap 拒绝 ... reason=token_in_use` 表示同 token 在不同公网来源的 30 秒租约内被拒绝。
 - `wg show wg0 endpoints` 里客户 peer 的 endpoint 是当前 WireGuard 最后来源。若这个 IP 等于本机直连公网 IP，不能单独判断为异地登录。
-- 当前实现对部分私网来源也接受 `X-Forwarded-For`，不等于这些来源都是真正可信反代；已知 WG 客户可伪造租约来源的风险仍待 P4 修复。不能用 XFF 推断设备归属；未来只在明确 trusted listener 和明确代理边界赋值。
+- 现有生产版本曾对部分私网来源接受 `X-Forwarded-For`，不能据此推断设备归属。10-07 隔离源码已修复：compat 只取 TCP 来源；trusted/Admin 仅信任精确 loopback 代理并校验完整 XFF 链，详见[HTTP 边界](../../30-implementation/steelman-http-admin-boundaries.md)。修复未部署，生产排查仍先核对运行版本和 Caddy。
 
 ---
 
@@ -503,6 +503,16 @@ pwsh -NoProfile -File scripts/build-steelman-dev.ps1 -OutputDirectory <全新开
 新 Hub v2 服务默认关闭；必须显式配置独立客户 interface、绝对 WG/helper 路径和 `ZHHUB_DEVICE_SUPERVISOR_BIN`。Linux supervisor 持同一执行 fence，Hub 崩溃时先关闭子树再释放；helper 自身崩溃且发现不能证明归属的 detached child 时保持 fence/degraded，需要受控人工核验，不能删 lock 文件或整体恢复旧 WG conf 解堵。此流程没有接管当前 `wg0` 或修改 RDP/管理员/手机 peer。
 
 ---
+
+## 4.3 第二波本地边界（尚未部署）
+
+legacy/trusted/Admin 源码默认使用 header/body 16 KiB、header 5s、read 10s、write/idle 30s。413 是正文超限，400 包括尾随 JSON 或错误 trusted XFF；请求失败不得有租约副作用。HTTP write timeout 不证明外部命令停止。核对当前部署版本和实际 Caddy 来源后再应用这些诊断，不能从开发文档改写线上事实。
+
+Admin npm 与 desktop 分别扫描，统一 gate 显式纳入 dev/optional/peer；`NPM_CONFIG_OMIT=dev` 的单独 audit 结果不足以验收。Admin 依赖先 `npm ci`，Node 24 为本次运行基线。管理台“未知”应保留未知；rotate 未确认后不要重试，旧入口尚无跨页 durable receipt。
+
+离线恢复先取得受保护完整快照和独立核验的 latest checkpoint，再按[规划合同](../../30-implementation/device-authority-offline-restore-plan.md)执行。程序仅比较和输出计划，源只读但会创建本次私有 scratch 副本；不执行恢复 SQL/WG，`ready_to_restore=false`。禁止把旧 snapshot 的 revoke/outbox 已完成状态当作现场数据面确认。
+
+更新 verifier 只验证 staging metadata/实际产物，不安装、不保存 watermark；不得把未签名开发包或一份缓存 receipt 当作正式更新批准。边界见[可信更新合同](../../30-implementation/trusted-update-metadata-verifier.md)。
 
 ## 5. 历史基线（2026-06-03 实测,Mac 出口已弃用）
 

@@ -4,6 +4,7 @@
 param([Parameter(Mandatory=$true)][string]$EvidenceDirectory)
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+. (Join-Path $PSScriptRoot 'npm-audit-policy.ps1')
 $taskEvidence = [IO.Path]::GetFullPath($EvidenceDirectory)
 if (Test-Path -LiteralPath $taskEvidence) { throw 'Use a fresh security evidence directory; old scanner reports must not be reused.' }
 New-Item -ItemType Directory -Force -Path $taskEvidence | Out-Null
@@ -31,12 +32,11 @@ try {
     } finally {
         foreach ($key in $previous.Keys) { [Environment]::SetEnvironmentVariable($key,$previous[$key],'Process') }
     }
+    foreach ($frontend in @(@{path='clients/desktop-gui';report='npm-audit.json'},@{path='hub/admin/web';report='npm-audit-admin.json'})) {
+        Invoke-ZhNpmAudit -ProjectDirectory (Join-Path $repoRoot $frontend.path) -ReportPath (Join-Path $taskEvidence $frontend.report)
+    }
     Push-Location 'clients/desktop-gui'
     try {
-        & npm audit --json 1> (Join-Path $taskEvidence 'npm-audit.json')
-        if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency audit failed; raw report retained.' }
-        & python (Join-Path $PSScriptRoot 'npm-security-report.py') (Join-Path $taskEvidence 'npm-audit.json')
-        if ($LASTEXITCODE -ne 0) { throw 'Frontend audit evidence validation failed.' }
         if (-not (Get-Command cargo-audit -ErrorAction SilentlyContinue)) { throw 'cargo-audit missing; install the reviewed locked scanner before release.' }
         & cargo audit --file src-tauri/Cargo.lock --json 1> (Join-Path $taskEvidence 'cargo-audit.json')
         if ($LASTEXITCODE -ne 0) { throw 'Rust dependency audit failed; raw report retained.' }

@@ -3,13 +3,13 @@ package api
 import (
 	"context"
 	"crypto/subtle"
-	"encoding/json"
 	"net/http"
 	"time"
 
 	dbgen "zongheng-vpn/hub/admin/internal/db/generated"
 	"zongheng-vpn/hub/admin/internal/security"
 	generated "zongheng-vpn/hub/admin/internal/spec/generated"
+	"zongheng-vpn/hub/internal/httpboundary"
 )
 
 type sessionContext struct {
@@ -22,8 +22,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req generated.LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "bad_request", "")
+	if err := httpboundary.DecodeJSON(w, r, &req); err != nil {
+		status, code := httpboundary.DecodeError(err)
+		writeError(w, status, code, "")
 		return
 	}
 	req.Username = truncateText(req.Username, maxAdminUsernameBytes)

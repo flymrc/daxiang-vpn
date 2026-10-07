@@ -6,13 +6,13 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"net"
 	"net/http"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	generated "zongheng-vpn/hub/admin/internal/spec/generated"
+	"zongheng-vpn/hub/internal/httpboundary"
 )
 
 const (
@@ -37,18 +37,7 @@ func writeError(w http.ResponseWriter, status int, code string, message string) 
 }
 
 func requestIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	remoteIP := net.ParseIP(strings.Trim(host, "[]"))
-	if remoteIP != nil && (remoteIP.IsLoopback() || remoteIP.IsPrivate()) {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			first, _, _ := strings.Cut(xff, ",")
-			return truncateText(first, maxSourceIPBytes)
-		}
-	}
-	return truncateText(host, maxSourceIPBytes)
+	return httpboundary.SourceFromContext(r)
 }
 
 func randomHex(bytes int) (string, error) {

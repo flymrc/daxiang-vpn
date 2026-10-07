@@ -67,6 +67,9 @@ Hub 管理控制台 v1 作为 `zhhub` 第二个 listener 运行,本机监听 `12
 
 - [Steelman 重构 checkbox 计划](30-implementation/zhvpn-steelman-refactor-plan.md)
 - [2026-10-07 运行时接线与验证边界](30-implementation/steelman-runtime-integration.md)
+- [Hub HTTP 与管理台边界](30-implementation/steelman-http-admin-boundaries.md)
+- [设备 authority 离线恢复规划](30-implementation/device-authority-offline-restore-plan.md)
+- [可信更新元数据 staging 验证](30-implementation/trusted-update-metadata-verifier.md)
 - [设备 v2 CLI 消费者](30-implementation/device-client-v2.md)
 - [桌面登录与全新安装边界](30-implementation/desktop-fresh-install-boundary.md)
 - [客户端实例与代理恢复合同](30-implementation/client-runtime-safety-contract.md)
@@ -96,6 +99,7 @@ Hub 管理控制台 v1 作为 `zhhub` 第二个 listener 运行,本机监听 `12
 ## 90 History
 
 - [2026-10-07 运行时接线与独立审计](90-history/worklogs/2026-10-07-zhvpn-runtime-integration.md)
+- [2026-10-07 第二波安全与管理台边界](90-history/worklogs/2026-10-07-zhvpn-security-boundaries.md)
 - [2026-10-07 桌面独立复核](90-history/worklogs/2026-10-07-desktop-independent-review.md)
 - [2026-10-06 CLI 合同、授权与代理租约基础](90-history/worklogs/2026-10-06-zhvpn-contracts-foundations.md)
 - [2026-10-06 Steelman 客户端安全首切片](90-history/worklogs/2026-10-06-zhvpn-runtime-safety-slice.md)

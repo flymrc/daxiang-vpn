@@ -18,15 +18,20 @@ function Invoke-Gate {
 Push-Location $repoRoot
 try {
     Invoke-Gate 'Generated CLI contracts' 'go' @('run', './shared/contracts/cmd/contractgen', '-check')
+    Invoke-Gate 'Trusted update metadata schema' 'go' @('run', './shared/updateverify/cmd/schemagen', '-check')
     & (Join-Path $PSScriptRoot 'check-device-contract.ps1')
     if ($LASTEXITCODE -ne 0) { throw 'Device OpenAPI contract gate failed.' }
+    & (Join-Path $PSScriptRoot 'check-admin-contract.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'Admin OpenAPI/sqlc contract gate failed.' }
     Invoke-Gate 'Go tests (product build tags)' 'go' @('test', '-tags', 'with_gvisor', './...')
     Invoke-Gate 'Go vet' 'go' @('vet', '-tags', 'with_gvisor', './...')
     Invoke-Gate 'Client and reverse race tests' 'go' @('test', '-race', '-tags', 'with_gvisor', './clients/cli/...', './shared/...', './egress/reverse')
     Invoke-Gate 'Device authority/API race tests' 'go' @('test', '-race', './hub/internal/deviceauth', './hub/internal/deviceapi')
+    Invoke-Gate 'Hub compatibility and admin race tests' 'go' @('test', '-race', './hub/internal/auth', './hub/admin/...', './hub/internal/httpboundary')
     Invoke-Gate 'Actual CLI and Hub TLS interoperability' 'go' @('test', '-race', '-tags', 'integration', './hub/internal/deviceapi', '-run', 'TestRealCLIAndHubTLSRecoverLostMutationResponses', '-count=1')
     Invoke-Gate 'Python SDK consumers' 'python' @('-m', 'unittest', 'discover', '-s', 'sdk/python/tests', '-v')
     Invoke-Gate 'Security evidence parser' 'python' @('-m', 'unittest', 'discover', '-s', 'scripts/tests', '-v')
+    Invoke-Gate 'Real npm audit refuses inherited dev omission' 'pwsh' @('-NoProfile', '-File', 'scripts/test-npm-audit-policy.ps1')
     Invoke-Gate 'CLI builders refuse unsafe release and source changes' 'pwsh' @('-NoProfile', '-File', 'scripts/test-cli-build.ps1')
     Invoke-Gate 'Inner desktop builder refuses security failure' 'pwsh' @('-NoProfile', '-File', 'clients/desktop-gui/scripts/check-build-failure.ps1')
     if ($IsWindows) {
@@ -55,6 +60,13 @@ try {
             if ($hadTauriConfig) { $env:TAURI_CONFIG = $previousTauriConfig }
             else { Remove-Item Env:TAURI_CONFIG -ErrorAction SilentlyContinue }
         }
+    }
+    finally { Pop-Location }
+    Push-Location 'hub/admin/web'
+    try {
+        if (-not (Test-Path -LiteralPath 'node_modules')) { throw 'Admin dependencies missing; run npm ci in hub/admin/web.' }
+        Invoke-Gate 'Admin types and Svelte' 'npm' @('run', 'check')
+        Invoke-Gate 'Admin runtime contract consumers' 'npm' @('test')
     }
     finally { Pop-Location }
     Write-Host 'Client safety gates passed. Release signing and production acceptance remain separate.'

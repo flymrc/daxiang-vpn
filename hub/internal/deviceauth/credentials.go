@@ -14,7 +14,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
 	"zongheng-vpn/shared/devicecontract"
+	"zongheng-vpn/shared/signingkey"
 )
 
 // Activation is returned only to a trusted local issuer. Its random secret is
@@ -61,12 +63,10 @@ func authKey(key string) (ed25519.PublicKey, error) {
 	if err != nil || len(b) != ed25519.PublicKeySize || base64.StdEncoding.EncodeToString(b) != key {
 		return nil, ErrInvalid
 	}
-	for _, v := range b {
-		if v != 0 {
-			return ed25519.PublicKey(b), nil
-		}
+	if !signingkey.ValidEd25519PublicKey(b) {
+		return nil, ErrInvalid
 	}
-	return nil, ErrInvalid
+	return ed25519.PublicKey(b), nil
 }
 func signatureOK(key string, r SignedRequest, signature string) bool {
 	return proofOK(key, SigningBytes(r), signature)

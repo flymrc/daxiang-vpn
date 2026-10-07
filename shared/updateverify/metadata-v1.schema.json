@@ -1,0 +1,147 @@
+{
+  "$defs": {
+    "metadata": {
+      "additionalProperties": false,
+      "properties": {
+        "architecture": {
+          "enum": [
+            "amd64",
+            "arm64"
+          ],
+          "type": "string"
+        },
+        "artifact_name": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "type": "string"
+        },
+        "artifact_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        "artifact_size": {
+          "maximum": 8589934592,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "channel": {
+          "enum": [
+            "stable",
+            "beta",
+            "development"
+          ],
+          "type": "string"
+        },
+        "expires_at": {
+          "maximum": 253402300799,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "issued_at": {
+          "maximum": 253402300799,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "platform": {
+          "enum": [
+            "windows",
+            "darwin",
+            "linux",
+            "android"
+          ],
+          "type": "string"
+        },
+        "product": {
+          "enum": [
+            "cli",
+            "desktop-gui",
+            "python-sdk",
+            "hub",
+            "reverse",
+            "android-control"
+          ],
+          "type": "string"
+        },
+        "protocol": {
+          "maximum": 1024,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "release_sequence": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "security_floor": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "security_version": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "source_commit": {
+          "pattern": "^[a-f0-9]{40}$",
+          "type": "string"
+        },
+        "version": {
+          "description": "Strict SemVer: core components \u003c= uint32 max; each prerelease/build identifier \u003c= 64 bytes. Stable channel refuses prerelease. Build metadata has no precedence.",
+          "maxLength": 128,
+          "minLength": 5,
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)){0,7}))?(\\+([0-9A-Za-z-]+)(\\.[0-9A-Za-z-]+){0,7})?$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "product",
+        "platform",
+        "architecture",
+        "channel",
+        "version",
+        "protocol",
+        "source_commit",
+        "artifact_name",
+        "artifact_size",
+        "artifact_sha256",
+        "issued_at",
+        "expires_at",
+        "release_sequence",
+        "security_version",
+        "security_floor"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:zhvpn:update-metadata:v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "All keys are exact case, required and non-null. Duplicate keys and trailing data are refused. Metadata must equal CanonicalMetadata bytes in Go struct order. Ed25519 framing: domain zhvpn/update-metadata/v1 followed by NUL, uint32BE key_id byte length/key_id, uint32BE metadata byte length/metadata. Verify adds pinned key/scope/protocol/time/floor/replay checks and actual size/SHA256. Schema validation alone never grants staging.",
+  "properties": {
+    "key_id": {
+      "pattern": "^[a-z][a-z0-9-]{0,63}$",
+      "type": "string"
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "signature": {
+      "pattern": "^[a-f0-9]{128}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "key_id",
+    "metadata",
+    "signature"
+  ],
+  "title": "zhvpn signed single-artifact update envelope v1",
+  "type": "object",
+  "x-zongheng-max-envelope-bytes": 24576,
+  "x-zongheng-max-metadata-bytes": 16384
+}

@@ -15,6 +15,7 @@ import (
 
 	generated "zongheng-vpn/hub/admin/internal/spec/generated"
 	"zongheng-vpn/hub/internal/auth"
+	"zongheng-vpn/hub/internal/httpboundary"
 )
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -223,8 +224,9 @@ func (s *Server) handleRotateIP(w http.ResponseWriter, r *http.Request, sc sessi
 		return
 	}
 	var req generated.RotateIPRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "bad_request", "")
+	if err := httpboundary.DecodeJSON(w, r, &req); err != nil {
+		status, code := httpboundary.DecodeError(err)
+		writeError(w, status, code, "")
 		return
 	}
 	downSeconds := 8

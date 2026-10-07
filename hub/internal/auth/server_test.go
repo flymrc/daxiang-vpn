@@ -60,11 +60,11 @@ func TestClientIPIgnoresSpoofedForwardedForFromPublicClient(t *testing.T) {
 func TestClientIPTrustsForwardedForFromLocalProxy(t *testing.T) {
 	req := &http.Request{
 		RemoteAddr: "127.0.0.1:54321",
-		Header:     http.Header{"X-Forwarded-For": []string{"203.0.113.20, 10.0.0.1"}},
+		Header:     http.Header{"X-Forwarded-For": []string{"203.0.113.20, 127.0.0.1"}},
 	}
 
-	if got := clientIP(req); got != "203.0.113.20" {
-		t.Fatalf("clientIP() = %q, want forwarded source", got)
+	if got, err := clientIPForIngress(req, ClientIngressTrustedProxy); err != nil || got != "203.0.113.20" {
+		t.Fatalf("trusted source = %q, err = %v, want forwarded source", got, err)
 	}
 }
 
