@@ -548,6 +548,16 @@ observer gap 和旧负事实不因 clean restart、后来 secure、普通 audit 
 
 本地Linux验收运行 `sh scripts/check-proxy-barrier-linux.sh`，需显式可信Go PATH、unshare/ip/wg与内核WireGuard；能力缺失应非零失败。原生fixture只在自己创建的user/network namespace改路由/peer，不接触宿主或生产。Windows统一门禁另验共享race/schema和消费者；两种收据分别记录，详见[合同](../../30-implementation/device-proxy-startup-barrier.md)。
 
+## 4.8 客户端日志与派发fence（第八波开发源码，未发行）
+
+普通 `zhvpn status --json --no-ip-check` 返回独立logging_state；旧engine/无法取得同实例可信响应/文件IO在途为unknown，degraded只给固定logging_error_code。运行中日志失败不代表代理或WG失败，也不自动停止引擎。status不会为日志观测隐式bootstrap。healthy不保证完整历史或crash前末条已flush。
+
+新专用child仅写自己的 `logs/engine-events-v1`，4槽和owner合计最多1 MiB，原始消息不保存；旧日志仍保留，需要人工按归属处理，不能把整个logs目录当作新配额范围。`engine_log_open/namespace` 先检查当前版本、owner/权限/单link/目录身份和未知条目，不自动chmod或删除marker重新认领。`queue_overflow/shutdown/write/sync` 为sticky；避免通过删锁/日志假装恢复正常，不粘贴私钥、control_secret或完整配置。
+
+正常Stop须在logger唯一worker回收后才释放旧生命周期锁；文件IO卡住时日志状态和控制接口不等磁盘锁，已授权Stop/启动lease取消后的专用child3秒自退出监督覆盖外层收尾。BeforeStop恢复失败仍保留引擎，不启用强退出。固定错误类别是安全诊断，不能从没有原始栈推定具体磁盘故障原因。
+
+受管proxy future/clear deadline在取消后拒绝，旧许可迟到完成会修复past；closed ACK需要真实Close与先前permit完成。此前获准write的kernel在途bytes不可撤回，yamux内部stream/timer回收和contextual Open仍独立问题。排查保持quarantine与retained流，不用关闭整个session绕过。正式本地门禁含同源event schema检查，Linux门禁另含本轮日志store/专用test child/普通库保持原行为的原生测试，不执行尚未支持的Linux客户端后台launch；平台结果见[第八波worklog](../../90-history/worklogs/2026-10-07-client-engine-observability.md)。
+
 ## 5. 历史基线（2026-06-03 实测,Mac 出口已弃用）
 
 留作对照，知道「正常」长什么样：

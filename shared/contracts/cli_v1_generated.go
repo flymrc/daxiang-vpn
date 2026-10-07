@@ -17,6 +17,8 @@ type Status struct {
 	ConfigGeneration       string `json:"config_generation,omitempty"`
 	ControlProtocolVersion int    `json:"control_protocol_version,omitempty"`
 	PortOccupied           bool   `json:"port_occupied,omitempty"`
+	LoggingState           string `json:"logging_state,omitempty"`
+	LoggingErrorCode       string `json:"logging_error_code,omitempty"`
 	ContractVersion        int    `json:"contract_version,omitempty"`
 }
 

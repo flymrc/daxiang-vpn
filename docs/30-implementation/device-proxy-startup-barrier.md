@@ -1,6 +1,6 @@
 # v2 真实代理启动屏障
 
-2026-10-07，第七波隔离开发实现；生产尚未开启。对应[实施清单](device-proxy-startup-barrier-plan.md)与[工作记录](../90-history/worklogs/2026-10-07-device-proxy-startup-barrier.md)。本合同新增内部 Go 控制协议和受保护文件，不改 Device HTTP/OpenAPI 或数据库 schema。
+2026-10-07，第七波隔离开发实现，第八波补[派发fence](proxy-dispatch-fence-plan.md)；生产尚未开启。对应[实施清单](device-proxy-startup-barrier-plan.md)与[工作记录](../90-history/worklogs/2026-10-07-device-proxy-startup-barrier.md)。本合同新增内部 Go 控制协议和受保护文件，不改 Device HTTP/OpenAPI 或数据库 schema。
 
 ## 归属和固定范围
 
@@ -18,7 +18,9 @@ zhreverse 新增 `--proxy-gate-policy-file` / `--proxy-gate-control-socket`（YA
 
 普通 CONNECT、striped CONNECT、诊断 fetch 在原 CIDR 门之后、限额/上游 command 派发之前获得 Admission。受管来源默认关闭；保留来源沿用原 CIDR/业务限制。真正 net/http accepted socket 与 yamux upstream 登记到同一 Admission，upstream 必须先 Reserve 再 OpenStream、Attach 或 Abort；失效后的迟到连接不能发送 command bytes，未完成预约也阻断新 owner 的 closed ACK。受管来源不使用 tunnel-bench 诊断派发入口，保留来源的既有诊断继续可用。
 
-上述迟到拒绝指Attach/请求已观察到取消或ErrClosed，以及closed ACK后旧登记流不再派发。ctx.Err检查与后续SetDeadline/command写入尚无原子write fence；取消可发生在检查后，仍有在途command或deadline覆写窗口，其资源继续归原quarantine。不能将invalidate时刻承诺为瞬时零在途bytes；严格派发fence与撤销SLA留后续transport子片。
+第八波 `AttachFenced` 同时交接已预留连接和fence，避免先wrap后Attach的ownership窗口。managed上游command/relay Write和所有deadline更新通过同一Gate决策锁取得有限permit，网络IO不持该锁；invalidate后不发新Write或future/clear deadline permit。已获deadline permit但取消后迟到完成的update先修复past再返回ErrClosed，后续command不可派发。每conn最多1个write、1个普通deadline和1个revoker deadline，额外普通调用立即ErrCapacity，不形成无界等待队列；scope外返回原连接。
+
+许可获取与invalidate的顺序是可证明边界。取消前已获Write许可是在途IO，不能撤回内核已提交bytes，也不能承诺invalidate瞬时零流量。Close先关闭本conn许可，执行past deadline/真实raw Close，并等待先前permit完成；只有全部返回才释放登记，公开Release/Untrack不能提前擦掉fenced预算。清理未知仍归原quarantine，无closed ACK和freshowner。严格持续撤销SLA与全部数据面仍留后续工作。
 
 Linux 控制 UDS 位于当前owner的私有目录（建议0700，无group/other权限）；校验路径归属、固定namespace和双端peer credentials。controller UID属于安装合同，当前receiver/controller必须使用同一有效UID，Policy.ControllerUID须等于各自os.Geteuid()，不能用配置授权另一个UID。receiver发新session/nonce，绑定完整Policy digest；controller单调sequence、精确有限消息不允许重放/旧owner/迟到grant。UDS不提供远程管理员API；Windows/Darwin hosting返回unsupported。
 
@@ -37,7 +39,7 @@ Tick 返回 nil 不是 readiness。expiry 发生在 Snapshot 后可能新增 rem
 
 receiver观察到controller EOF、租约到期或坏消息后立即invalidate，取消登记context、设置全部登记socket deadline，拒绝受管新请求。最多4096 Admissions、每项4个资源（含预约）、一个有限cleanup batch、16个cleanup workers。Close返回只表示失效；AwaitClosed成功才确认本批登记连接的Close调用与待创建预约完成。yamux FIN物理发送受阻时可超过1s；控制端无closed ACK、返回 `proxy_gate_cleanup_unknown` 或连接失败，保持quarantine，不允许通过重连/重复Close新建无界任务或重新放行。外部retained stream和整个reverse session不因此关闭；reverse进程死亡则自然断所有旧socket。
 
-Admission 容量只约束 gate 登记，不覆盖所有 HTTP Accept/等待 header、legacy TCP reverse session 或 scope 外流量的全局容量。产品 factory 保证单 Gate/单 receiver；多个 ControlServer 共用 Gate 不是本合同。登记连接的 SetDeadline 遵守非阻塞连接语义，不能由任意自定义阻塞 adapter 推导硬截止时间。
+Admission 容量只约束 gate 登记，不覆盖所有 HTTP Accept/等待 header、legacy TCP reverse session 或 scope 外流量的全局容量。产品 factory 保证单 Gate/单 receiver；多个 ControlServer 共用 Gate 不是本合同。登记连接的SetDeadline依赖底层连接语义，fence只有固定deadline permit/等待者；任意自定义阻塞adapter仍可能使清理未知，不能推导硬截止时间。
 
 不可取消的底层 Close/文件 I/O 仍有系统可用性边界；quarantine 不等于全部资源已回收。grant 在 SQL commit 之前实际可见，ACK 后 commit 失败的窗口由 EOF/lease 关闭；本片不承诺该窗口零 upstream bytes，也不声称跨主机实时原子提交。
 
@@ -54,5 +56,7 @@ yamux v0.1.2的Stream.Close完成本地FIN发送调用后，若对端不回FIN�
 同一原生WG fixture还覆盖实际Snapshot后推进注入Store时钟：Tick nil但generation2/applied1、旧peer仍在，proof callback0；下一Tick实际移除后才grant。firstSnapshot/remove故障保留live-WG而三路径503；DB outbox done写入ABORT时peer已移除，证明nogrant/noTLS/target0，不称SQL COMMIT故障。实际controller SIGKILL保留retained已有echo；reverse SIGKILL/重启只证明retained新连接恢复、WG不变。
 
 实际receiver字节通道覆盖closed/grant ACK丢失；Linux UDS+产品handler+实际yamux/TCP echo专项覆盖lease到期（非同一独立binary/kernelWG fixture）。其他合同层分别覆盖取消、错误scope/epoch/profile、容量、replay/迟到和Close卡住。真实yamux FIN拥堵必须无假ACK；释放owned stall后才允许freshowner。Windows race是共享状态和拒绝/消费者证据，不能冒充Linux peer-credential/WG验收。运行 `scripts/check-proxy-barrier-linux.sh` 与Windows统一门禁分别登记。
+
+第八波同一actual HTTP handler/yamux/TCP target/已有retained连接fixture在两个同步窗口替换第七波main/proxy_gate旧源码：future deadline恢复并有取消后raw command，clear deadline恢复zero，旧源码失败。新源码修复past、closed后的raw write为0，retained已有echo保持；阻塞raw Close或先获write permit时仍无假closed ACK，释放真实stall后才能freshowner。此证明不同于内核WG八项fixture，不声称全部网络在途bytes或yamux内部对象消失。
 
 该片只关闭这个受管 proxy route。其他 WG INPUT/FORWARD、独立未受管 proxy、同来源 IP 的公钥隔离、所有设备会话持续授权、生产撤销 p99/SLA、跨备份恢复、Mac/手机、发行和正式 campaign 未闭合。G01–G05、P4.G 和生产迁移不因本片通过而勾选。

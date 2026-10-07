@@ -1,0 +1,248 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Exact compact Go struct JSON plus LF, with no unknown, duplicate, missing, null, alias, whitespace or free-text fields; maximum framed record 2048 bytes. Runtime decoder remains authoritative for canonical bytes.",
+  "oneOf": [
+    {
+      "properties": {
+        "code": {
+          "enum": [
+            ""
+          ]
+        },
+        "count": {
+          "const": 0
+        },
+        "event": {
+          "const": "starting"
+        }
+      }
+    },
+    {
+      "properties": {
+        "code": {
+          "enum": [
+            ""
+          ]
+        },
+        "count": {
+          "const": 0
+        },
+        "event": {
+          "const": "control_bound"
+        }
+      }
+    },
+    {
+      "properties": {
+        "code": {
+          "enum": [
+            ""
+          ]
+        },
+        "count": {
+          "const": 0
+        },
+        "event": {
+          "const": "initialized"
+        }
+      }
+    },
+    {
+      "properties": {
+        "code": {
+          "enum": [
+            ""
+          ]
+        },
+        "count": {
+          "const": 0
+        },
+        "event": {
+          "const": "ready"
+        }
+      }
+    },
+    {
+      "properties": {
+        "code": {
+          "enum": [
+            ""
+          ]
+        },
+        "count": {
+          "const": 0
+        },
+        "event": {
+          "const": "stop_requested"
+        }
+      }
+    },
+    {
+      "properties": {
+        "code": {
+          "enum": [
+            ""
+          ]
+        },
+        "count": {
+          "const": 0
+        },
+        "event": {
+          "const": "stopped"
+        }
+      }
+    },
+    {
+      "properties": {
+        "code": {
+          "enum": [
+            "dependency_warning"
+          ]
+        },
+        "count": {
+          "minimum": 1
+        },
+        "event": {
+          "const": "dependency_warning"
+        }
+      }
+    },
+    {
+      "properties": {
+        "code": {
+          "enum": [
+            "dependency_error"
+          ]
+        },
+        "count": {
+          "minimum": 1
+        },
+        "event": {
+          "const": "dependency_error"
+        }
+      }
+    },
+    {
+      "properties": {
+        "code": {
+          "enum": [
+            "raw_output_suppressed"
+          ]
+        },
+        "count": {
+          "minimum": 1
+        },
+        "event": {
+          "const": "raw_output_suppressed"
+        }
+      }
+    },
+    {
+      "properties": {
+        "code": {
+          "enum": [
+            "engine_startup_failed",
+            "engine_identity_invalid",
+            "engine_config_read",
+            "engine_control_init",
+            "engine_config_decode",
+            "engine_init_failed",
+            "engine_start_failed",
+            "engine_close_failed",
+            "engine_capture_failed"
+          ]
+        },
+        "count": {
+          "const": 0
+        },
+        "event": {
+          "const": "failed"
+        }
+      }
+    }
+  ],
+  "properties": {
+    "build_id": {
+      "maxLength": 64,
+      "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})?$",
+      "type": "string"
+    },
+    "code": {
+      "type": "string"
+    },
+    "count": {
+      "maximum": 9007199254740991,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "event": {
+      "type": "string"
+    },
+    "generation": {
+      "maxLength": 64,
+      "pattern": "^([0-9a-f]{64})?$",
+      "type": "string"
+    },
+    "instance_id": {
+      "maxLength": 32,
+      "pattern": "^([0-9a-f]{32})?$",
+      "type": "string"
+    },
+    "sequence": {
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "time_unix_nano": {
+      "maximum": 9223372036854775807,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "version",
+    "sequence",
+    "time_unix_nano",
+    "event",
+    "code",
+    "build_id",
+    "instance_id",
+    "generation",
+    "count"
+  ],
+  "title": "ZHVPN dedicated engine event v1",
+  "type": "object",
+  "x-health": {
+    "states": [
+      "healthy",
+      "degraded",
+      "unknown"
+    ],
+    "stickyCodes": [
+      "engine_log_open",
+      "engine_log_write",
+      "engine_log_rotate",
+      "engine_log_sync",
+      "engine_log_namespace",
+      "engine_log_codec",
+      "engine_log_closed",
+      "engine_log_queue_overflow",
+      "engine_log_shutdown"
+    ]
+  },
+  "x-storage": {
+    "effectiveSlotBytes": 262080,
+    "history": "owned v1 slot headers bind namespace ID and slot; incomplete owned event tail can be trimmed, complete invalid lines refuse open; legacy logs never rotated",
+    "namespace": "logs/engine-events-v1",
+    "namespaceMaximumBytes": 1048576,
+    "ownerMarkerBudgetBytes": 256,
+    "recordMaximumBytes": 2048,
+    "slotMaximumBytes": 262144,
+    "slots": 4,
+    "writer": "held cross-process owner.v1 lock"
+  }
+}

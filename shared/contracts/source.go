@@ -89,6 +89,8 @@ func definitions() []definitionSpec {
 		field("ConfigGeneration", "config_generation", "string", "SHA-256 generation of engine configuration; no private configuration contents.", true, false, map[string]any{"pattern": "^[0-9a-f]{64}$"}),
 		field("ControlProtocolVersion", "control_protocol_version", "int", "Local authentication protocol version, separate from contract_version.", true, false, map[string]any{"const": ControlProtocolVersion}),
 		field("PortOccupied", "port_occupied", "bool", "A configured TCP port responds while the authenticated engine is not ready. Does not identify its owner.", true, false, nil),
+		field("LoggingState", "logging_state", "string", "Optional independently authenticated health of this exact live instance's typed log sink. Missing/unknown supplies no evidence; healthy does not establish process, tunnel or egress health.", true, false, map[string]any{"enum": []string{"healthy", "degraded", "unknown"}}),
+		field("LoggingErrorCode", "logging_error_code", "string", "Sticky fixed log-sink failure category, separate from lifecycle errors. No raw error or dependency message.", true, false, map[string]any{"enum": []string{"engine_log_open", "engine_log_write", "engine_log_rotate", "engine_log_sync", "engine_log_namespace", "engine_log_codec", "engine_log_closed", "engine_log_queue_overflow", "engine_log_shutdown"}}),
 	}
 	statusFields = append(statusFields, commonFields()...)
 	statusRules := []map[string]any{
@@ -102,6 +104,9 @@ func definitions() []definitionSpec {
 		when(anyPresent("egress_ip", "egress_ipv4", "egress_ipv6"), map[string]any{"allOf": []any{equals("running", true), equals("proxy_reachable", true)}}),
 		when(present("error_code"), property("error", map[string]any{"minLength": 1})),
 		when(property("error", map[string]any{"minLength": 1}), map[string]any{"properties": map[string]any{"running": map[string]any{"const": false}, "proxy_reachable": map[string]any{"const": false}}}),
+		when(equals("logging_state", "degraded"), present("logging_error_code")),
+		when(present("logging_error_code"), equals("logging_state", "degraded")),
+		when(property("logging_state", map[string]any{"enum": []string{"healthy", "degraded"}}), map[string]any{"allOf": []any{present(activeIdentity...), activeState}}),
 		noFields(privateFieldNames...),
 	}
 	resultFields := []fieldSpec{
@@ -115,8 +120,8 @@ func definitions() []definitionSpec {
 		field("Product", "product", "string", "Binary product identifier.", true, false, nil),
 		field("Version", "version", "string", "Binary build version, separate from the JSON contract version.", true, false, nil),
 		field("ProtocolVersion", "protocol_version", "int", "Existing binary/sidecar identity protocol; separate from local control and public JSON contract versions.", true, false, map[string]any{"minimum": 1}),
-		field("SourceCommit", "source_commit", "string", "Explicit repository commit, independent of embedded parent repository VCS metadata. Unknown for unlabelled developer builds.", true, false, map[string]any{"pattern":"^([0-9a-f]{40}|unknown)$"}),
-		field("SourceState", "source_state", "string", "Clean/dirty source state at build time; clean does not imply a signed release.", true, false, map[string]any{"enum":[]string{"clean","dirty","unknown"}}),
+		field("SourceCommit", "source_commit", "string", "Explicit repository commit, independent of embedded parent repository VCS metadata. Unknown for unlabelled developer builds.", true, false, map[string]any{"pattern": "^([0-9a-f]{40}|unknown)$"}),
+		field("SourceState", "source_state", "string", "Clean/dirty source state at build time; clean does not imply a signed release.", true, false, map[string]any{"enum": []string{"clean", "dirty", "unknown"}}),
 		field("GoVersion", "go_version", "string", "Actual Go toolchain embedded in this binary.", true, false, nil),
 		field("Error", "error", "string", "Human-readable diagnostic; no credentials may be included.", true, false, nil),
 		field("ErrorCode", "error_code", "string", "Stable diagnostic category; new codes are compatible additions.", true, false, map[string]any{"pattern": "^[a-z][a-z0-9_]*$"}),
@@ -156,6 +161,7 @@ func evidenceSemantics() map[string]any {
 		"egress":  "egress is a cached configured label. Optional IPs are probe observations, not a claim that the selected residential exit or a WireGuard tunnel was authenticated.",
 		"time":    "v1 emits no verified_at/observed_at timestamp. Observation freshness is unknown; SDKs must not synthesize verification time from decode time or reuse previous IPs as current evidence.",
 		"missing": "Absent IP, lifecycle identity, family or verification time means unknown. Compatible unknown fields must not strengthen evidence without an explicitly supported contract.",
+		"logging": "logging_state is a separate authenticated live-instance sink observation. Healthy does not imply complete history, raw dependency messages, crash durability or network health. Missing and unknown are unverified.",
 	}
 }
 

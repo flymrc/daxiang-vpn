@@ -51,6 +51,7 @@ type Registration struct {
 	aborted     bool
 	quarantined bool
 	released    bool
+	fence       *writeFencedConn
 }
 
 func New(p Policy) (*Gate, error) {
@@ -243,6 +244,9 @@ func (r *Registration) Release() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if r.quarantined || r.released {
+		return
+	}
+	if r.fence != nil && !r.fence.completed {
 		return
 	}
 	if !r.attached && !r.aborted {

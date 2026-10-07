@@ -17,6 +17,8 @@ export interface StatusDTO {
   config_generation?: string;
   control_protocol_version?: 1;
   port_occupied?: boolean;
+  logging_state?: "healthy" | "degraded" | "unknown";
+  logging_error_code?: "engine_log_open" | "engine_log_write" | "engine_log_rotate" | "engine_log_sync" | "engine_log_namespace" | "engine_log_codec" | "engine_log_closed" | "engine_log_queue_overflow" | "engine_log_shutdown";
   contract_version?: 1;
 }
 

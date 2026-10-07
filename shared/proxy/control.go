@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"zongheng-vpn/shared/config"
@@ -489,6 +490,9 @@ func removeLaunch(ctx paths.Context, id string) {
 
 type engineControl struct {
 	hooks        RuntimeHooks
+	engineLog    atomic.Pointer[EngineLog]
+	logRecorder  atomic.Pointer[engineLogRecorder]
+	logStopOnce  sync.Once
 	actionNonces map[string]int64
 	ctx          paths.Context
 	record       controlRecord
@@ -577,7 +581,14 @@ func (c *engineControl) ready() {
 
 func (c *engineControl) requestStop() error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	logStop := false
+	defer func() {
+		c.mu.Unlock()
+		if logStop {
+			c.stopOnce.Do(func() { close(c.done) })
+			_ = c.appendLog(EngineLogStopRequested, "")
+		}
+	}()
 	if c.phase == "stopping" {
 		return nil
 	}
@@ -590,7 +601,7 @@ func (c *engineControl) requestStop() error {
 		}
 	}
 	c.phase = "stopping"
-	c.stopOnce.Do(func() { close(c.done) })
+	logStop = true
 	return nil
 }
 
@@ -603,9 +614,14 @@ func (c *engineControl) expireLease() {
 	c.phase = "stopping"
 	c.mu.Unlock()
 	c.stopOnce.Do(func() { close(c.done) })
+	_ = c.appendLog(EngineLogStopRequested, "")
 }
 
 func (c *engineControl) handle(writer http.ResponseWriter, req *http.Request) {
+	if req.URL.Path == "/v1/log-status" {
+		c.handleEngineLogStatus(writer, req)
+		return
+	}
 	if req.URL.Path == "/v1/runtime-action" {
 		c.handleRuntimeAction(writer, req)
 		return
@@ -632,15 +648,22 @@ func (c *engineControl) handle(writer http.ResponseWriter, req *http.Request) {
 		}
 	}
 	c.mu.Lock()
+	activated := false
 	if request.Command == "activate" && c.phase == "starting" && c.record.Authorization != nil && c.record.Authorization.ValidateFresh(time.Now()) != nil {
 		c.phase = "stopping"
 		c.stopOnce.Do(func() { close(c.done) })
 	}
 	if request.Command == "activate" && c.phase == "starting" && c.dataStarted && time.Now().UnixNano() < c.record.StartDeadlineUnixNano {
 		c.phase = "ready"
+		activated = true
 		c.leaseTimer.Stop()
 	}
 	result := controlResponse{Command: request.Command, Nonce: request.Nonce, Status: EngineStatus{State: c.phase, Identity: c.record.Identity, ProxyAddr: c.record.ProxyAddr}}
+	if activated {
+		// The immutable recorder pointer, atomic health and bounded memory
+		// queue never acquire the store I/O mutex.
+		_ = c.appendLog(EngineLogReady, "")
+	}
 	c.mu.Unlock()
 	result.MAC = sign(c.record.Secret, result)
 	writer.Header().Set("Content-Type", "application/json")

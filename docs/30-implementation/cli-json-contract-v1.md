@@ -37,6 +37,8 @@ go run ./shared/contracts/cmd/contractgen -check
 
 Python `Status.evidence` 提供只读证据视图；legacy 输出的该视图为 unknown，旧 `Status.running` 等属性继续保留。违反合同的异常保留字段路径、错误码和退出码；命令/token、解析后的私密字段及其诊断被脱敏。无效 JSON 不回显无法可靠脱敏的原始输出；超时异常不保留包含真实命令的底层异常链。
 
+第八波新增可缺省 `logging_state=healthy/degraded/unknown` 与 `logging_error_code`。healthy/degraded需要完整可信starting/ready/stopping身份；degraded必须有固定错误码，其他状态不带code。运行期sink错误不改变running/engine_state、隧道或出口证据。CLI通过独立purpose-HMAC日志RPC绑定同一完整EngineIdentity，旧child或缺失/坏响应保持unknown；文件操作在途也为unknown。日志healthy不承诺整个历史、crash durability或业务成功，详见[日志合同](client-engine-log.md)。
+
 ## 验证边界
 
 共同 fixture 覆盖 legacy/current、部分健康、完整/缺失身份、不兼容版本、类型与私密字段的允许/拒绝场景。Go、Python 消费者和生成漂移检查覆盖同一维护源；另以当前 CLI 的真实 `version --json` 与无配置 `status --json --no-ip-check` 验证 SDK 互操作，不进行登录、启动、修改系统代理或探测真实出口。

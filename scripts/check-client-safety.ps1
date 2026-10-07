@@ -22,6 +22,7 @@ try {
     Invoke-Gate 'Protected update policy and receipt schemas' 'go' @('run', './clients/cli/internal/updateclient/cmd/schemagen', '-check')
     Invoke-Gate 'Device start receipt schema and public receipt enums' 'go' @('run', './clients/cli/internal/deviceclient/cmd/schemagen', '-check')
     Invoke-Gate 'Proxy admission policy and local control schema' 'go' @('run', './shared/proxygate/cmd/schemagen', '-check')
+    Invoke-Gate 'Dedicated engine typed event schema' 'go' @('run', './shared/proxy/cmd/logschemagen', '-check')
     & (Join-Path $PSScriptRoot 'check-device-contract.ps1')
     if ($LASTEXITCODE -ne 0) { throw 'Device OpenAPI contract gate failed.' }
     & (Join-Path $PSScriptRoot 'check-admin-contract.ps1')

@@ -583,6 +583,80 @@
           }
         },
         {
+          "if": {
+            "properties": {
+              "logging_state": {
+                "const": "degraded"
+              }
+            },
+            "required": [
+              "logging_state"
+            ]
+          },
+          "then": {
+            "required": [
+              "logging_error_code"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "logging_error_code"
+            ]
+          },
+          "then": {
+            "properties": {
+              "logging_state": {
+                "const": "degraded"
+              }
+            },
+            "required": [
+              "logging_state"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "logging_state": {
+                "enum": [
+                  "healthy",
+                  "degraded"
+                ]
+              }
+            },
+            "required": [
+              "logging_state"
+            ]
+          },
+          "then": {
+            "allOf": [
+              {
+                "required": [
+                  "instance_id",
+                  "config_generation",
+                  "control_protocol_version"
+                ]
+              },
+              {
+                "properties": {
+                  "engine_state": {
+                    "enum": [
+                      "starting",
+                      "ready",
+                      "stopping"
+                    ]
+                  }
+                },
+                "required": [
+                  "engine_state"
+                ]
+              }
+            ]
+          }
+        },
+        {
           "not": {
             "anyOf": [
               {
@@ -674,6 +748,30 @@
           "pattern": "^[0-9a-f]{32}$",
           "type": "string"
         },
+        "logging_error_code": {
+          "description": "Sticky fixed log-sink failure category, separate from lifecycle errors. No raw error or dependency message.",
+          "enum": [
+            "engine_log_open",
+            "engine_log_write",
+            "engine_log_rotate",
+            "engine_log_sync",
+            "engine_log_namespace",
+            "engine_log_codec",
+            "engine_log_closed",
+            "engine_log_queue_overflow",
+            "engine_log_shutdown"
+          ],
+          "type": "string"
+        },
+        "logging_state": {
+          "description": "Optional independently authenticated health of this exact live instance's typed log sink. Missing/unknown supplies no evidence; healthy does not establish process, tunnel or egress health.",
+          "enum": [
+            "healthy",
+            "degraded",
+            "unknown"
+          ],
+          "type": "string"
+        },
         "port_occupied": {
           "description": "A configured TCP port responds while the authenticated engine is not ready. Does not identify its owner.",
           "type": "boolean"
@@ -715,6 +813,7 @@
   "x-evidence-semantics": {
     "egress": "egress is a cached configured label. Optional IPs are probe observations, not a claim that the selected residential exit or a WireGuard tunnel was authenticated.",
     "engine": "Only engine_state=ready plus complete v1 authenticated identity gives local process readiness evidence. Legacy running alone gives no authenticated identity evidence.",
+    "logging": "logging_state is a separate authenticated live-instance sink observation. Healthy does not imply complete history, raw dependency messages, crash durability or network health. Missing and unknown are unverified.",
     "missing": "Absent IP, lifecycle identity, family or verification time means unknown. Compatible unknown fields must not strengthen evidence without an explicitly supported contract.",
     "proxy": "proxy_reachable is an instantaneous TCP observation of a ready local instance, not HTTP forwarding health. Ready plus false is valid partial health.",
     "time": "v1 emits no verified_at/observed_at timestamp. Observation freshness is unknown; SDKs must not synthesize verification time from decode time or reuse previous IPs as current evidence.",

@@ -28,6 +28,15 @@ import (
 // Test subprocesses run the actual runtime with synthetic, loopback-only
 // configuration. No bootstrap, WireGuard peer, TUN or system proxy is touched.
 func TestMain(m *testing.M) {
+	if len(os.Args) == 3 && os.Args[1] == "--engine-output-capture-helper" {
+		os.Exit(engineOutputCaptureHelper(paths.FromRoot(os.Args[2])))
+	}
+	if len(os.Args) == 4 && os.Args[1] == "--engine-blocked-log-helper" {
+		os.Exit(engineBlockedLogHelper(paths.FromRoot(os.Args[2]), os.Args[3]))
+	}
+	if len(os.Args) == 3 && os.Args[1] == "--engine-output-alias-helper" {
+		os.Exit(engineOutputAliasHelper(paths.FromRoot(os.Args[2])))
+	}
 	if len(os.Args) > 1 && os.Args[1] == EngineCommand {
 		if len(os.Args) != 4 || os.Args[2] != HomeFlag {
 			os.Exit(2)

@@ -68,6 +68,37 @@ class ContractTests(unittest.TestCase):
         for definition in DEFINITIONS.values():
             self.assertFalse(set(PRIVATE_FIELD_NAMES).intersection(definition["properties"]))
 
+    def test_logging_health_is_separate_from_engine_and_network_evidence(self):
+        for state, code in (("healthy", None), ("degraded", "engine_log_write"), ("unknown", None)):
+            payload = copy.deepcopy(READY)
+            payload["logging_state"] = state
+            if code is not None:
+                payload["logging_error_code"] = code
+            status = Status.from_dict(payload)
+            self.assertEqual(status.logging_state, state)
+            self.assertEqual(status.logging_error_code, code)
+            self.assertTrue(status.evidence.engine_ready)
+            self.assertIsNone(status.evidence.tunnel_healthy)
+            self.assertIsNone(status.evidence.verified_at)
+        legacy = Status.from_dict({"running": False, "proxy_reachable": False})
+        self.assertIsNone(legacy.logging_state)
+
+    def test_malformed_logging_observation_cannot_be_used(self):
+        for fields in (
+            {"logging_state": "healthy", "logging_error_code": "engine_log_write"},
+            {"logging_state": "degraded"},
+            {"logging_state": "unknown", "logging_error_code": "engine_log_write"},
+            {"logging_state": "degraded", "logging_error_code": "raw-secret-message"},
+            {"logging_state": "degraded", "logging_error_code": "engine_log_synthetic_secret"},
+            {"logging_state": None},
+            {"logging_error_code": "engine_log_write"},
+        ):
+            with self.subTest(fields=fields):
+                payload = copy.deepcopy(READY)
+                payload.update(fields)
+                with self.assertRaises(ZHVpnContractError):
+                    Status.from_dict(payload)
+
     def test_new_schema_constraints_cannot_be_silently_ignored(self):
         with self.assertRaises(ValueError):
             _check_schema_supported({"type": "string", "maxLength": 1})

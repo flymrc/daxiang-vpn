@@ -57,7 +57,7 @@ func Run(args []string) error {
 	switch args[0] {
 	case proxy.EngineCommand:
 		home := engineContext(ctx, args[1:])
-		return proxy.RunDedicatedEngineWithHooks(home, leasecontrol.New(home))
+		return proxy.RunDedicatedEngineWithBuildInfo(home, leasecontrol.New(home), engineBuildReference(buildinfo.SourceCommit, buildinfo.SourceState))
 	case proxy.KillCommand:
 		if len(args) < 2 {
 			return errors.New("缺少 pid")
@@ -773,6 +773,7 @@ func status(ctx paths.Context, args []string) error {
 			ConfigGeneration:       runtimeInfo.Identity.Generation,
 			ControlProtocolVersion: runtimeInfo.Identity.ProtocolVersion,
 			PortOccupied:           !running && portReachable,
+			LoggingState:           "unknown",
 		}
 		if runtimeErr != nil {
 			res.Error = runtimeErr.Error()
@@ -783,6 +784,9 @@ func status(ctx paths.Context, args []string) error {
 			_ = printJSON(res)
 			return ErrSilent
 		}
+		logging := observeEngineLogging(ctx, runtimeInfo, proxy.InspectEngineLog)
+		res.LoggingState = logging.State
+		res.LoggingErrorCode = string(logging.Code)
 		if localReachable {
 			if opts.checkIP {
 				if ips, err := netcheck.PublicIPsViaHTTPProxy(proxyAddr); err == nil {
@@ -813,6 +817,9 @@ func status(ctx paths.Context, args []string) error {
 	fmt.Printf("代理：%s", proxyAddr)
 	printBool(localReachable)
 	fmt.Printf("出口：%s\n", cfg.Egress.CustomerName())
+	if logging := observeEngineLogging(ctx, runtimeInfo, proxy.InspectEngineLog); logging.State == "degraded" {
+		fmt.Printf("日志：记录失败（%s）\n", logging.Code)
+	}
 	if localReachable {
 		if opts.checkIP {
 			if ips, err := netcheck.PublicIPsViaHTTPProxy(proxyAddr); err == nil {

@@ -8,6 +8,11 @@ for required in go unshare ip wg; do
     command -v "$required" >/dev/null
 done
 go run ./shared/proxygate/cmd/schemagen -check
+go run ./shared/proxy/cmd/logschemagen -check
+# Linux can run the dedicated test child, log store and pipe/control fixtures.
+# Product detached client launch is supported only on Windows/Darwin; do not
+# present this slice gate as Linux client-launch or whole-package acceptance.
+go test -tags with_gvisor ./shared/proxy -run '^Test(EngineLog|Dedicated|GeneralRunEngine)' -count=1
 go test ./shared/proxygate -count=1
 go test -tags with_gvisor ./egress/reverse -run '^TestProxyGate' -count=1
 go test -v -tags integration,with_gvisor ./hub/internal/deviceapi -run '^Test(ProxyGate|ProxyBarrier|.*Service.*)' -count=1

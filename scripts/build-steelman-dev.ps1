@@ -16,6 +16,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Generated contract gate failed.' }
     & go run ./shared/proxygate/cmd/schemagen -check
     if ($LASTEXITCODE -ne 0) { throw 'Proxy admission contract gate failed.' }
+    & go run ./shared/proxy/cmd/logschemagen -check
+    if ($LASTEXITCODE -ne 0) { throw 'Engine event contract gate failed.' }
     & (Join-Path $PSScriptRoot 'check-device-contract.ps1')
     if ($LASTEXITCODE -ne 0) { throw 'Device OpenAPI gate failed.' }
     & (Join-Path $PSScriptRoot 'check-admin-contract.ps1')

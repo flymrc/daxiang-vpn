@@ -12,6 +12,8 @@
 
 第七波在真实 reverse 普通/striped CONNECT 与 fetch 加入[默认关闭的 v2 proxy 屏障](docs/30-implementation/device-proxy-startup-barrier.md)。固定 source scope、Linux私有UDS和短期收敛 grant 将 API 启动与实际代理准入连接；控制失联/过期关闭受管流，清理未知时保持拒绝。生产未开启，完整 WG/设备会话、实机迁移与发行仍按总计划验收。
 
+第八波专用CLI后台child新增[有限typed日志与独立健康](docs/30-implementation/client-engine-log.md)：私有自有namespace最多1 MiB、原始依赖输出丢弃、日志IO与停止/代理恢复隔离。受管proxy上游同时补写入/deadline permit fence，取消后不再获新派发许可。它们不改变生产配置，不能代称整个Steelman或正式发行完成。
+
 > 注:`clients/` 是终端用户客户端,`egress/` 是出口节点(基础设施侧)。`egress/android-*` 是出口基础设施；客户 Android App 按角色放在 `clients/android/`，不能与出口组件混用。本隔离重构分支尚未纳入客户 App 的独立工作。
 
 按角色分顶层(client / hub / egress),Go 代码统一在根 module `zongheng-vpn` 下。

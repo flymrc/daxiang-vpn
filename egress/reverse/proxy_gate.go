@@ -169,17 +169,11 @@ func abortProxyRegistration(registration *proxygate.Registration) {
 	}
 }
 
-func attachProxyRegistration(registration *proxygate.Registration, conn net.Conn) error {
+func attachProxyRegistration(registration *proxygate.Registration, conn net.Conn) (net.Conn, error) {
 	if registration == nil {
-		return nil
+		return conn, nil
 	}
-	return registration.Attach(conn)
-}
-
-func (a *proxyRequestAdmission) untrack(conn net.Conn) {
-	if a != nil {
-		a.admission.Untrack(conn)
-	}
+	return registration.AttachFenced(conn)
 }
 
 func (a *proxyRequestAdmission) trackClient(conn net.Conn) error {

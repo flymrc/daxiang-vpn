@@ -512,6 +512,8 @@ NAT 来源：10.66.0.0/24
 
 第七波源码增加共享 `proxygate`、真实 reverse Admission 与 deviceapi 启动/续期 coordinator。Policy 固定受管 source、实际 listener 和 authority/profile摘要；Linux私有UDS closed ACK 后才做初始 Tick/最终 fenced WG+DB proof、短期绝对 grant、TLS Listen。普通/striped/fetch 在上游派发前登记，EOF/expiry使受管流失效；迟到 OpenStream 预约和 FIN 清理未知均阻断新 owner。protected/unknown scope 外流保持原限制，不整体关 WG。没有新增生产端口、部署或授权事实源切换；其他 WG 路径与同 IP 身份尚未隔离，见[屏障合同](../30-implementation/device-proxy-startup-barrier.md)。
 
+第八波专用CLI后台引擎以 `shared/proxy` typed codec维护私有日志namespace，原始stdout/stderr不落盘；64项队列和单writer隔离生命周期与文件IO。独立认证loopback日志health不改既有signed EngineStatus与ready语义，CLI/GUI/SDK合同只增加可选日志观测字段。Darwin后台不再开旧原始APPEND文件；实机仍独立验收，见[日志合同](../30-implementation/client-engine-log.md)。reverse受管上游的write/deadline permit与Gate invalidate线性化，Close及在途permit完成才释放登记；scope外和retained流不被整体关闭。普通库RunEngine、生产端口/节点/出口不因此改变。
+
 1. 保持 Android `zhreverse` 作为默认数据面。
 2. 确认新 token / bootstrap 配置默认指向 `10.66.0.1:18081`。
 3. 增加基于清单的配置渲染。

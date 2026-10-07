@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"zongheng-vpn/hub/internal/deviceauth"
+	"zongheng-vpn/shared/contracts"
 	dc "zongheng-vpn/shared/devicecontract"
 	"zongheng-vpn/shared/paths"
 	"zongheng-vpn/shared/proxy"
@@ -305,6 +306,50 @@ func TestRealCLIProxyBootstrapToWireGuardOwnedTargetAndRevoke(t *testing.T) {
 	if live, err := proxy.Inspect(homeContext); err != nil || live.State != "ready" || live.Identity.InstanceID != started.InstanceID || live.Identity.Generation != started.ConfigGeneration {
 		t.Fatal("receipt was not bound to actual engine instance/configuration")
 	}
+	controlBytes, err := os.ReadFile(filepath.Join(homeContext.RunDir, "engine-state.json"))
+	var controlRecord map[string]any
+	if err != nil || json.Unmarshal(controlBytes, &controlRecord) != nil {
+		t.Fatal("owned control record unavailable for secret-canary check")
+	}
+	controlSecret, ok := controlRecord["control_secret"].(string)
+	if !ok || controlSecret == "" {
+		t.Fatal("owned control record did not contain expected private canary")
+	}
+	secrets = append(secrets, controlSecret)
+	beforeStatusRequests := authorityRequests.Load()
+	statusCtx, cancelStatus := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelStatus()
+	for {
+		statusCommand := exec.CommandContext(statusCtx, cli, "status", "--json", "--no-ip-check")
+		statusCommand.Dir, statusCommand.Env = repository, realCLIEnv(home, false)
+		var statusStdout, statusStderr bytes.Buffer
+		statusCommand.Stdout, statusCommand.Stderr = &statusStdout, &statusStderr
+		statusError := statusCommand.Run()
+		var localStatus contracts.Status
+		if statusError != nil || statusStderr.Len() != 0 || json.Unmarshal(statusStdout.Bytes(), &localStatus) != nil || localStatus.ContractVersion != contracts.ContractVersion || !localStatus.Running || localStatus.EngineState != "ready" || localStatus.InstanceID != started.InstanceID || localStatus.ConfigGeneration != started.ConfigGeneration || localStatus.LoggingErrorCode != "" || (localStatus.LoggingState != "healthy" && localStatus.LoggingState != "unknown") {
+			t.Fatal("actual CLI logger observation changed lifecycle or exact-instance evidence")
+		}
+		if authorityRequests.Load() != beforeStatusRequests {
+			t.Fatal("logging status performed an authority/bootstrap request")
+		}
+		for _, secret := range secrets {
+			if secret != "" && (strings.Contains(statusStdout.String(), secret) || strings.Contains(statusStderr.String(), secret)) {
+				t.Fatal("private fixture material entered ordinary status diagnostics")
+			}
+		}
+		if localStatus.LoggingState == "healthy" {
+			break
+		}
+		// A normal append/fsync in flight is honestly unknown. Await completion
+		// within this same observation budget; never retry a mutation or accept
+		// degraded/malformed data as eventual success.
+		select {
+		case <-statusCtx.Done():
+			t.Fatal("actual CLI did not observe a healthy authenticated logger within budget")
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+	cancelStatus()
 	localProxyURL, _ := url.Parse("http://" + started.Proxy)
 	request := func(marker string, timeout time.Duration) (string, error) {
 		transport := &http.Transport{Proxy: http.ProxyURL(localProxyURL), DisableKeepAlives: true}
@@ -354,6 +399,7 @@ func TestRealCLIProxyBootstrapToWireGuardOwnedTargetAndRevoke(t *testing.T) {
 	if _, err := proxy.Stop(homeContext); err != nil {
 		t.Fatal("authenticated owned engine stop failed")
 	}
+	requireOwnedEngineLog(t, homeContext, started.InstanceID, started.ConfigGeneration, secrets)
 	call("", false, startArgs...)
 	if live, err := proxy.Inspect(homeContext); err != nil || live.State != "stopped" {
 		t.Fatal("cached v2 state restarted an engine after durable revoke")
@@ -363,6 +409,55 @@ func TestRealCLIProxyBootstrapToWireGuardOwnedTargetAndRevoke(t *testing.T) {
 	}
 	if _, err := os.Stat(homeContext.SingBoxConfig); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("private launch configuration retained after engine start")
+	}
+}
+
+func requireOwnedEngineLog(t *testing.T, home paths.Context, instance, generation string, secrets []string) {
+	t.Helper()
+	root := filepath.Join(home.LogDir, "engine-events-v1")
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) != proxy.EngineLogSlots+1 {
+		t.Fatal("actual child did not retain its finite typed-log namespace")
+	}
+	var total int64
+	events := map[proxy.EngineLogEventKind]bool{}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			t.Fatal("unexpected object in owned log namespace")
+		}
+		info, err := entry.Info()
+		if err != nil || info.Size() > proxy.EngineLogSlotBytes {
+			t.Fatal("actual log slot exceeded fixed capacity")
+		}
+		total += info.Size()
+		data, err := os.ReadFile(filepath.Join(root, entry.Name()))
+		if err != nil {
+			t.Fatal("read actual owned log receipt")
+		}
+		for _, secret := range secrets {
+			if secret != "" && bytes.Contains(data, []byte(secret)) {
+				t.Fatal("private credential/key/control material entered actual log files")
+			}
+		}
+		if entry.Name() == "owner.v1" {
+			continue
+		}
+		lines := bytes.Split(data, []byte{'\n'})
+		for _, line := range lines[1:] {
+			if len(line) == 0 {
+				continue
+			}
+			record, err := proxy.DecodeEngineLogRecord(line)
+			if err != nil {
+				t.Fatal("actual child retained an invalid or untyped log record")
+			}
+			if record.InstanceID == instance && record.Generation == generation {
+				events[record.Event] = true
+			}
+		}
+	}
+	if total > int64(proxy.EngineLogSlots*proxy.EngineLogSlotBytes) || !events[proxy.EngineLogReady] || !events[proxy.EngineLogStopped] {
+		t.Fatal("actual ready/stopped log evidence missing or total namespace exceeded cap")
 	}
 }
 

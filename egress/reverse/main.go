@@ -828,18 +828,18 @@ func (m *sessionManager) openCommandContext(ctx context.Context, command string,
 		cancel()
 		var tracked *trackedConn
 		if stream != nil {
-			tracked = &trackedConn{Conn: stream}
-			tracked.release = func() {
-				admission.untrack(tracked)
-				release()
-			}
+			tracked = &trackedConn{Conn: stream, release: release}
 		}
 		if err != nil {
 			if tracked == nil {
 				abortProxyRegistration(registration)
 				release()
-			} else if attachProxyRegistration(registration, tracked) == nil {
-				_ = tracked.Close()
+			} else {
+				fenced, attachErr := attachProxyRegistration(registration, tracked)
+				if attachErr != nil {
+					return nil, nil, "", attachErr
+				}
+				_ = fenced.Close()
 			}
 			if ctx.Err() != nil {
 				return nil, nil, "", ctx.Err()
@@ -854,20 +854,24 @@ func (m *sessionManager) openCommandContext(ctx context.Context, command string,
 			release()
 			return nil, nil, "", errors.New("reverse stream unavailable")
 		}
-		if err := attachProxyRegistration(registration, tracked); err != nil {
+		stream, err = attachProxyRegistration(registration, tracked)
+		if err != nil {
 			// Even a late Attach transfers this reserved stream to the closed
 			// scope's quarantine. Waiting here on a second Close could block the
 			// handler on a congested yamux FIN after control has timed out.
 			return nil, nil, "", err
 		}
 		if err := ctx.Err(); err != nil {
-			_ = tracked.Close()
+			_ = stream.Close()
 			return nil, nil, "", err
 		}
 		if err := stream.SetDeadline(time.Now().Add(reverseCommandTimeout)); err != nil {
-			_ = tracked.Close()
+			_ = stream.Close()
 			if ctx.Err() != nil {
 				return nil, nil, "", ctx.Err()
+			}
+			if isProxyFenceFailure(err) {
+				return nil, nil, "", err
 			}
 			m.recordSessionFailure(session)
 			log.Printf("set reverse command deadline via %s failed: %v", session.RemoteAddr(), err)
@@ -875,9 +879,12 @@ func (m *sessionManager) openCommandContext(ctx context.Context, command string,
 			continue
 		}
 		if _, err := fmt.Fprintf(stream, "%s\n", command); err != nil {
-			_ = tracked.Close()
+			_ = stream.Close()
 			if ctx.Err() != nil {
 				return nil, nil, "", ctx.Err()
+			}
+			if isProxyFenceFailure(err) {
+				return nil, nil, "", err
 			}
 			m.recordSessionFailure(session)
 			log.Printf("write reverse command via %s failed: %v", session.RemoteAddr(), err)
@@ -887,7 +894,7 @@ func (m *sessionManager) openCommandContext(ctx context.Context, command string,
 		reader := bufio.NewReader(stream)
 		status, err := reader.ReadString('\n')
 		if err != nil {
-			_ = tracked.Close()
+			_ = stream.Close()
 			if ctx.Err() != nil {
 				return nil, nil, "", ctx.Err()
 			}
@@ -897,13 +904,16 @@ func (m *sessionManager) openCommandContext(ctx context.Context, command string,
 			continue
 		}
 		if err := ctx.Err(); err != nil {
-			_ = tracked.Close()
+			_ = stream.Close()
 			return nil, nil, "", err
 		}
 		if err := stream.SetDeadline(time.Time{}); err != nil {
-			_ = tracked.Close()
+			_ = stream.Close()
 			if ctx.Err() != nil {
 				return nil, nil, "", ctx.Err()
+			}
+			if isProxyFenceFailure(err) {
+				return nil, nil, "", err
 			}
 			m.recordSessionFailure(session)
 			log.Printf("clear reverse command deadline via %s failed: %v", session.RemoteAddr(), err)
@@ -911,9 +921,13 @@ func (m *sessionManager) openCommandContext(ctx context.Context, command string,
 			continue
 		}
 		m.recordSessionSuccess(session, time.Since(started))
-		return tracked, reader, strings.TrimSpace(status), nil
+		return stream, reader, strings.TrimSpace(status), nil
 	}
 	return nil, nil, "", errors.New("no usable reverse client session")
+}
+
+func isProxyFenceFailure(err error) bool {
+	return errors.Is(err, proxygate.ErrClosed) || errors.Is(err, proxygate.ErrCapacity) || errors.Is(err, proxygate.ErrProtocol)
 }
 
 func (m *sessionManager) sessionCount() int {

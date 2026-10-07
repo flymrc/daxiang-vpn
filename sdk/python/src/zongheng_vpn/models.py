@@ -102,6 +102,8 @@ class Status:
     config_generation: Optional[str] = None
     control_protocol_version: Optional[int] = None
     port_occupied: bool = False
+    logging_state: Optional[str] = None
+    logging_error_code: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Status":
@@ -123,6 +125,8 @@ class Status:
             config_generation=_string(data, "config_generation"),
             control_protocol_version=data.get("control_protocol_version"),
             port_occupied=data.get("port_occupied", False),
+            logging_state=_string(data, "logging_state"),
+            logging_error_code=_string(data, "logging_error_code"),
         )
 
     @property

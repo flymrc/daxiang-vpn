@@ -612,3 +612,5 @@ last_reconciled_at
 第六波[provisional 清册](../30-implementation/migration-inventory.md)在隔离开发分支补齐人工批准 raw SHA 的固定 baseline、source 全生命周期、追加 unknown、单调负事实及持久 observer run/gap。它不等于正式 campaign：owner/installation 引用仅是声明，跨历史短ID/真实安装保管链未完成；逐负类别时间、rotate 全入口、T0 后连续30天窗口仍未闭合。旧异常 metadata 回填补一次 unknown 负事实、保留原 secure 记账，不能合计为去重请求总数，也无法恢复此前被覆盖的 provenance。T0、readiness、生产事实源和本计划的生产勾选保持原定义。
 
 第七波[proxy启动屏障](../30-implementation/device-proxy-startup-barrier.md)只在隔离开发源启用：固定受管scope、protected私有UDS、最终DB/WG fenced proof和短期绝对grant接入真正reverse产品入口；失联/过期/清理unknown均拒绝。实际内核WG部分撤销反例的受管proxy已可阻断且保留protected/unknown。此证据不代替全部WG INPUT/FORWARD、同IP设备公钥、现场持续撤销SLA、导入/恢复/手机/安装签名或连续campaign，现有NO-GO与G01–G05保持。
+
+第八波补受管上游派发permit fence：取消后不能取得新write或future/clear deadline许可，已获许可仍是在途IO；Close和这些permit完成才释放预算/closed ACK。专用客户端child新增[有限typed日志](../30-implementation/client-engine-log.md)，拒绝任意message/秘密字段，私有owner/ACL/NOFOLLOW/单link/namespace身份与1 MiB容量同时校验；原始依赖消息丢弃。运行期日志失败独立degraded，不绕过代理BeforeStop门。相同OS身份仍受信，SIGKILL/磁盘阻塞不承诺末条持久化；未部署、未证明持续撤销SLA或完整P6.4/G01/G05。
