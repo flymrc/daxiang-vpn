@@ -113,6 +113,8 @@ Hub 管理控制台 v1 作为 `zhhub` 第二个 listener 运行,本机监听 `12
 
 ## 90 History
 
+- [2026-10-07 提交main与清理其他分支](90-history/worklogs/2026-10-07-main-publish-branch-cleanup.md)
+
 - [2026-10-07 第八波兼容部署与新版客户端连通](90-history/worklogs/2026-10-07-wave8-compat-deployment.md)
 
 - [2026-10-07 运行时接线与独立审计](90-history/worklogs/2026-10-07-zhvpn-runtime-integration.md)

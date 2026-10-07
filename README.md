@@ -2,6 +2,8 @@
 
 纵横 VPN 是一个 Hub + Android 手机出口 + Windows 客户端的代理网络项目。
 
+2026-10-07 前八波Steelman代码与已部署记录已推送main，本地和GitHub其他分支均已清理；原未提交工作保留在detached工作树，见[发布记录](docs/90-history/worklogs/2026-10-07-main-publish-branch-cleanup.md)。生产仍是下述未签名兼容canary，完整安全迁移与正式发行继续按checkbox验收。
+
 2026-10-05 Hub `zhreverse` 已上线满额空闲 CONNECT 抢占（阈值 10 秒；并发上限仍为全局 96 / 每客户端 48）。生产校验与备份见[服务器访问文档](docs/20-operations/runbooks/server-access.md)；该次部署未更改手机。2026-10-06 的 Pixel 7a/`zhreverse/zhandroid-control` [只读资产记录](docs/90-history/worklogs/2026-10-06-zhvpn-asset-baseline.md)保留为当时证据。2026-10-07 用户提供的 AGENTS.md 标明生产 Motorola 使用兼容 `dxreverse/dxandroid-control`；手机须再做只读核验，不能将历史 Pixel 布局当作当前部署依据。
 
 2026-10-06 开始 [Steelman 重构](docs/30-implementation/zhvpn-steelman-refactor-plan.md)。2026-10-07 隔离开发分支已接入真实引擎代理租约、GUI typed commands、设备 v2 签名 API/调度与受限执行者、reverse 双端 mTLS。第二波补齐兼容 HTTP 来源/预算、管理台真实状态与合同门禁、离线恢复规划和纯更新元数据验证。第三波加入共享准入、WG/SSH 进程树监督与换 IP unknown 投影；第四波离线 update CLI 持久保存明确批准的策略及发布水位。第五波连接显式 device bind/start 与真实用户态 WG，Windows 实际 CLI/TLS/SQLite/隧道/目标响应和撤销负例已本地贯通。具体合同见[设备启动](docs/30-implementation/v2-proxy-bootstrap.md)、[执行预算](docs/30-implementation/legacy-control-process-budget.md)、[可信更新状态](docs/30-implementation/trusted-update-state.md)与[运行时接线](docs/30-implementation/steelman-runtime-integration.md)。2026-10-07 16:14–16:21 JST已将3b5a2c5的Hub/reverse和本机Windows CLI以兼容配置做受控canary部署，真实HTTPS/IPv6出口请求通过，见[部署记录](docs/90-history/worklogs/2026-10-07-wave8-compat-deployment.md)。GUI未重新打包，产物仍是未签名dev；v2 authority/proxy gate未启用，未接管当前生产授权或退役raw TCP。

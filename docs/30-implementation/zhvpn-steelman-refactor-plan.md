@@ -1,5 +1,7 @@
 # zhvpn Steelman 重构计划
 
+2026-10-07 16:39 JST：前八波代码及兼容部署记录已快进并推送GitHub main，本地/远端仅保留main；原dirty工作区和旧checkout转detached保留，见[发布与分支清理](../90-history/worklogs/2026-10-07-main-publish-branch-cleanup.md)。发布Git不代表完成签名发行、v2/手机迁移或G01–G05终验。
+
 > 创建：2026-10-06 JST。状态：IN_PROGRESS；第八波源码 `3b5a2c5` 已本地提交，Windows v13统一门禁/Linux v3实际产品验收exit0，十目标clean开发构建/hash一致，见第八波worklog与收据。16:14–16:21 JST另完成Hub/reverse与单Windows CLI兼容canary部署/真实连通；v2授权、手机和正式发行仍未切换。源码、实机、生产实施分别记录。
 > 基线：[2026-10-05 多维审计](../90-history/worklogs/2026-10-05-zhvpn-project-audit.md)。49/100 是该日的工程成熟度评估，不能作为本日运行状态或后续验收结果。
 
