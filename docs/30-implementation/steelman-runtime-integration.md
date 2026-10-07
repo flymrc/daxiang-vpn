@@ -59,6 +59,12 @@ reverse 的实际双端 `tcp-tls`、角色 URI/Hub hostname/登记 egress 与 le
 
 本轮包含真实 Chrome 编译 Admin 的合成 API 回归及独立恶劣返回顺序验证；它不能代替生产 Admin 或真实客户代理验收。完整独立发现、修复和证据见 [第二波 worklog](../90-history/worklogs/2026-10-07-zhvpn-security-boundaries.md)。
 
+## 第三波：兼容执行与共享准入
+
+legacy/trusted 客户端与 Admin 的昂贵入口共享固定来源准入，健康快照不占该池。WG 与 SSH 分别采用固定在飞名额，request context 贯通 bootstrap、carrier 与 rotate；无排队、有限输出、固定错误类别。Windows 通过 suspended child + Job 管树；Linux 在同一 Hub 二进制的内部 helper 中用 subreaper/pidfd 与私有 parent lifetime/cleanup receipt 监督，不新增公开服务或额外部署目标。
+
+明确未启动的 WG 失败补偿自己的 pending lease；并发失败链标记与回滚不能复活更早已失败的 claim。已经启动的换 IP 失败保留本进程 unknown，Admin 投影并阻止冷却到期/页面重载后再次触发。失去本地监督时名额 quarantine，不能假称 native 树已停；本地 SSH 结束也不能证明手机端后台脚本停止。远端 RID/确认后解锁与跨重启 unknown 保管仍待实现。默认预算、真实故障测试及这些限制见[兼容执行合同](legacy-control-process-budget.md)。
+
 ## 依赖扫描的证据层级
 
 本轮使用 Go 1.26.7、govulncheck 1.8.0 与 cargo-audit 0.22.2。Windows/Linux/Darwin 的 amd64/arm64 源码扫描分别登记，不能外推其他 build tags 或架构。前端 npm audit 检查包括 devDependencies；Rust 所有已知 vulnerability 均阻断，warning 必须逐条有限期处置。当前 5 个 UNIC unmaintained warning 来自 Tauri URL pattern 依赖；proc-macro-error unmaintained 与 glib unsound 仅在对应 Windows/macOS target tree 不包含时允许。全部例外到 2026-11-06，不允许例外覆盖新的漏洞、实际目标包含或更强可达证据。

@@ -19,6 +19,12 @@ test("canonical optional nullable fields may be absent, but malformed present va
     delete row[key];
   }
 });
+test("local rotate state is explicit and unknown is a valid blocking projection", () => {
+  const f=fixture();
+  f[3].egress=[{id:"synthetic",display_name:"test",region:"JP",type:"android-reverse",management_addr:"",proxy_addr:"",status:"offline"}];
+  for(const state of ["idle","cooldown","unknown"]) { f[3].egress[0].rotate_state=state;validate.snapshot(...f); }
+  for(const state of ["running",null,0]) { f[3].egress[0].rotate_state=state;assert.throws(()=>validate.snapshot(...f)); }
+});
 test("forward compatible fields cannot replace required facts", () => { const f=fixture(); f[0].extension=true;validate.snapshot(...f);delete f[0].stats;assert.throws(()=>validate.snapshot(...f)); });
 for (const [name,change] of [
   ["null overview",f=>f[0]=null], ["missing hub",f=>f[0].hub={}], ["negative count",f=>f[0].stats.token_count=-1],

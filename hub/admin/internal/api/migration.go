@@ -42,7 +42,7 @@ func (s *Server) buildMigrationReadiness(rows []dbgen.ClientMigrationObservation
 		}
 		status := generated.MigrationClientStatus{
 			TokenId:        auth.TokenID(item.Token),
-			MigrationClass: generated.Unknown,
+			MigrationClass: generated.MigrationClientStatusMigrationClassUnknown,
 		}
 		if row, ok := observations[status.TokenId]; ok {
 			status.Observed = true
@@ -60,9 +60,9 @@ func (s *Server) buildMigrationReadiness(rows []dbgen.ClientMigrationObservation
 			}
 		}
 		switch status.MigrationClass {
-		case generated.SecureBootstrap:
+		case generated.MigrationClientStatusMigrationClassSecureBootstrap:
 			secureCount++
-		case generated.Legacy:
+		case generated.MigrationClientStatusMigrationClassLegacy:
 			legacyCount++
 		default:
 			unknownCount++

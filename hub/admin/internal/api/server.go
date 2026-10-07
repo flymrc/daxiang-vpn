@@ -21,6 +21,7 @@ type Server struct {
 	store                  *dbstore.Store
 	tokens                 *auth.TokenStore
 	clientAuth             *auth.Server
+	httpAdmission          *httpboundary.Admission
 	mux                    *http.ServeMux
 	startedAt              time.Time
 	httpClient             *http.Client
@@ -33,18 +34,26 @@ type Server struct {
 
 func NewServer(cfg Config, tokenStore *auth.TokenStore, clientAuth *auth.Server) (*Server, error) {
 	cfg = cfg.withDefaults()
+	admission, err := httpboundary.NewAdmission(httpboundary.DefaultAdmissionConfig())
+	if err != nil {
+		return nil, err
+	}
+	if clientAuth != nil {
+		admission = clientAuth.HTTPAdmission()
+	}
 	store, err := dbstore.OpenStore(cfg.DBPath)
 	if err != nil {
 		return nil, err
 	}
 	s := &Server{
-		cfg:        cfg,
-		store:      store,
-		tokens:     tokenStore,
-		clientAuth: clientAuth,
-		mux:        http.NewServeMux(),
-		startedAt:  time.Now(),
-		httpClient: &http.Client{Timeout: 2 * time.Second},
+		cfg:           cfg,
+		store:         store,
+		tokens:        tokenStore,
+		clientAuth:    clientAuth,
+		httpAdmission: admission,
+		mux:           http.NewServeMux(),
+		startedAt:     time.Now(),
+		httpClient:    &http.Client{Timeout: 2 * time.Second},
 	}
 	if err := store.EnsureAdminUser(context.Background(), cfg.AdminUsername, cfg.AdminPasswordPHC, time.Now()); err != nil {
 		_ = store.Close()
@@ -85,7 +94,33 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_request", "")
 		return
 	}
+	if expensiveAdminRequest(verified) {
+		if s.httpAdmission == nil {
+			writeError(w, http.StatusServiceUnavailable, "resource_exhausted", "")
+			return
+		}
+		s.httpAdmission.Middleware(s.mux, httpboundary.LoopbackProxy).ServeHTTP(w, verified)
+		return
+	}
 	s.mux.ServeHTTP(w, verified)
+}
+
+// Snapshot/health reads remain available when expensive work is saturated.
+// Admission protects authentication work and external calls before dispatch;
+// it does not establish a session or grant token/device authority.
+func expensiveAdminRequest(r *http.Request) bool {
+	if r.Method == http.MethodPost {
+		if r.URL.Path == "/admin/api/auth/login" {
+			return true
+		}
+		_, ok := parseRotatePath(r.URL.Path)
+		return ok
+	}
+	if r.Method == http.MethodGet {
+		_, ok := parseEgressExitIPPath(r.URL.Path)
+		return ok
+	}
+	return false
 }
 
 func (s *Server) routes() {

@@ -2,13 +2,14 @@ package auth
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+	"zongheng-vpn/hub/internal/processbudget"
 )
 
 func TestClaimTokenLease(t *testing.T) {
@@ -109,7 +110,7 @@ func TestBootstrapWithClientPublicKeyAppliesPeerAndOmitsPrivateKey(t *testing.T)
 	var appliedKey, appliedAddress string
 	var auditEvent AuditEvent
 	server.SetAuditSink(func(event AuditEvent) { auditEvent = event })
-	server.applyClientPeer = func(publicKey string, address string) error {
+	server.applyClientPeer = func(_ context.Context, publicKey string, address string) error {
 		appliedKey = publicKey
 		appliedAddress = address
 		return nil
@@ -220,7 +221,7 @@ func TestPeerAllowedIPNarrowsClientAddress(t *testing.T) {
 
 func TestEgressWithCachedCarrierFallsBackToConfiguredDisplayName(t *testing.T) {
 	server := &Server{}
-	egress := server.egressWithCachedCarrierName(Egress{DisplayName: "静态出口", ProxyAddr: "127.0.0.1:1"})
+	egress := server.egressWithCachedCarrierName(context.Background(), Egress{DisplayName: "静态出口", ProxyAddr: "127.0.0.1:1"})
 
 	if egress.DisplayName != "静态出口" {
 		t.Fatalf("display name = %q", egress.DisplayName)
@@ -232,7 +233,7 @@ func TestCachedAndroidCarrierSuppressesRepeatedProbe(t *testing.T) {
 	server := &Server{
 		carrierCache:    map[string]carrierCacheEntry{},
 		carrierCacheTTL: time.Minute,
-		carrierProbe: func(addr string) string {
+		carrierProbe: func(_ context.Context, addr string) string {
 			calls++
 			if addr != "10.66.0.101:2022" {
 				t.Fatalf("addr = %q", addr)
@@ -242,9 +243,9 @@ func TestCachedAndroidCarrierSuppressesRepeatedProbe(t *testing.T) {
 	}
 	now := time.Unix(1000, 0)
 
-	first := server.cachedAndroidCarrier("10.66.0.101:2022", now)
-	second := server.cachedAndroidCarrier("10.66.0.101:2022", now.Add(10*time.Second))
-	third := server.cachedAndroidCarrier("10.66.0.101:2022", now.Add(time.Minute+time.Second))
+	first := server.cachedAndroidCarrier(context.Background(), "10.66.0.101:2022", now)
+	second := server.cachedAndroidCarrier(context.Background(), "10.66.0.101:2022", now.Add(10*time.Second))
+	third := server.cachedAndroidCarrier(context.Background(), "10.66.0.101:2022", now.Add(time.Minute+time.Second))
 
 	if first != "Rakuten" || second != "Rakuten" || third != "Rakuten" {
 		t.Fatalf("carrier values = %q %q %q", first, second, third)
@@ -259,17 +260,17 @@ func TestCachedAndroidCarrierCachesEmptyResult(t *testing.T) {
 	server := &Server{
 		carrierCache:    map[string]carrierCacheEntry{},
 		carrierCacheTTL: time.Minute,
-		carrierProbe: func(string) string {
+		carrierProbe: func(context.Context, string) string {
 			calls++
 			return ""
 		},
 	}
 	now := time.Unix(1000, 0)
 
-	if got := server.cachedAndroidCarrier("10.66.0.101:2022", now); got != "" {
+	if got := server.cachedAndroidCarrier(context.Background(), "10.66.0.101:2022", now); got != "" {
 		t.Fatalf("carrier = %q", got)
 	}
-	if got := server.cachedAndroidCarrier("10.66.0.101:2022", now.Add(10*time.Second)); got != "" {
+	if got := server.cachedAndroidCarrier(context.Background(), "10.66.0.101:2022", now.Add(10*time.Second)); got != "" {
 		t.Fatalf("carrier = %q", got)
 	}
 	if calls != 1 {
@@ -300,7 +301,7 @@ func TestFirstCSVValue(t *testing.T) {
 func TestRotateIPRejectsConcurrentRequest(t *testing.T) {
 	server := testRotateServer()
 	calls := 0
-	server.triggerRotateIP = func(_ string, _ int) error {
+	server.triggerRotateIP = func(_ context.Context, _ string, _ int) error {
 		calls++
 		return nil
 	}
@@ -325,13 +326,13 @@ func TestRotateIPRejectsConcurrentRequest(t *testing.T) {
 	}
 }
 
-func TestRotateIPReleasesLockAfterTriggerFailure(t *testing.T) {
+func TestRotateIPReleasesLockAfterPreStartFailure(t *testing.T) {
 	server := testRotateServer()
 	calls := 0
-	server.triggerRotateIP = func(_ string, _ int) error {
+	server.triggerRotateIP = func(_ context.Context, _ string, _ int) error {
 		calls++
 		if calls == 1 {
-			return errors.New("boom")
+			return processbudget.Reject(processbudget.Unavailable)
 		}
 		return nil
 	}

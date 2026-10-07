@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -65,7 +66,7 @@ func TestAdminJSONRejectionPrecedesAuthenticationAndRotate(t *testing.T) {
 				a := auth.NewServer(&auth.TokenStore{Tokens: map[string]auth.TokenRecord{
 					"synthetic": {Enabled: true, Egress: auth.Egress{Name: "jp-android-01"}},
 				}})
-				a.SetRotateTrigger(func(string, int) error { rotations++; return nil })
+				a.SetRotateTrigger(func(context.Context, string, int) error { rotations++; return nil })
 				// A nil DB makes any unintended authentication/audit execution fail
 				// the test rather than silently accepting work after bad input.
 				s := &Server{clientAuth: a, tokens: &auth.TokenStore{}}

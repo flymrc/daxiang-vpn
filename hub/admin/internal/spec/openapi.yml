@@ -29,6 +29,8 @@ paths:
           $ref: '#/components/responses/Error'
         '429':
           $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/AdmissionUnavailable'
   /auth/logout:
     post:
       operationId: logout
@@ -165,6 +167,10 @@ paths:
           $ref: '#/components/responses/Error'
         '502':
           $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/AdmissionRateLimited'
+        '503':
+          $ref: '#/components/responses/AdmissionUnavailable'
   /events:
     get:
       operationId: listEvents
@@ -216,6 +222,12 @@ paths:
           $ref: '#/components/responses/Error'
         '413':
           $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/AdmissionRateLimited'
+        '502':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/AdmissionUnavailable'
         '409':
           description: Egress is already rotating.
           content:
@@ -231,6 +243,30 @@ components:
       schema:
         type: string
   responses:
+    AdmissionRateLimited:
+      description: Shared expensive-request rate budget exhausted before dispatch.
+      headers:
+        Retry-After:
+          description: Minimum delay in seconds before another admission attempt.
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    AdmissionUnavailable:
+      description: Shared expensive-request capacity unavailable or request cancelled before dispatch.
+      headers:
+        Retry-After:
+          description: Present for capacity rejection; absence does not permit a mutation retry.
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     Error:
       description: JSON error response.
       content:
@@ -492,6 +528,10 @@ components:
           type: string
           format: date-time
           nullable: true
+        rotate_state:
+          type: string
+          enum: [idle, cooldown, unknown]
+          description: Local dispatch/cooldown knowledge only. Unknown prevents redispatch in this Hub process; it does not prove remote completion or persist across restart.
         raw_health:
           type: object
           additionalProperties: true

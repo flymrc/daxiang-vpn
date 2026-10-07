@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -64,7 +65,7 @@ func TestClientMuxAssignsRotateIngress(t *testing.T) {
 				"ZH-OK": {Enabled: true, ClientName: "test-client", Egress: auth.Egress{Name: "jp-android-01"}},
 			}}
 			server := auth.NewServer(store)
-			server.SetRotateTrigger(func(string, int) error { return nil })
+			server.SetRotateTrigger(func(context.Context, string, int) error { return nil })
 			var event auth.AuditEvent
 			server.SetAuditSink(func(v auth.AuditEvent) { event = v })
 			req := httptest.NewRequest(http.MethodPost, "/api/client/rotate-ip", bytes.NewBufferString(`{"token":"ZH-OK"}`))

@@ -604,3 +604,5 @@ last_reconciled_at
 隔离开发分支已新增真实 CLI 代理控制、Hub v2 签名 API/后台对账、reverse 双端 mTLS 与本地发行门禁，见[运行时接线](../30-implementation/steelman-runtime-integration.md)。这些代码和本地测试未导入 legacy token/安装实例，未更改 campaign 分母、T0、30天窗口、readiness 或生产入口；当前观测不能自动认领为新版设备授权证明。
 
 第二波补齐 legacy listener 来源伪造防护、读取预算、管理台真实状态和公钥输入检查，以及离线恢复/更新 metadata 的审阅能力；见[第二波记录](../90-history/worklogs/2026-10-07-zhvpn-security-boundaries.md)。恢复 planner 不自证 latest checkpoint，也不执行恢复；纯 update verifier 不持久提交 watermark 或安装。没有实际客户迁移、现场撤权/恢复和旧入口退役证据，NO-GO、campaign 窗口和分母保持原定义。
+
+第三波补齐指定昂贵 HTTP 入口的来源准入与本地 WG/SSH 子进程预算，明确未启动的失败才补偿 lease，未知派发结果不自动重试。Admin 显示服务端 unknown 并跨页面重载阻断；该标记尚无跨 Hub 重启持久性，来源 IP 也没有升级为设备身份。此切片不关闭 campaign、受控导入或生产授权切换门禁，见[执行边界](../30-implementation/legacy-control-process-budget.md)。

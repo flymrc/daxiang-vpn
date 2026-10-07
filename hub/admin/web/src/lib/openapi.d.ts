@@ -341,6 +341,11 @@ export interface components {
             active_connections?: number;
             /** Format: date-time */
             rotate_lock_until?: string | null;
+            /**
+             * @description Local dispatch/cooldown knowledge only. Unknown prevents redispatch in this Hub process; it does not prove remote completion or persist across restart.
+             * @enum {string}
+             */
+            rotate_state?: "idle" | "cooldown" | "unknown";
             raw_health?: {
                 [key: string]: unknown;
             } | null;
@@ -385,6 +390,28 @@ export interface components {
         };
     };
     responses: {
+        /** @description Shared expensive-request rate budget exhausted before dispatch. */
+        AdmissionRateLimited: {
+            headers: {
+                /** @description Minimum delay in seconds before another admission attempt. */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description Shared expensive-request capacity unavailable or request cancelled before dispatch. */
+        AdmissionUnavailable: {
+            headers: {
+                /** @description Present for capacity rejection; absence does not permit a mutation retry. */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
         /** @description JSON error response. */
         Error: {
             headers: {
@@ -430,6 +457,7 @@ export interface operations {
             401: components["responses"]["Error"];
             413: components["responses"]["Error"];
             429: components["responses"]["Error"];
+            503: components["responses"]["AdmissionUnavailable"];
         };
     };
     logout: {
@@ -646,7 +674,9 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            429: components["responses"]["AdmissionRateLimited"];
             502: components["responses"]["Error"];
+            503: components["responses"]["AdmissionUnavailable"];
         };
     };
     listEvents: {
@@ -711,6 +741,9 @@ export interface operations {
                 };
             };
             413: components["responses"]["Error"];
+            429: components["responses"]["AdmissionRateLimited"];
+            502: components["responses"]["Error"];
+            503: components["responses"]["AdmissionUnavailable"];
         };
     };
 }

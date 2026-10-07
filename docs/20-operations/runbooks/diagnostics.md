@@ -514,6 +514,14 @@ Admin npm 与 desktop 分别扫描，统一 gate 显式纳入 dev/optional/peer�
 
 更新 verifier 只验证 staging metadata/实际产物，不安装、不保存 watermark；不得把未签名开发包或一份缓存 receipt 当作正式更新批准。边界见[可信更新合同](../../30-implementation/trusted-update-metadata-verifier.md)。
 
+## 4.4 兼容执行与结果未知（尚未部署）
+
+第三波源码的昂贵 HTTP 入口共享8全局/2每来源在飞名额及有限速率/1024来源表；429 `rate_limited` 和503 `resource_exhausted` 表示本次未进入 handler，按 `Retry-After` 等待。health/snapshot读取不占该池。内部 WG 在飞1个、SSH共享2个；bootstrap 5s/WG 3s、carrier 1.5s、rotate 18s/SSH 15s为本地候选，不可当作当前生产参数。
+
+`process_supervision_unknown` 表示本次 native cleanup尚不能确认，该名额隔离保留。先核验对应服务版本和本次受管树，不按进程名/历史PID强杀，不通过重启假装完成。Linux helper本身毁坏且descendant已脱离session时，本地父进程可能无法认领它；运行库返回unknown，不承诺所有树都能停止。
+
+Admin `rotate_state=unknown` 表示可能已经派发；普通冷却过去、页面刷新/重载都不允许重派。没有安全clear API，当前标记也不跨Hub重启持久保存；不得以重启清标记绕过结果核验。手机端后台恢复脚本必须保留，SSH超时不证明其未启动。完整限制与负例见[执行合同](../../30-implementation/legacy-control-process-budget.md)。
+
 ## 5. 历史基线（2026-06-03 实测,Mac 出口已弃用）
 
 留作对照，知道「正常」长什么样：

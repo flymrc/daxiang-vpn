@@ -10,40 +10,69 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"zongheng-vpn/hub/internal/httpboundary"
+	"zongheng-vpn/hub/internal/processbudget"
 )
 
 type Server struct {
-	store           *TokenStore
-	tokenLeases     map[string]tokenLease
-	tokenLeasesMu   sync.Mutex
-	tokenLeaseTTL   time.Duration
-	rotateLocks     map[string]rotateLock
-	rotateLocksMu   sync.Mutex
-	rotateLockExtra time.Duration
-	triggerRotateIP func(string, int) error
-	carrierCache    map[string]carrierCacheEntry
-	carrierCacheMu  sync.Mutex
-	carrierCacheTTL time.Duration
-	carrierProbe    func(string) string
-	auditSink       func(AuditEvent)
-	applyClientPeer func(string, string) error
+	store             *TokenStore
+	tokenLeases       map[string]tokenLease
+	tokenLeasesMu     sync.Mutex
+	tokenLeaseVersion uint64
+	tokenLeaseTTL     time.Duration
+	rotateLocks       map[string]rotateLock
+	rotateLocksMu     sync.Mutex
+	rotateLockExtra   time.Duration
+	triggerRotateIP   func(context.Context, string, int) error
+	carrierCache      map[string]carrierCacheEntry
+	carrierCacheMu    sync.Mutex
+	carrierCacheTTL   time.Duration
+	carrierProbe      func(context.Context, string) string
+	auditSink         func(AuditEvent)
+	applyClientPeer   func(context.Context, string, string) error
+	httpAdmission     *httpboundary.Admission
+	resourcesOnce     sync.Once
+	wgRunner          *processbudget.Runner
+	sshRunner         *processbudget.Runner
+	carrierFlights    map[string]*carrierFlight
+}
+type carrierFlight struct {
+	done  chan struct{}
+	value string
 }
 
 type tokenLease struct {
 	sourceIP string
 	seenAt   time.Time
+	version  uint64
+	node     *leaseClaimNode
+}
+
+// Pending claims share their predecessors so an out-of-order rejection cannot
+// restore a lease that another request has already rejected. All node fields
+// are protected by tokenLeasesMu; committed nodes discard their history.
+type leaseClaimNode struct {
+	previous  tokenLease
+	existed   bool
+	failed    bool
+	committed bool
+}
+type tokenClaim struct {
+	token   string
+	current tokenLease
+	changed bool
 }
 
 type rotateLock struct {
 	startedAt time.Time
 	until     time.Time
+	unknown   bool
+	inflight  bool
 }
 
 type carrierCacheEntry struct {
@@ -93,6 +122,7 @@ type RotateLockSnapshot struct {
 	Egress    string
 	StartedAt time.Time
 	Until     time.Time
+	Unknown   bool
 }
 
 type RotateEgressResult struct {
@@ -148,19 +178,37 @@ type clientResponse struct {
 }
 
 func NewServer(store *TokenStore) *Server {
-	return &Server{
+	s := &Server{
 		store:           store,
 		tokenLeases:     map[string]tokenLease{},
 		tokenLeaseTTL:   tokenLeaseTTLFromEnv(),
 		rotateLocks:     map[string]rotateLock{},
 		rotateLockExtra: rotateLockExtraFromEnv(),
-		triggerRotateIP: triggerAndroidRotateIP,
 		carrierCache:    map[string]carrierCacheEntry{},
 		carrierCacheTTL: carrierCacheTTLFromEnv(),
-		carrierProbe:    currentAndroidCarrier,
-		applyClientPeer: applyWireGuardPeer,
 	}
+	s.ensureResources()
+	return s
 }
+
+func (s *Server) ensureResources() {
+	s.resourcesOnce.Do(func() {
+		var err error
+		if s.httpAdmission == nil {
+			s.httpAdmission, err = httpboundary.NewAdmission(httpboundary.DefaultAdmissionConfig())
+			if err != nil {
+				panic("invalid internal HTTP admission")
+			}
+		}
+		s.wgRunner = processbudget.New(1)
+		s.sshRunner = processbudget.New(2)
+		if s.carrierCache == nil {
+			s.carrierCache = map[string]carrierCacheEntry{}
+		}
+		s.carrierFlights = map[string]*carrierFlight{}
+	})
+}
+func (s *Server) HTTPAdmission() *httpboundary.Admission { s.ensureResources(); return s.httpAdmission }
 
 func (s *Server) Health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -170,7 +218,7 @@ func (s *Server) SetAuditSink(sink func(AuditEvent)) {
 	s.auditSink = sink
 }
 
-func (s *Server) SetRotateTrigger(trigger func(string, int) error) {
+func (s *Server) SetRotateTrigger(trigger func(context.Context, string, int) error) {
 	s.triggerRotateIP = trigger
 }
 
@@ -178,12 +226,25 @@ func (s *Server) BootstrapHandler(ingress ClientIngress) http.HandlerFunc {
 	if ingress != ClientIngressCompat && ingress != ClientIngressTrustedProxy {
 		panic("invalid client ingress: " + string(ingress))
 	}
-	return func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.bootstrap(w, r, ingress)
+	})
+	policy := httpboundary.Direct
+	if ingress == ClientIngressTrustedProxy {
+		policy = httpboundary.LoopbackProxy
 	}
+	return s.HTTPAdmission().Middleware(handler, policy).ServeHTTP
 }
 
 func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request, ingress ClientIngress) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	r = r.WithContext(ctx)
+	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(5 * time.Second))
+	if ctx.Err() != nil {
+		writeJSON(w, 503, map[string]string{"error": "request_cancelled"})
+		return
+	}
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method_not_allowed"})
 		return
@@ -217,7 +278,18 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request, ingress Clien
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_token"})
 		return
 	}
-	if !s.claimToken(req.Token, src, time.Now()) {
+	clientPublicKey := strings.TrimSpace(req.WireGuardPublicKey)
+	if clientPublicKey != "" && validateWireGuardPublicKey(clientPublicKey) != nil {
+		s.audit(AuditEvent{OccurredAt: time.Now(), Actor: record.ClientName, SourceIP: src, EventType: "client.bootstrap", Target: "token:" + maskToken(req.Token), DetailJSON: `{"reason":"invalid_wireguard_public_key"}`, Result: "denied", ErrorCode: "invalid_wireguard_public_key"})
+		writeJSON(w, 400, map[string]string{"error": "invalid_wireguard_public_key"})
+		return
+	}
+	if ctx.Err() != nil {
+		writeJSON(w, 503, map[string]string{"error": "request_cancelled"})
+		return
+	}
+	claimed, claim := s.claimTokenReceipt(req.Token, src, time.Now())
+	if !claimed {
 		log.Printf("bootstrap 拒绝 src=%s token=%q client=%s reason=token_in_use", src, maskToken(req.Token), record.ClientName)
 		s.audit(AuditEvent{
 			OccurredAt: time.Now(),
@@ -232,28 +304,18 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request, ingress Clien
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "token_in_use"})
 		return
 	}
-	clientPublicKey := strings.TrimSpace(req.WireGuardPublicKey)
 	if clientPublicKey != "" {
-		if err := validateWireGuardPublicKey(clientPublicKey); err != nil {
-			s.audit(AuditEvent{
-				OccurredAt: time.Now(),
-				Actor:      record.ClientName,
-				SourceIP:   src,
-				EventType:  "client.bootstrap",
-				Target:     "token:" + maskToken(req.Token),
-				DetailJSON: `{"reason":"invalid_wireguard_public_key"}`,
-				Result:     "denied",
-				ErrorCode:  "invalid_wireguard_public_key",
-			})
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_wireguard_public_key"})
-			return
-		}
 		applyPeer := s.applyClientPeer
 		if applyPeer == nil {
-			applyPeer = applyWireGuardPeer
+			applyPeer = s.applyWireGuardPeer
 		}
-		if err := applyPeer(clientPublicKey, record.WireGuard.Address); err != nil {
-			log.Printf("bootstrap 应用客户端 peer 失败 src=%s token=%q client=%s err=%v", src, maskToken(req.Token), record.ClientName, err)
+		if err := applyPeer(ctx, clientPublicKey, record.WireGuard.Address); err != nil {
+			if processbudget.BeforeStart(err) {
+				s.rollbackTokenClaim(claim)
+			} else {
+				s.commitTokenClaim(claim)
+			}
+			log.Printf("bootstrap 应用客户端 peer 失败 src=%s token=%q client=%s code=wireguard_peer_apply_failed", src, maskToken(req.Token), record.ClientName)
 			s.audit(AuditEvent{
 				OccurredAt: time.Now(),
 				Actor:      record.ClientName,
@@ -270,6 +332,7 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request, ingress Clien
 		record.WireGuard.PrivateKey = ""
 		record.WireGuard.PublicKey = clientPublicKey
 	}
+	s.commitTokenClaim(claim)
 
 	occurredAt := time.Now()
 	privateKeyReturned := strings.TrimSpace(record.WireGuard.PrivateKey) != ""
@@ -306,7 +369,7 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request, ingress Clien
 	writeJSON(w, http.StatusOK, bootstrapResponse{
 		Client:     clientResponse{Name: record.ClientName},
 		Hub:        record.Hub,
-		Egress:     s.egressWithCachedCarrierName(record.Egress),
+		Egress:     s.egressWithCachedCarrierName(ctx, record.Egress),
 		LocalProxy: record.LocalProxy,
 		WireGuard:  record.WireGuard,
 	})
@@ -389,10 +452,11 @@ func validateWireGuardPublicKey(publicKey string) error {
 	return nil
 }
 
-func applyWireGuardPeer(publicKey string, address string) error {
+func (s *Server) applyWireGuardPeer(ctx context.Context, publicKey string, address string) error {
+	s.ensureResources()
 	allowedIP, err := peerAllowedIP(address)
 	if err != nil {
-		return err
+		return processbudget.Reject(processbudget.Invalid)
 	}
 	iface := strings.TrimSpace(os.Getenv("ZHHUB_WG_INTERFACE"))
 	if iface == "" {
@@ -402,16 +466,8 @@ func applyWireGuardPeer(publicKey string, address string) error {
 	if wgBin == "" {
 		wgBin = "wg"
 	}
-	cmd := exec.Command(wgBin, "set", iface, "peer", publicKey, "allowed-ips", allowedIP)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		text := strings.TrimSpace(string(out))
-		if text != "" {
-			return fmt.Errorf("%w: %s", err, text)
-		}
-		return err
-	}
-	return nil
+	_, err = s.wgRunner.Run(ctx, processbudget.Spec{Executable: wgBin, Args: []string{"set", iface, "peer", publicKey, "allowed-ips", allowedIP}, Timeout: 3 * time.Second, OutputLimit: 4096})
+	return err
 }
 
 func peerAllowedIP(address string) (string, error) {
@@ -435,35 +491,66 @@ func peerAllowedIP(address string) (string, error) {
 	return ip.String() + "/128", nil
 }
 
-func (s *Server) egressWithCachedCarrierName(egress Egress) Egress {
-	carrier := s.cachedAndroidCarrier(egress.ManagementAddr, time.Now())
+func (s *Server) egressWithCachedCarrierName(ctx context.Context, egress Egress) Egress {
+	carrier := s.cachedAndroidCarrier(ctx, egress.ManagementAddr, time.Now())
 	if carrier != "" {
 		egress.DisplayName = carrier
 	}
 	return egress
 }
 
-func (s *Server) cachedAndroidCarrier(managementAddr string, now time.Time) string {
+func (s *Server) cachedAndroidCarrier(ctx context.Context, managementAddr string, now time.Time) string {
 	managementAddr = strings.TrimSpace(managementAddr)
-	if managementAddr == "" || s == nil || s.carrierCacheTTL <= 0 {
+	if managementAddr == "" || s == nil || s.carrierCacheTTL <= 0 || ctx.Err() != nil {
 		return ""
 	}
 
+	s.ensureResources()
 	s.carrierCacheMu.Lock()
-	defer s.carrierCacheMu.Unlock()
-
-	if s.carrierCache == nil {
-		s.carrierCache = map[string]carrierCacheEntry{}
-	}
 	if cached, ok := s.carrierCache[managementAddr]; ok && now.Before(cached.expiresAt) {
+		s.carrierCacheMu.Unlock()
 		return cached.value
 	}
+	if flight := s.carrierFlights[managementAddr]; flight != nil {
+		s.carrierCacheMu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ""
+		case <-flight.done:
+			if ctx.Err() != nil {
+				return ""
+			}
+			return flight.value
+		}
+	}
+	for key, entry := range s.carrierCache {
+		if !now.Before(entry.expiresAt) {
+			delete(s.carrierCache, key)
+		}
+	}
+	if len(s.carrierFlights) >= 16 || len(s.carrierCache)+len(s.carrierFlights) >= 64 {
+		s.carrierCacheMu.Unlock()
+		return ""
+	}
+	flight := &carrierFlight{done: make(chan struct{})}
+	s.carrierFlights[managementAddr] = flight
+	s.carrierCacheMu.Unlock()
 
 	probe := s.carrierProbe
 	if probe == nil {
-		probe = currentAndroidCarrier
+		probe = s.currentAndroidCarrier
 	}
-	carrier := probe(managementAddr)
+	bounded, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	carrier := probe(bounded, managementAddr)
+	cancel()
+	if ctx.Err() != nil {
+		carrier = ""
+	}
+	s.carrierCacheMu.Lock()
+	defer s.carrierCacheMu.Unlock()
+	flight.value = carrier
+	delete(s.carrierFlights, managementAddr)
+	close(flight.done)
 	s.carrierCache[managementAddr] = carrierCacheEntry{
 		value:     carrier,
 		expiresAt: now.Add(s.carrierCacheTTL),
@@ -471,7 +558,8 @@ func (s *Server) cachedAndroidCarrier(managementAddr string, now time.Time) stri
 	return carrier
 }
 
-func currentAndroidCarrier(managementAddr string) string {
+func (s *Server) currentAndroidCarrier(ctx context.Context, managementAddr string) string {
+	s.ensureResources()
 	keyPath := androidControlKeyPath()
 	if _, err := os.Stat(keyPath); err != nil {
 		return ""
@@ -480,23 +568,20 @@ func currentAndroidCarrier(managementAddr string) string {
 	if host == "" {
 		return ""
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "ssh",
+	result, err := s.sshRunner.Run(ctx, processbudget.Spec{Executable: "ssh", Timeout: 1500 * time.Millisecond, OutputLimit: 4096, Args: []string{
 		"-i", keyPath,
 		"-p", port,
 		"-o", "BatchMode=yes",
 		"-o", "ConnectTimeout=1",
-		"-o", "StrictHostKeyChecking="+androidControlHostKeyPolicy(),
-		"-o", "UserKnownHostsFile="+androidControlKnownHostsPath(),
-		"root@"+host,
+		"-o", "StrictHostKeyChecking=" + androidControlHostKeyPolicy(),
+		"-o", "UserKnownHostsFile=" + androidControlKnownHostsPath(),
+		"root@" + host,
 		"getprop gsm.operator.alpha; getprop gsm.sim.operator.alpha",
-	)
-	out, err := cmd.Output()
+	}})
 	if err != nil {
 		return ""
 	}
-	for _, line := range strings.Split(string(out), "\n") {
+	for _, line := range strings.Split(string(result.Stdout), "\n") {
 		if carrier := firstCSVValue(line); carrier != "" {
 			return carrier
 		}
@@ -536,21 +621,78 @@ func firstCSVValue(value string) string {
 }
 
 func (s *Server) claimToken(token string, sourceIP string, now time.Time) bool {
+	ok, claim := s.claimTokenReceipt(token, sourceIP, now)
+	if ok {
+		s.commitTokenClaim(claim)
+	}
+	return ok
+}
+func (s *Server) claimTokenReceipt(token string, sourceIP string, now time.Time) (bool, tokenClaim) {
 	token = strings.TrimSpace(token)
 	sourceIP = strings.TrimSpace(sourceIP)
 	if token == "" || sourceIP == "" || s.tokenLeaseTTL <= 0 {
-		return true
+		return true, tokenClaim{}
 	}
 
 	s.tokenLeasesMu.Lock()
 	defer s.tokenLeasesMu.Unlock()
 
+	if s.tokenLeases == nil {
+		s.tokenLeases = map[string]tokenLease{}
+	}
 	lease, ok := s.tokenLeases[token]
 	if ok && lease.sourceIP != sourceIP && now.Sub(lease.seenAt) < s.tokenLeaseTTL {
-		return false
+		return false, tokenClaim{}
 	}
-	s.tokenLeases[token] = tokenLease{sourceIP: sourceIP, seenAt: now}
-	return true
+	s.tokenLeaseVersion++
+	node := &leaseClaimNode{previous: lease, existed: ok}
+	current := tokenLease{sourceIP: sourceIP, seenAt: now, version: s.tokenLeaseVersion, node: node}
+	s.tokenLeases[token] = current
+	return true, tokenClaim{token: token, current: current, changed: true}
+}
+func (s *Server) rollbackTokenClaim(claim tokenClaim) {
+	if !claim.changed || claim.current.node == nil {
+		return
+	}
+	s.tokenLeasesMu.Lock()
+	defer s.tokenLeasesMu.Unlock()
+	node := claim.current.node
+	if node.committed || node.failed {
+		return
+	}
+	node.failed = true
+	if current, ok := s.tokenLeases[claim.token]; ok && current.version == claim.current.version {
+		previous, existed := node.previous, node.existed
+		for existed && previous.node != nil && previous.node.failed {
+			previous, existed = previous.node.previous, previous.node.existed
+		}
+		if existed {
+			if previous.node != nil && previous.node.committed {
+				previous.node = nil
+			}
+			s.tokenLeases[claim.token] = previous
+		} else {
+			delete(s.tokenLeases, claim.token)
+		}
+	}
+}
+func (s *Server) commitTokenClaim(claim tokenClaim) {
+	if !claim.changed || claim.current.node == nil {
+		return
+	}
+	s.tokenLeasesMu.Lock()
+	defer s.tokenLeasesMu.Unlock()
+	node := claim.current.node
+	if node.failed || node.committed {
+		return
+	}
+	node.committed = true
+	node.previous = tokenLease{}
+	node.existed = false
+	if current, ok := s.tokenLeases[claim.token]; ok && current.version == claim.current.version {
+		current.node = nil
+		s.tokenLeases[claim.token] = current
+	}
 }
 
 func (s *Server) TokenLeasesSnapshot(now time.Time) []TokenLeaseSnapshot {
@@ -588,11 +730,12 @@ func (s *Server) RotateLocksSnapshot(now time.Time) []RotateLockSnapshot {
 
 	locks := make([]RotateLockSnapshot, 0, len(s.rotateLocks))
 	for egress, lock := range s.rotateLocks {
-		if now.Before(lock.until) {
+		if lock.unknown || lock.inflight || now.Before(lock.until) {
 			locks = append(locks, RotateLockSnapshot{
 				Egress:    egress,
 				StartedAt: lock.startedAt,
 				Until:     lock.until,
+				Unknown:   lock.unknown,
 			})
 		}
 	}
@@ -600,58 +743,58 @@ func (s *Server) RotateLocksSnapshot(now time.Time) []RotateLockSnapshot {
 }
 
 func tokenLeaseTTLFromEnv() time.Duration {
-	text := strings.TrimSpace(os.Getenv("ZHHUB_TOKEN_LEASE_SECONDS"))
-	if text == "" {
-		return 30 * time.Second
-	}
-	seconds, err := strconv.Atoi(text)
-	if err != nil || seconds < 0 {
-		log.Printf("ZHHUB_TOKEN_LEASE_SECONDS 无效: %q, 使用默认 30s", text)
-		return 30 * time.Second
-	}
-	return time.Duration(seconds) * time.Second
+	return boundedEnvSeconds("ZHHUB_TOKEN_LEASE_SECONDS", 30*time.Second)
 }
 
 func rotateLockExtraFromEnv() time.Duration {
-	text := strings.TrimSpace(os.Getenv("ZHHUB_ROTATE_LOCK_EXTRA_SECONDS"))
-	if text == "" {
-		return 45 * time.Second
-	}
-	seconds, err := strconv.Atoi(text)
-	if err != nil || seconds < 0 {
-		log.Printf("ZHHUB_ROTATE_LOCK_EXTRA_SECONDS 无效: %q, 使用默认 45s", text)
-		return 45 * time.Second
-	}
-	return time.Duration(seconds) * time.Second
+	return boundedEnvSeconds("ZHHUB_ROTATE_LOCK_EXTRA_SECONDS", 45*time.Second)
 }
 
 func carrierCacheTTLFromEnv() time.Duration {
-	text := strings.TrimSpace(os.Getenv("ZHHUB_ANDROID_CARRIER_CACHE_SECONDS"))
+	return boundedEnvSeconds("ZHHUB_ANDROID_CARRIER_CACHE_SECONDS", 5*time.Minute)
+}
+
+// Bound configuration before multiplying; zero retains the existing disable /
+// no-extra-delay semantics. Invalid values never reach operational logs.
+func boundedEnvSeconds(key string, fallback time.Duration) time.Duration {
+	text := strings.TrimSpace(os.Getenv(key))
 	if text == "" {
-		return 5 * time.Minute
+		return fallback
 	}
-	seconds, err := strconv.Atoi(text)
-	if err != nil || seconds < 0 {
-		log.Printf("ZHHUB_ANDROID_CARRIER_CACHE_SECONDS 无效: %q, 使用默认 300s", text)
-		return 5 * time.Minute
+	seconds, err := strconv.ParseInt(text, 10, 64)
+	if err != nil || seconds < 0 || seconds > 24*60*60 {
+		log.Printf("%s 无效, 使用默认秒数 %d", key, int64(fallback/time.Second))
+		return fallback
 	}
 	return time.Duration(seconds) * time.Second
 }
 
 func (s *Server) RotateIP(w http.ResponseWriter, r *http.Request) {
-	s.rotateIP(w, r, ClientIngressCompat)
+	s.RotateIPHandler(ClientIngressCompat)(w, r)
 }
 
 func (s *Server) RotateIPHandler(ingress ClientIngress) http.HandlerFunc {
 	if ingress != ClientIngressCompat && ingress != ClientIngressTrustedProxy {
 		panic("invalid client ingress: " + string(ingress))
 	}
-	return func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.rotateIP(w, r, ingress)
+	})
+	policy := httpboundary.Direct
+	if ingress == ClientIngressTrustedProxy {
+		policy = httpboundary.LoopbackProxy
 	}
+	return s.HTTPAdmission().Middleware(handler, policy).ServeHTTP
 }
 
 func (s *Server) rotateIP(w http.ResponseWriter, r *http.Request, ingress ClientIngress) {
+	ctx, cancel := context.WithTimeout(r.Context(), 18*time.Second)
+	defer cancel()
+	r = r.WithContext(ctx)
+	if ctx.Err() != nil {
+		writeJSON(w, 503, map[string]string{"error": "request_cancelled"})
+		return
+	}
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method_not_allowed"})
 		return
@@ -702,7 +845,7 @@ func (s *Server) rotateIP(w http.ResponseWriter, r *http.Request, ingress Client
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_token"})
 		return
 	}
-	result, err := s.RotateEgress(record.Egress, req.DownSeconds)
+	result, err := s.RotateEgress(ctx, record.Egress, req.DownSeconds)
 	if errors.Is(err, ErrUnsupportedEgress) {
 		log.Printf("rotate-ip 拒绝 src=%s token=%q client=%s egress=%s reason=unsupported_egress", src, maskToken(req.Token), record.ClientName, record.Egress.Name)
 		s.audit(AuditEvent{
@@ -740,7 +883,7 @@ func (s *Server) rotateIP(w http.ResponseWriter, r *http.Request, ingress Client
 		return
 	}
 	if err != nil {
-		log.Printf("rotate-ip 失败 src=%s token=%q client=%s egress=%s err=%v", src, maskToken(req.Token), record.ClientName, record.Egress.Name, err)
+		log.Printf("rotate-ip 失败 src=%s token=%q client=%s egress=%s code=control_failed", src, maskToken(req.Token), record.ClientName, record.Egress.Name)
 		s.audit(AuditEvent{
 			OccurredAt: time.Now(),
 			Actor:      record.ClientName,
@@ -772,7 +915,12 @@ func (s *Server) rotateIP(w http.ResponseWriter, r *http.Request, ingress Client
 	})
 }
 
-func (s *Server) RotateEgress(egress Egress, downSeconds int) (RotateEgressResult, error) {
+func (s *Server) RotateEgress(ctx context.Context, egress Egress, downSeconds int) (RotateEgressResult, error) {
+	if ctx.Err() != nil {
+		return RotateEgressResult{}, processbudget.Reject(processbudget.Cancelled)
+	}
+	bounded, cancel := context.WithTimeout(ctx, 18*time.Second)
+	defer cancel()
 	if downSeconds == 0 {
 		downSeconds = 8
 	}
@@ -796,16 +944,25 @@ func (s *Server) RotateEgress(egress Egress, downSeconds int) (RotateEgressResul
 
 	trigger := s.triggerRotateIP
 	if trigger == nil {
-		trigger = triggerAndroidRotateIP
+		trigger = s.triggerAndroidRotateIP
 	}
-	if err := trigger(egress.ManagementAddr, downSeconds); err != nil {
-		s.releaseRotate(egress.Name, lock)
+	if err := trigger(bounded, egress.ManagementAddr, downSeconds); err != nil {
+		if processbudget.BeforeStart(err) {
+			s.releaseRotate(egress.Name, lock)
+		} else {
+			s.finishRotate(egress.Name, lock, true)
+		}
 		return RotateEgressResult{
 			Status:      "error",
 			Egress:      egress.Name,
 			DownSeconds: downSeconds,
 		}, err
 	}
+	if bounded.Err() != nil {
+		s.finishRotate(egress.Name, lock, true)
+		return RotateEgressResult{}, &processbudget.Failure{Kind: processbudget.Cancelled, Started: true}
+	}
+	s.finishRotate(egress.Name, lock, false)
 
 	return RotateEgressResult{
 		Status:      "triggered",
@@ -838,7 +995,7 @@ func (s *Server) tryBeginRotate(egress string, downSeconds int, now time.Time) (
 	if s.rotateLocks == nil {
 		s.rotateLocks = map[string]rotateLock{}
 	}
-	if current, ok := s.rotateLocks[egress]; ok && now.Before(current.until) {
+	if current, ok := s.rotateLocks[egress]; ok && (current.unknown || current.inflight || now.Before(current.until)) {
 		retryAfter := int(current.until.Sub(now).Round(time.Second) / time.Second)
 		if retryAfter < 1 {
 			retryAfter = 1
@@ -846,9 +1003,19 @@ func (s *Server) tryBeginRotate(egress string, downSeconds int, now time.Time) (
 		return current, retryAfter, false
 	}
 
-	lock := rotateLock{startedAt: now, until: now.Add(hold)}
+	lock := rotateLock{startedAt: now, until: now.Add(hold), inflight: true}
 	s.rotateLocks[egress] = lock
 	return lock, 0, true
+}
+
+func (s *Server) finishRotate(egress string, lock rotateLock, unknown bool) {
+	s.rotateLocksMu.Lock()
+	defer s.rotateLocksMu.Unlock()
+	if current, ok := s.rotateLocks[egress]; ok && current.startedAt.Equal(lock.startedAt) && current.until.Equal(lock.until) {
+		current.inflight = false
+		current.unknown = unknown
+		s.rotateLocks[egress] = current
+	}
 }
 
 func (s *Server) releaseRotate(egress string, lock rotateLock) {
@@ -864,36 +1031,29 @@ func (s *Server) releaseRotate(egress string, lock rotateLock) {
 	}
 }
 
-func triggerAndroidRotateIP(managementAddr string, downSeconds int) error {
+func (s *Server) triggerAndroidRotateIP(ctx context.Context, managementAddr string, downSeconds int) error {
+	s.ensureResources()
 	host, port := splitHostPortDefault(managementAddr, "2022")
 	if host == "" {
 		host = "10.66.0.101"
 	}
 	keyPath := androidControlKeyPath()
 	if _, err := os.Stat(keyPath); err != nil {
-		return fmt.Errorf("control key unavailable: %w", err)
+		return processbudget.Reject(processbudget.Unavailable)
 	}
 
 	remote := fmt.Sprintf("sh /data/adb/zhandroid/rotate-ip.sh %d", downSeconds)
-	cmd := exec.Command("ssh",
+	_, err := s.sshRunner.Run(ctx, processbudget.Spec{Executable: "ssh", Timeout: 15 * time.Second, OutputLimit: 4096, Args: []string{
 		"-i", keyPath,
 		"-p", port,
-		"-o", "StrictHostKeyChecking="+androidControlHostKeyPolicy(),
-		"-o", "UserKnownHostsFile="+androidControlKnownHostsPath(),
+		"-o", "StrictHostKeyChecking=" + androidControlHostKeyPolicy(),
+		"-o", "UserKnownHostsFile=" + androidControlKnownHostsPath(),
 		"-o", "BatchMode=yes",
 		"-o", "ConnectTimeout=8",
-		"root@"+host,
+		"root@" + host,
 		remote,
-	)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		text := strings.TrimSpace(string(out))
-		if text != "" {
-			return fmt.Errorf("%w: %s", err, text)
-		}
-		return err
-	}
-	return nil
+	}})
+	return err
 }
 
 func splitHostPortDefault(value string, defaultPort string) (string, string) {

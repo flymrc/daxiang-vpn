@@ -2,6 +2,7 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -288,7 +289,7 @@ func newTestServerWithTokenStore(t *testing.T, tokenStore *auth.TokenStore, opts
 		opt(&cfg)
 	}
 	authServer := auth.NewServer(tokenStore)
-	authServer.SetRotateTrigger(func(string, int) error { return nil })
+	authServer.SetRotateTrigger(func(context.Context, string, int) error { return nil })
 	server, err := NewServer(cfg, tokenStore, authServer)
 	if err != nil {
 		t.Fatal(err)

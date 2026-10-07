@@ -418,6 +418,14 @@
 
   function openRotate(node: EgressSummary) {
     if (!canRotate) return;
+    if (node.rotate_state === "unknown") {
+      showToast("换 IP 结果未确认，请先核实出口和操作日志");
+      return;
+    }
+    if (node.rotate_state === "cooldown") {
+      showToast("换 IP 调度或冷却尚未结束，请刷新状态");
+      return;
+    }
     const lockedUntil = activeRotateLockUntil(node);
     if (lockedUntil) {
       showToast(`换 IP 正在进行中，${remainingRetryText(lockedUntil)}`);
@@ -474,6 +482,8 @@
 
   async function confirmRotate() {
     if (!canRotate || mutationPending) { modal = null; return; }
+    const node = displayEgress.find(item => item.id === rotateTarget);
+    if (!node || !nodeCanRotate(node)) { modal = null; return; }
     mutationPending = true;
     const target = rotateTarget;
     modal = null;
@@ -632,6 +642,16 @@
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return value;
     return parsed.getTime() > Date.now() ? value : null;
+  }
+
+  function nodeCanRotate(node: EgressSummary) {
+    return node.rotate_state !== "unknown" && node.rotate_state !== "cooldown" && !activeRotateLockUntil(node);
+  }
+
+  function rotateStateLabel(node: EgressSummary) {
+    if (node.rotate_state === "unknown") return "结果未确认 · 需核验";
+    if (node.rotate_state === "cooldown" || activeRotateLockUntil(node)) return node.rotate_lock_until ? `调度 / 冷却至 ${shortDate(node.rotate_lock_until)}` : "调度 / 冷却中";
+    return node.rotate_state === "idle" ? "本地无锁" : "未报告";
   }
 
   function remainingRetryText(value: string) {
@@ -1101,10 +1121,10 @@
                     <span class={`dot ${dotClass(node.status)} bigdot`}></span>
                     <div>
                       <div class="fx ac gap10"><span class="node-title">{node.id}</span><span class={`pill ${statusPill(node.status)}`}>{statusLabel(node.status)}</span><span class="tag">{previewEnabled ? "演示" : "已登记"}</span></div>
-                      <div class="note mono node-sub">日本手机出口 · Rakuten Mobile · zhreverse TCP/yamux</div>
+                      <div class="note mono node-sub">{node.display_name} · {node.type}</div>
                     </div>
                   </div>
-                  <div class="fx ac gap8"><button class="btn primary" disabled={!canRotate} on:click={() => openRotate(node)}>换 IP</button><button class="btn" disabled>重连隧道</button><button class="btn ghost" disabled>控制台 SSH</button></div>
+                  <div class="fx ac gap8"><button class="btn primary" disabled={!canRotate || !nodeCanRotate(node)} on:click={() => openRotate(node)}>换 IP</button><button class="btn" disabled>重连隧道</button><button class="btn ghost" disabled>控制台 SSH</button></div>
                 </div>
                 <div class="kv flat">
                   <div class="kvc ipcard">
@@ -1138,9 +1158,9 @@
                     </div>
                   </div>
                   <div class="kvc"><div class="kvl">回程延迟</div><div class="kvv mono">{latency(node)}</div></div>
-                  <div class="kvc"><div class="kvl">隧道绑定</div><div class="kvv">wlan0 <span class="muted small">→ fallback rmnet1</span></div></div>
-                  <div class="kvc"><div class="kvl">换 IP 锁</div><div class="kvv fx ac gap6"><span class={`dot ${node.rotate_lock_until ? "warn" : "ok"}`}></span>{node.rotate_lock_until ? shortDate(node.rotate_lock_until) : "空闲"}</div></div>
-                  <div class="kvc"><div class="kvl">运营商 / 制式</div><div class="kvv">手机 IP · rmnet1</div></div>
+                  <div class="kvc"><div class="kvl">运行时隧道接口</div><div class="kvv muted">未提供运行证据</div></div>
+                  <div class="kvc"><div class="kvl">换 IP 锁</div><div class="kvv fx ac gap6"><span class={`dot ${node.rotate_state === "unknown" || node.rotate_state === "cooldown" || activeRotateLockUntil(node) ? "warn" : "idle"}`}></span>{rotateStateLabel(node)}</div></div>
+                  <div class="kvc"><div class="kvl">运行时运营商 / 制式</div><div class="kvv muted">未提供运行证据</div></div>
                   <div class="kvc"><div class="kvl">今日换 IP</div><div class="kvv mono">{displayOverview.stats.rotate_today_count} 次</div></div>
                   <div class="kvc"><div class="kvl">proxy_addr</div><div class="kvv mono">{node.proxy_addr}</div></div>
                   <div class="kvc"><div class="kvl">management_addr</div><div class="kvv mono">{node.management_addr}</div></div>

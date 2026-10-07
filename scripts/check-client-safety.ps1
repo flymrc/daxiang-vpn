@@ -27,7 +27,7 @@ try {
     Invoke-Gate 'Go vet' 'go' @('vet', '-tags', 'with_gvisor', './...')
     Invoke-Gate 'Client and reverse race tests' 'go' @('test', '-race', '-tags', 'with_gvisor', './clients/cli/...', './shared/...', './egress/reverse')
     Invoke-Gate 'Device authority/API race tests' 'go' @('test', '-race', './hub/internal/deviceauth', './hub/internal/deviceapi')
-    Invoke-Gate 'Hub compatibility and admin race tests' 'go' @('test', '-race', './hub/internal/auth', './hub/admin/...', './hub/internal/httpboundary')
+    Invoke-Gate 'Hub compatibility and admin race tests' 'go' @('test', '-race', './hub/internal/auth', './hub/admin/...', './hub/internal/httpboundary', './hub/internal/processbudget')
     Invoke-Gate 'Actual CLI and Hub TLS interoperability' 'go' @('test', '-race', '-tags', 'integration', './hub/internal/deviceapi', '-run', 'TestRealCLIAndHubTLSRecoverLostMutationResponses', '-count=1')
     Invoke-Gate 'Python SDK consumers' 'python' @('-m', 'unittest', 'discover', '-s', 'sdk/python/tests', '-v')
     Invoke-Gate 'Security evidence parser' 'python' @('-m', 'unittest', 'discover', '-s', 'scripts/tests', '-v')

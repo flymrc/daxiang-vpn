@@ -25,6 +25,7 @@ export function snapshot(o: unknown, t: unknown, l: unknown, e: unknown, a: unkn
   requireValid(object(l) && rows(l.leases, x => text(x.token_id, true) && strings(x, ["masked_token", "client_name", "source_ip", "egress_id"]) && date(x.seen_at) && nullableDate(x.expires_at)));
   requireValid(object(e) && rows(e.egress, x => text(x.id, true) && strings(x, ["display_name", "region", "type", "management_addr", "proxy_addr"]) &&
     ["online", "offline", "degraded", "deprecated"].includes(x.status as string) && (x.rotate_lock_until === undefined || nullableDate(x.rotate_lock_until)) &&
+    (x.rotate_state === undefined || ["idle", "cooldown", "unknown"].includes(x.rotate_state as string)) &&
     (x.raw_health === undefined || x.raw_health === null || object(x.raw_health)) && (x.session_count === undefined || count(x.session_count)) && (x.active_connections === undefined || count(x.active_connections))));
   requireValid(object(a) && rows(a.events, x => count(x.id) && strings(x, ["actor", "source_ip", "event_type", "target", "result"]) && date(x.occurred_at) &&
     (x.error_code === undefined || x.error_code === null || text(x.error_code)) && (x.detail === undefined || x.detail === null || object(x.detail))));

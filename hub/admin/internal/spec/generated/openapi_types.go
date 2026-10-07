@@ -7,6 +7,13 @@ import (
 	"time"
 )
 
+// Defines values for EgressSummaryRotateState.
+const (
+	EgressSummaryRotateStateCooldown EgressSummaryRotateState = "cooldown"
+	EgressSummaryRotateStateIdle     EgressSummaryRotateState = "idle"
+	EgressSummaryRotateStateUnknown  EgressSummaryRotateState = "unknown"
+)
+
 // Defines values for EgressSummaryStatus.
 const (
 	Degraded   EgressSummaryStatus = "degraded"
@@ -22,9 +29,9 @@ const (
 
 // Defines values for MigrationClientStatusMigrationClass.
 const (
-	Legacy          MigrationClientStatusMigrationClass = "legacy"
-	SecureBootstrap MigrationClientStatusMigrationClass = "secure_bootstrap"
-	Unknown         MigrationClientStatusMigrationClass = "unknown"
+	MigrationClientStatusMigrationClassLegacy          MigrationClientStatusMigrationClass = "legacy"
+	MigrationClientStatusMigrationClassSecureBootstrap MigrationClientStatusMigrationClass = "secure_bootstrap"
+	MigrationClientStatusMigrationClassUnknown         MigrationClientStatusMigrationClass = "unknown"
 )
 
 // Defines values for MigrationReadinessResponseMode.
@@ -90,10 +97,16 @@ type EgressSummary struct {
 	RawHealth         *map[string]interface{} `json:"raw_health"`
 	Region            string                  `json:"region"`
 	RotateLockUntil   *time.Time              `json:"rotate_lock_until"`
-	SessionCount      *int                    `json:"session_count,omitempty"`
-	Status            EgressSummaryStatus     `json:"status"`
-	Type              string                  `json:"type"`
+
+	// RotateState Local dispatch/cooldown knowledge only. Unknown prevents redispatch in this Hub process; it does not prove remote completion or persist across restart.
+	RotateState  *EgressSummaryRotateState `json:"rotate_state,omitempty"`
+	SessionCount *int                      `json:"session_count,omitempty"`
+	Status       EgressSummaryStatus       `json:"status"`
+	Type         string                    `json:"type"`
 }
+
+// EgressSummaryRotateState Local dispatch/cooldown knowledge only. Unknown prevents redispatch in this Hub process; it does not prove remote completion or persist across restart.
+type EgressSummaryRotateState string
 
 // EgressSummaryStatus defines model for EgressSummary.Status.
 type EgressSummaryStatus string
@@ -250,6 +263,12 @@ type TokensResponse struct {
 
 // CsrfToken defines model for CsrfToken.
 type CsrfToken = string
+
+// AdmissionRateLimited defines model for AdmissionRateLimited.
+type AdmissionRateLimited = ErrorResponse
+
+// AdmissionUnavailable defines model for AdmissionUnavailable.
+type AdmissionUnavailable = ErrorResponse
 
 // Error defines model for Error.
 type Error = ErrorResponse

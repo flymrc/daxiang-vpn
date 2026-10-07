@@ -238,7 +238,7 @@ func (s *Server) handleRotateIP(w http.ResponseWriter, r *http.Request, sc sessi
 		writeError(w, http.StatusNotFound, "egress_not_found", "")
 		return
 	}
-	result, err := s.clientAuth.RotateEgress(egress, downSeconds)
+	result, err := s.clientAuth.RotateEgress(r.Context(), egress, downSeconds)
 	detail := fmt.Sprintf(`{"down_seconds":%d}`, downSeconds)
 	if errors.Is(err, auth.ErrRotateBusy) {
 		retry := result.RetryAfterSeconds

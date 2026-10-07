@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -82,8 +83,8 @@ func TestLegacyRequestBodiesAreBoundedAndCompleteBeforeEffects(t *testing.T) {
 				peerCalls := 0
 				rotations := 0
 				s.SetAuditSink(func(AuditEvent) { calls++ })
-				s.applyClientPeer = func(string, string) error { peerCalls++; return nil }
-				s.SetRotateTrigger(func(string, int) error { rotations++; return nil })
+				s.applyClientPeer = func(context.Context, string, string) error { peerCalls++; return nil }
+				s.SetRotateTrigger(func(context.Context, string, int) error { rotations++; return nil })
 				r := httptest.NewRequest(http.MethodPost, "/api/client/"+endpoint, strings.NewReader(tt.body))
 				r.ContentLength = -1
 				w := httptest.NewRecorder()
@@ -109,7 +110,7 @@ func TestLegacyUnknownFieldsStayCompatibleAndRotateSourceIsBound(t *testing.T) {
 		}
 		var audit AuditEvent
 		s.SetAuditSink(func(v AuditEvent) { audit = v })
-		s.SetRotateTrigger(func(string, int) error { return nil })
+		s.SetRotateTrigger(func(context.Context, string, int) error { return nil })
 		r := httptest.NewRequest(http.MethodPost, "/api/client/rotate-ip", strings.NewReader(`{"token":"ZH-OK","future_field":true}`))
 		r.RemoteAddr = "127.0.0.1:2"
 		r.Header.Set("X-Forwarded-For", "203.0.113.20")

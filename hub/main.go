@@ -15,9 +15,13 @@ import (
 	"zongheng-vpn/hub/internal/auth"
 	"zongheng-vpn/hub/internal/deviceapi"
 	"zongheng-vpn/hub/internal/httpboundary"
+	"zongheng-vpn/hub/internal/processbudget"
 )
 
 func main() {
+	if code, handled := processbudget.SupervisorMain(os.Args[1:]); handled {
+		os.Exit(code)
+	}
 	deviceConfig, deviceEnabled, err := deviceConfigFromEnv()
 	if err != nil {
 		log.Fatalf("设备授权 opt-in 配置无效")

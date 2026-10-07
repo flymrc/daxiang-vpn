@@ -105,9 +105,9 @@ func (s *Server) egressSummaries(ctx context.Context) []generated.EgressSummary 
 			nodes[item.Record.Egress.Name] = item.Record.Egress
 		}
 	}
-	locks := map[string]time.Time{}
+	locks := map[string]auth.RotateLockSnapshot{}
 	for _, lock := range s.clientAuth.RotateLocksSnapshot(time.Now()) {
-		locks[lock.Egress] = lock.Until
+		locks[lock.Egress] = lock
 		_ = s.store.Queries().UpsertRotateLock(ctx, dbgen.UpsertRotateLockParams{
 			EgressID:  lock.Egress,
 			StartedAt: formatTime(lock.StartedAt),
@@ -139,8 +139,14 @@ func (s *Server) egressSummaries(ctx context.Context) []generated.EgressSummary 
 			}
 		}
 		var lockUntil *time.Time
-		if until, ok := locks[id]; ok {
+		rotateState := generated.EgressSummaryRotateStateIdle
+		if lock, ok := locks[id]; ok {
+			until := lock.Until
 			lockUntil = &until
+			rotateState = generated.EgressSummaryRotateStateCooldown
+			if lock.Unknown {
+				rotateState = generated.EgressSummaryRotateStateUnknown
+			}
 		}
 		row := generated.EgressSummary{
 			Id:                id,
@@ -153,6 +159,7 @@ func (s *Server) egressSummaries(ctx context.Context) []generated.EgressSummary 
 			SessionCount:      sessions,
 			ActiveConnections: active,
 			RotateLockUntil:   lockUntil,
+			RotateState:       &rotateState,
 			RawHealth:         rawHealth,
 		}
 		rows = append(rows, row)
