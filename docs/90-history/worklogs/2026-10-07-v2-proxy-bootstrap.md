@@ -40,4 +40,6 @@ campaign固定分母/installation lineage与完整阻断投影、受控导入/�
 
 独立取消负例已提升正式测试，Windows race 2.432s/vet/diff exit0。端口预检查代码已接线，但没有独立占用/抢占场景的运行证据，留在第五波计划余项。
 
-冻结源码提交和九目标 clean 开发构建在提交后另登记；局部 PASS 不替代整体 Steelman、Mac/phone 实机、签名 release 或任何生产安全迁移门禁。原始日志 `unified-final-frozen-v6.log`、`security-final-frozen-v6/` 和 fixture 在原 workspace 父目录 `.local/zongheng-vpn/steelman/2026-10-07/` 与专门私有review目录，未入Git。
+冻结源提交 `17e7689c82559d81303151b1e0116a6dfac7ee37` 后，`build-steelman-dev.ps1` 九目标 clean 开发构建 exit0；9 个产物 SHA256 全部与 manifest 相同。真实 Windows amd64 CLI `version --json` 返回该完整 SHA、clean、Go1.26.7、sidecar protocol2/CLI contract1。start contract2 独立于旧 CLI contract1。产物均 unsigned/compile_only，`release_ready=false`。原工作区79个保护文件与清册比较无新增hash漂移。
+
+局部 PASS 不替代整体 Steelman、Mac/phone 实机、签名 release 或任何生产安全迁移门禁。原始日志 `unified-final-frozen-v6.log`、`security-final-frozen-v6/`、`build-wave5-final.log`、`development-wave5-final/` 和 fixture 在原 workspace 父目录 `.local/zongheng-vpn/steelman/2026-10-07/` 与专门私有review目录，未入Git。

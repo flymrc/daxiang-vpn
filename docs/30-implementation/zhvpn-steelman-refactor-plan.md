@@ -180,7 +180,7 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 | 2026-10-07 | 运行时/设备消费者与第二波边界 | `072bbc4`、`490e9fd` | 冻结v3统一gate exit0；第二波独立恢复/HTTP/公钥与Chrome管理台反例通过；两份九目标clean开发编译 | [第二波worklog](../90-history/worklogs/2026-10-07-zhvpn-security-boundaries.md) | 实机、当前授权迁移、真正备份恢复、更新水位/安装与生产仍未完成；legacy执行预算继续实施 |
 | 2026-10-07 | 第三波兼容执行/共享准入与unknown | `947c5f5`、build receipt `3e4502a` | 冻结v4 gate exit0、九目标clean开发构建、Windows race/Linux native、独立原幽灵lease与编译Chrome负例通过 | [执行预算worklog](../90-history/worklogs/2026-10-07-legacy-control-process-budget.md) | 远端结果/跨重启unknown、设备租约身份、生产容量仍未完成 |
 | 2026-10-07 | 第四波离线更新水位与当前只读资产 | `a2ecd68` | 冻结v5 gate exit0、九目标clean开发构建、实际CLI八进程/31条独立检查、Windows race/Linux普通；Hub/本机运行binary只读复核 | [更新worklog](../90-history/worklogs/2026-10-07-zhvpn-trusted-update-state.md)、[当前资产](../90-history/worklogs/2026-10-07-live-readonly-inventory.md) | 安装/签名/外部防回滚、Mac/手机、全部生产门禁仍未完成 |
-| 2026-10-07 | 第五波 v2 设备凭据与真实代理数据面 | 基于 `0283143`，冻结源提交另登记 | 冻结v6 gate exit0；Windows实际 CLI/TLS/SQLite/sing-box/WG/owned proxy/target 与撤销；WSL实际 WG/TLS、native control 与初始 Service 负例 | [第五波 worklog](../90-history/worklogs/2026-10-07-v2-proxy-bootstrap.md)、[设备启动合同](v2-proxy-bootstrap.md) | 初始对账部分失败时外部旧 WG peer 仍可达的实际反例；持续租约/撤销 SLA、迁移、实机与生产仍未完成 |
+| 2026-10-07 | 第五波 v2 设备凭据与真实代理数据面 | `17e7689` | 冻结v6 gate exit0；九目标clean开发构建/hash一致；Windows实际 CLI/TLS/SQLite/sing-box/WG/owned proxy/target 与撤销；WSL实际 WG/TLS、native control 与初始 Service 负例 | [第五波 worklog](../90-history/worklogs/2026-10-07-v2-proxy-bootstrap.md)、[设备启动合同](v2-proxy-bootstrap.md) | 初始对账部分失败时外部旧 WG peer 仍可达的实际反例；持续租约/撤销 SLA、迁移、实机与生产仍未完成 |
 
 本轮切片检查点单独登记，不代替上面的完整任务/阶段门禁：
 
