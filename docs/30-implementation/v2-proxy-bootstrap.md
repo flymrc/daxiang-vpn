@@ -12,13 +12,13 @@
 
 ## 显式托管 profile
 
-现有 `NewServer` 不注册新 route；测试使用 `NewServerWithProfile`，Linux hosting 需要 `ZHHUB_DEVICE_AUTH_ENABLED=1` 与额外 `ZHHUB_DEVICE_PROXY_PROFILE`。profile 无默认生产地址，必须匹配 authority policy 的 epoch/managed-by 和独立 customer WG interface。proxy IP 必须被 policy.Protected 预留，避免分给客户；仅允许该 private IPv4 的精确 `/32`，排除 `10.66.0.0/24`、默认路由和请求 override。
+现有 `NewServer` 不注册新 route；测试使用 `NewServerWithProfile`，Linux hosting 需要 `ZHHUB_DEVICE_AUTH_ENABLED=1` 与额外 `ZHHUB_DEVICE_PROXY_PROFILE`。第七波同时要求匹配的 `ZHHUB_DEVICE_PROXY_GATE_POLICY` / `ZHHUB_DEVICE_PROXY_GATE_SOCKET`；只配 profile 拒绝。profile 无默认生产地址，必须匹配 authority policy 的 epoch/managed-by 和独立 customer WG interface。proxy IP 必须被 policy.Protected 预留，避免分给客户；仅允许该 private IPv4 的精确 `/32`，排除 `10.66.0.0/24`、默认路由和请求 override。
 
 JSON profile 全字段必填：version、authority_epoch、managed_by、wg_interface、revision、wg_endpoint、wg_public_key、proxy_address、egress_id、egress_name、allowed_ips。endpoint 是 canonical IPv4 literal/十进制端口，不在验证过程中解析 DNS 或探测网络。digest 是 canonical string-array 的 SHA256 内容标识，完整定义在维护 OpenAPI 中；digest 自身不能建立发布者信任。
 
 Linux reader 固定 root→leaf 文件句柄，检查 owner、权限、regular file、单 link、路径 identity/mtime/size 和前后两次读取；拒 symlink、FIFO、超限、duplicate/null/casing alias/未知 JSON 字段，不修源文件权限。profile 在 service lifetime 中冻结。公钥和 UDP endpoint 是否对应实际部署仍需操作者及实际流量核验，不由一份 JSON 自证。
 
-profile-enabled `Service.Run` 在开启 TLS 前先同步执行有界初始对账，失败或取消不监听；profile-OFF 旧顺序保持。**这个门仅保护新 API 投影**：独立真实 WG 反例证实，初始对账部分失败时，尚未清除的外部旧 peer 仍可访问目标。受控 fixture 的“先 Tick 再流量”也不能代替实际部署的 WG/proxy 数据面启动屏障。因此完整 fail-closed 启动、已有流量的持续撤销和生产生命周期门仍是 NO-GO。
+第五波仅在 profile-enabled `Service.Run` TLS 前执行初始对账，独立真实 WG 反例证明：部分失败时未清除的外部旧 peer 仍可访问目标。第七波已将[真实 proxy Admission](device-proxy-startup-barrier.md)接到产品普通/striped/fetch，启动改为 closed ACK→initial Tick→最终 fenced WG/DB收敛证明→短期 grant→TLS；失败不放行。profile-OFF 顺序保持。这个补强只关闭匹配固定 scope 的该 proxy route；其他 WG 路径、同 IP 公钥身份、完整持续设备授权和生产生命周期门仍是 NO-GO。
 
 ## CLI 和引擎
 

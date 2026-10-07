@@ -536,6 +536,18 @@ verify只使用已批准状态，全量重验签名/期限/key和产物后提交
 
 observer gap 和旧负事实不因 clean restart、后来 secure、普通 audit retention 或页面刷新消失。容量上限4096和计数溢出会拒绝报告；不可删 runs/facts 解除 NO-GO。当前没有归档协议、完整连续窗口或整库旧快照回放防护，详见[清册合同](../../30-implementation/migration-inventory.md)。
 
+## 4.7 v2 proxy 屏障排查（第七波开发源码，未部署）
+
+先确认实际二进制版本。Hub hosting 的 `ZHHUB_DEVICE_PROXY_PROFILE` 必须与 `ZHHUB_DEVICE_PROXY_GATE_POLICY`、`ZHHUB_DEVICE_PROXY_GATE_SOCKET` 成组；reverse 对应 `--proxy-gate-policy-file`、`--proxy-gate-control-socket`。Policy/profile/authority摘要、epoch/interface/managed scope、实际IPv4 listener与controller UID必须一致；文件为当前owner的单link有限普通文件、私有leaf与UDS目录。没有生成可信生产配置/批准安装者的自动流程，不从候选JSON自行推定信任。
+
+`proxy_gate_enabled=true` 不等于开放。closed ACK 后先对账，再检查最终DB/WG收敛，最后取得绝对2s grant。既有 managed WG peer 仍存在但 proxy 返回503可能是正确拒绝；只有受控同路径 target 正负对照可证明通流。健康/HTTP监听不能替代撤销确认，不输出 WG dump、私钥或完整配置。
+
+启用 gate 时 transport 必须为 `tcp` 或 `tcp-tls`；默认/显式 QUIC 返回 `proxy_gate_unsupported_transport`，在读取 policy 或绑定资源前退出。QUIC 的半关闭不能作为本片实际回收证明，不能通过禁用检查让它进入 hosting。
+
+`proxy_gate_cleanup_unknown`、control command 超时/EOF 后须保持关闭，不能以删除socket/lock、重连、重启或扩scope绕过。已有 yamux FIN/迟到OpenStream未确认清理时，receiver拒绝freshowner/grant；Close仅表示失效，AwaitClosed才表示本批实际关闭完成。核验本次拥有的实例/资源后再处理，不关整个WG接口、reverse session或保留peer。
+
+本地Linux验收运行 `sh scripts/check-proxy-barrier-linux.sh`，需显式可信Go PATH、unshare/ip/wg与内核WireGuard；能力缺失应非零失败。原生fixture只在自己创建的user/network namespace改路由/peer，不接触宿主或生产。Windows统一门禁另验共享race/schema和消费者；两种收据分别记录，详见[合同](../../30-implementation/device-proxy-startup-barrier.md)。
+
 ## 5. 历史基线（2026-06-03 实测,Mac 出口已弃用）
 
 留作对照，知道「正常」长什么样：

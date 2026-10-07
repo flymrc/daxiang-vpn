@@ -510,6 +510,8 @@ NAT 来源：10.66.0.0/24
 
 第六波在 Admin SQLite 增加显式人工批准的 provisional 固定清册、只追加 extra、单调历史、旧异常 metadata 负事实和持久 observer runs。auth bootstrap 已识别有效 token 的失败也落观察事务，sink 在挂载前先持久 prearm；关闭/换代期间请求直接拒绝，写失败或崩溃后重开保留缺口。Admin canonical readiness 升为 contract2，并新增只读迁移页面。TokenStore 仍是 legacy 授权事实源，声明 owner/installation 不是已验证 lineage，T0=null/ready=false 不变；生产旧 observer 与新源码分别记录，见[清册合同](../30-implementation/migration-inventory.md)。
 
+第七波源码增加共享 `proxygate`、真实 reverse Admission 与 deviceapi 启动/续期 coordinator。Policy 固定受管 source、实际 listener 和 authority/profile摘要；Linux私有UDS closed ACK 后才做初始 Tick/最终 fenced WG+DB proof、短期绝对 grant、TLS Listen。普通/striped/fetch 在上游派发前登记，EOF/expiry使受管流失效；迟到 OpenStream 预约和 FIN 清理未知均阻断新 owner。protected/unknown scope 外流保持原限制，不整体关 WG。没有新增生产端口、部署或授权事实源切换；其他 WG 路径与同 IP 身份尚未隔离，见[屏障合同](../30-implementation/device-proxy-startup-barrier.md)。
+
 1. 保持 Android `zhreverse` 作为默认数据面。
 2. 确认新 token / bootstrap 配置默认指向 `10.66.0.1:18081`。
 3. 增加基于清单的配置渲染。

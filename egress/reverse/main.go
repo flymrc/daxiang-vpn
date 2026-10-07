@@ -35,6 +35,7 @@ import (
 	"github.com/hashicorp/yamux"
 	"github.com/quic-go/quic-go"
 	"gopkg.in/yaml.v3"
+	"zongheng-vpn/shared/proxygate"
 )
 
 const protocolHello = "ZHREV1"
@@ -92,25 +93,27 @@ type reverseConfig struct {
 }
 
 type serverOptions struct {
-	Listen             string        `json:"listen" yaml:"listen"`
-	Proxy              string        `json:"proxy" yaml:"proxy"`
-	Token              string        `json:"token,omitempty" yaml:"token,omitempty"`
-	TokenFile          string        `json:"token_file,omitempty" yaml:"token_file,omitempty"`
-	Transport          string        `json:"transport" yaml:"transport"`
-	Resolve            string        `json:"resolve" yaml:"resolve"`
-	TLSCertFile        string        `json:"tls_cert_file,omitempty" yaml:"tls_cert_file,omitempty"`
-	TLSKeyFile         string        `json:"tls_key_file,omitempty" yaml:"tls_key_file,omitempty"`
-	TLSCAFile          string        `json:"tls_ca_file,omitempty" yaml:"tls_ca_file,omitempty"`
-	HubID              string        `json:"hub_id,omitempty" yaml:"hub_id,omitempty"`
-	EgressRegistryFile string        `json:"egress_registry_file,omitempty" yaml:"egress_registry_file,omitempty"`
-	EnableFetch        bool          `json:"enable_fetch,omitempty" yaml:"enable_fetch,omitempty"`
-	AllowedProxyCIDRs  []string      `json:"allowed_proxy_cidrs,omitempty" yaml:"allowed_proxy_cidrs,omitempty"`
-	DebugAllowedCIDRs  []string      `json:"debug_allowed_cidrs,omitempty" yaml:"debug_allowed_cidrs,omitempty"`
-	MaxProxyConns      int           `json:"max_proxy_connections,omitempty" yaml:"max_proxy_connections,omitempty"`
-	MaxProxyConnsPeer  int           `json:"max_proxy_connections_per_client,omitempty" yaml:"max_proxy_connections_per_client,omitempty"`
-	ProxyIdleTimeout   time.Duration `json:"proxy_idle_timeout,omitempty" yaml:"proxy_idle_timeout,omitempty"`
-	ProxyPreemptIdle   time.Duration `json:"proxy_preempt_idle,omitempty" yaml:"proxy_preempt_idle,omitempty"`
-	V4OnlyDirect       bool          `json:"v4_only_direct,omitempty" yaml:"v4_only_direct,omitempty"`
+	Listen                 string        `json:"listen" yaml:"listen"`
+	Proxy                  string        `json:"proxy" yaml:"proxy"`
+	Token                  string        `json:"token,omitempty" yaml:"token,omitempty"`
+	TokenFile              string        `json:"token_file,omitempty" yaml:"token_file,omitempty"`
+	Transport              string        `json:"transport" yaml:"transport"`
+	Resolve                string        `json:"resolve" yaml:"resolve"`
+	TLSCertFile            string        `json:"tls_cert_file,omitempty" yaml:"tls_cert_file,omitempty"`
+	TLSKeyFile             string        `json:"tls_key_file,omitempty" yaml:"tls_key_file,omitempty"`
+	TLSCAFile              string        `json:"tls_ca_file,omitempty" yaml:"tls_ca_file,omitempty"`
+	HubID                  string        `json:"hub_id,omitempty" yaml:"hub_id,omitempty"`
+	EgressRegistryFile     string        `json:"egress_registry_file,omitempty" yaml:"egress_registry_file,omitempty"`
+	EnableFetch            bool          `json:"enable_fetch,omitempty" yaml:"enable_fetch,omitempty"`
+	AllowedProxyCIDRs      []string      `json:"allowed_proxy_cidrs,omitempty" yaml:"allowed_proxy_cidrs,omitempty"`
+	DebugAllowedCIDRs      []string      `json:"debug_allowed_cidrs,omitempty" yaml:"debug_allowed_cidrs,omitempty"`
+	MaxProxyConns          int           `json:"max_proxy_connections,omitempty" yaml:"max_proxy_connections,omitempty"`
+	MaxProxyConnsPeer      int           `json:"max_proxy_connections_per_client,omitempty" yaml:"max_proxy_connections_per_client,omitempty"`
+	ProxyIdleTimeout       time.Duration `json:"proxy_idle_timeout,omitempty" yaml:"proxy_idle_timeout,omitempty"`
+	ProxyPreemptIdle       time.Duration `json:"proxy_preempt_idle,omitempty" yaml:"proxy_preempt_idle,omitempty"`
+	V4OnlyDirect           bool          `json:"v4_only_direct,omitempty" yaml:"v4_only_direct,omitempty"`
+	ProxyGatePolicyFile    string        `json:"proxy_gate_policy_file,omitempty" yaml:"proxy_gate_policy_file,omitempty"`
+	ProxyGateControlSocket string        `json:"proxy_gate_control_socket,omitempty" yaml:"proxy_gate_control_socket,omitempty"`
 }
 
 type clientOptions struct {
@@ -260,6 +263,8 @@ func runServer(args []string) error {
 	proxyIdleTimeout := fs.Duration("proxy-idle-timeout", defaults.ProxyIdleTimeout, "idle timeout for CONNECT proxy sessions; 0 disables idle reaping")
 	proxyPreemptIdle := fs.Duration("proxy-preempt-idle", defaults.ProxyPreemptIdle, "at a CONNECT limit, close the longest-idle session idle at least this long instead of rejecting; 0 disables preemption")
 	v4OnlyDirect := fs.Bool("v4-only-direct", defaults.V4OnlyDirect, "deprecated and ignored; Hub never acts as an egress fallback")
+	proxyGatePolicyFile := fs.String("proxy-gate-policy-file", "", "protected v2 proxy admission policy JSON; enables default-deny managed sources")
+	proxyGateControlSocket := fs.String("proxy-gate-control-socket", "", "private Linux UDS for the v2 proxy admission controller")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -323,6 +328,12 @@ func runServer(args []string) error {
 	if explicit["v4-only-direct"] {
 		opts.V4OnlyDirect = *v4OnlyDirect
 	}
+	if explicit["proxy-gate-policy-file"] {
+		opts.ProxyGatePolicyFile = *proxyGatePolicyFile
+	}
+	if explicit["proxy-gate-control-socket"] {
+		opts.ProxyGateControlSocket = *proxyGateControlSocket
+	}
 	if err := validateSecureServerOptions(opts); err != nil {
 		return err
 	}
@@ -368,6 +379,13 @@ func runServer(args []string) error {
 		proxyPreemptIdle:  opts.ProxyPreemptIdle,
 		activeProxyByPeer: map[string]int{},
 	}
+	gateRuntime, err := prepareProxyGate(opts, manager)
+	if err != nil {
+		return err
+	}
+	if gateRuntime != nil {
+		defer gateRuntime.Close()
+	}
 	tunnelReady := make(chan error, 1)
 	go func() {
 		if err := serveTunnel(opts, resolvedToken, manager, tunnelReady); err != nil {
@@ -382,12 +400,16 @@ func runServer(args []string) error {
 		Addr:              opts.Proxy,
 		Handler:           http.HandlerFunc(manager.handleProxy),
 		ReadHeaderTimeout: 10 * time.Second,
+		ConnContext:       proxyGateConnContext,
 	}
 	if opts.V4OnlyDirect {
 		log.Printf("v4_only_direct is deprecated and ignored: Hub must not act as an egress fallback")
 	}
-	log.Printf("reverse server listening transport=%s resolve=%s tunnel=%s proxy=%s max_proxy_connections=%d max_proxy_connections_per_client=%d proxy_idle_timeout=%s proxy_preempt_idle=%s", opts.Transport, opts.Resolve, opts.Listen, opts.Proxy, opts.MaxProxyConns, opts.MaxProxyConnsPeer, opts.ProxyIdleTimeout, opts.ProxyPreemptIdle)
-	return server.ListenAndServe()
+	log.Printf("reverse server listening transport=%s resolve=%s tunnel=%s proxy=%s max_proxy_connections=%d max_proxy_connections_per_client=%d proxy_idle_timeout=%s proxy_preempt_idle=%s proxy_gate_enabled=%t", opts.Transport, opts.Resolve, opts.Listen, opts.Proxy, opts.MaxProxyConns, opts.MaxProxyConnsPeer, opts.ProxyIdleTimeout, opts.ProxyPreemptIdle, manager.proxyGate != nil)
+	if gateRuntime == nil {
+		return server.ListenAndServe()
+	}
+	return gateRuntime.Serve(server)
 }
 
 func serveTunnel(opts serverOptions, token string, manager *sessionManager, ready chan<- error) error {
@@ -569,6 +591,7 @@ type sessionManager struct {
 	proxyMetricsMu        sync.Mutex
 	proxyMetrics          proxyMetricStore
 	secureTransport       *secureTCPServer
+	proxyGate             *proxygate.Gate
 }
 
 type sessionHealth struct {
@@ -777,26 +800,75 @@ func (m *sessionManager) openStream() (net.Conn, error) {
 }
 
 func (m *sessionManager) openCommand(command string) (net.Conn, *bufio.Reader, string, error) {
+	return m.openCommandContext(context.Background(), command, nil)
+}
+
+// A managed admission registers the stream before a command can reach the
+// egress. Closing or expiry cancels the managed context. TCP/yamux Open can
+// still return later, so its pre-reserved resource remains quarantined until
+// actual Attach/Abort and physical Close complete.
+func (m *sessionManager) openCommandContext(ctx context.Context, command string, admission *proxyRequestAdmission) (net.Conn, *bufio.Reader, string, error) {
 	attempts := m.sessionCount()
 	for attempt := 0; attempt < attempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, "", err
+		}
 		session, release := m.reserveSession()
 		if session == nil {
 			return nil, nil, "", errors.New("reverse client is not connected")
 		}
-		started := time.Now()
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		stream, err := session.OpenStream(ctx)
-		cancel()
+		registration, err := admission.reserve()
 		if err != nil {
 			release()
+			return nil, nil, "", err
+		}
+		started := time.Now()
+		openCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		stream, err := session.OpenStream(openCtx)
+		cancel()
+		var tracked *trackedConn
+		if stream != nil {
+			tracked = &trackedConn{Conn: stream}
+			tracked.release = func() {
+				admission.untrack(tracked)
+				release()
+			}
+		}
+		if err != nil {
+			if tracked == nil {
+				abortProxyRegistration(registration)
+				release()
+			} else if attachProxyRegistration(registration, tracked) == nil {
+				_ = tracked.Close()
+			}
+			if ctx.Err() != nil {
+				return nil, nil, "", ctx.Err()
+			}
 			m.recordSessionFailure(session)
 			log.Printf("open stream via %s failed: %v", session.RemoteAddr(), err)
 			m.clearCurrent(session)
 			continue
 		}
-		tracked := &trackedConn{Conn: stream, release: release}
+		if tracked == nil {
+			abortProxyRegistration(registration)
+			release()
+			return nil, nil, "", errors.New("reverse stream unavailable")
+		}
+		if err := attachProxyRegistration(registration, tracked); err != nil {
+			// Even a late Attach transfers this reserved stream to the closed
+			// scope's quarantine. Waiting here on a second Close could block the
+			// handler on a congested yamux FIN after control has timed out.
+			return nil, nil, "", err
+		}
+		if err := ctx.Err(); err != nil {
+			_ = tracked.Close()
+			return nil, nil, "", err
+		}
 		if err := stream.SetDeadline(time.Now().Add(reverseCommandTimeout)); err != nil {
 			_ = tracked.Close()
+			if ctx.Err() != nil {
+				return nil, nil, "", ctx.Err()
+			}
 			m.recordSessionFailure(session)
 			log.Printf("set reverse command deadline via %s failed: %v", session.RemoteAddr(), err)
 			m.clearCurrent(session)
@@ -804,6 +876,9 @@ func (m *sessionManager) openCommand(command string) (net.Conn, *bufio.Reader, s
 		}
 		if _, err := fmt.Fprintf(stream, "%s\n", command); err != nil {
 			_ = tracked.Close()
+			if ctx.Err() != nil {
+				return nil, nil, "", ctx.Err()
+			}
 			m.recordSessionFailure(session)
 			log.Printf("write reverse command via %s failed: %v", session.RemoteAddr(), err)
 			m.clearCurrent(session)
@@ -813,13 +888,23 @@ func (m *sessionManager) openCommand(command string) (net.Conn, *bufio.Reader, s
 		status, err := reader.ReadString('\n')
 		if err != nil {
 			_ = tracked.Close()
+			if ctx.Err() != nil {
+				return nil, nil, "", ctx.Err()
+			}
 			m.recordSessionFailure(session)
 			log.Printf("read reverse command response via %s failed: %v", session.RemoteAddr(), err)
 			m.clearCurrent(session)
 			continue
 		}
+		if err := ctx.Err(); err != nil {
+			_ = tracked.Close()
+			return nil, nil, "", err
+		}
 		if err := stream.SetDeadline(time.Time{}); err != nil {
 			_ = tracked.Close()
+			if ctx.Err() != nil {
+				return nil, nil, "", ctx.Err()
+			}
 			m.recordSessionFailure(session)
 			log.Printf("clear reverse command deadline via %s failed: %v", session.RemoteAddr(), err)
 			m.clearCurrent(session)
@@ -1058,14 +1143,20 @@ func (m *sessionManager) recordSessionFailure(session tunnelSession) {
 
 type trackedConn struct {
 	net.Conn
-	once    sync.Once
-	release func()
+	once     sync.Once
+	release  func()
+	closeErr error
 }
 
 func (c *trackedConn) Close() error {
-	err := c.Conn.Close()
-	c.once.Do(c.release)
-	return err
+	// Concurrent relay/gate closes wait for the same transport close. A second
+	// yamux Close can otherwise return while the first FIN is still blocked,
+	// making the control receiver acknowledge a closure too early.
+	c.once.Do(func() {
+		c.closeErr = c.Conn.Close()
+		c.release()
+	})
+	return c.closeErr
 }
 
 func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
@@ -1078,7 +1169,13 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 			http.Error(w, "fetch disabled", http.StatusNotFound)
 			return
 		}
-		m.handleFetch(w, req)
+		admission, err := m.acquireProxyAdmission(req)
+		if err != nil {
+			http.Error(w, "proxy admission closed", http.StatusServiceUnavailable)
+			return
+		}
+		defer admission.release()
+		m.handleFetchAdmission(w, req, admission)
 		return
 	}
 	if req.Method == http.MethodGet && req.URL.Path == "/debug/session-health" {
@@ -1094,6 +1191,10 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 			http.Error(w, "debug forbidden", http.StatusForbidden)
 			return
 		}
+		if m.managedProxyDiagnosticSource(req.RemoteAddr) {
+			http.Error(w, "proxy_gate_managed_diagnostic_forbidden", http.StatusForbidden)
+			return
+		}
 		m.handleTunnelBench(w, req)
 		return
 	}
@@ -1101,6 +1202,12 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "CONNECT only", http.StatusMethodNotAllowed)
 		return
 	}
+	admission, err := m.acquireProxyAdmission(req)
+	if err != nil {
+		http.Error(w, "proxy admission closed", http.StatusServiceUnavailable)
+		return
+	}
+	defer admission.release()
 	metric := proxyMetricSample{
 		StartedAt: time.Now(),
 		Peer:      proxyPeer(req.RemoteAddr),
@@ -1118,7 +1225,7 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 
 	target := req.Host
 	if m.resolve == "server" {
-		resolvedTarget, err := resolveTarget(req.Host)
+		resolvedTarget, err := resolveTargetContext(admission.context(req), req.Host)
 		if err != nil {
 			metric.Status = "resolve_failed"
 			metric.Error = err.Error()
@@ -1138,12 +1245,12 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 	}
 	if striped {
 		metric.Striped = true
-		m.handleStripedConnect(w, target, stripedStreams, metric)
+		m.handleStripedConnectAdmission(w, req, target, stripedStreams, metric, admission)
 		return
 	}
 
 	setupStarted := time.Now()
-	stream, streamReader, status, err := m.openCommand("CONNECT " + target)
+	stream, streamReader, status, err := m.openProxyCommand(req, admission, "CONNECT "+target)
 	metric.SetupLatency = time.Since(setupStarted)
 	if err != nil {
 		metric.Status = "open_command_failed"
@@ -1179,6 +1286,9 @@ func (m *sessionManager) handleProxy(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	defer clientConn.Close()
+	if err := admission.trackClient(clientConn); err != nil {
+		return
+	}
 	if _, err := io.WriteString(clientConn, "HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
 		metric.Status = "write_connect_response_failed"
 		metric.Error = err.Error()
@@ -1222,8 +1332,13 @@ type stripedHubLane struct {
 }
 
 func (m *sessionManager) handleStripedConnect(w http.ResponseWriter, target string, streams int, metric proxyMetricSample) {
+	// Kept for focused legacy relay tests; product admission enters below.
+	m.handleStripedConnectAdmission(w, &http.Request{}, target, streams, metric, nil)
+}
+
+func (m *sessionManager) handleStripedConnectAdmission(w http.ResponseWriter, req *http.Request, target string, streams int, metric proxyMetricSample, admission *proxyRequestAdmission) {
 	setupStarted := time.Now()
-	lanes, okStatus, err := m.openStripedConnect(target, streams)
+	lanes, okStatus, err := m.openStripedConnectAdmission(req, target, streams, admission)
 	metric.SetupLatency = time.Since(setupStarted)
 	metric.TargetDialLatency = okStatus.TargetDialLatency
 	if err != nil {
@@ -1251,6 +1366,9 @@ func (m *sessionManager) handleStripedConnect(w http.ResponseWriter, target stri
 		return
 	}
 	defer clientConn.Close()
+	if err := admission.trackClient(clientConn); err != nil {
+		return
+	}
 	if _, err := io.WriteString(clientConn, "HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
 		metric.Status = "write_connect_response_failed"
 		metric.Error = err.Error()
@@ -1271,12 +1389,16 @@ func (m *sessionManager) handleStripedConnect(w http.ResponseWriter, target stri
 }
 
 func (m *sessionManager) openStripedConnect(target string, streams int) ([]stripedHubLane, reverseOKStatus, error) {
+	return m.openStripedConnectAdmission(&http.Request{}, target, streams, nil)
+}
+
+func (m *sessionManager) openStripedConnectAdmission(req *http.Request, target string, streams int, admission *proxyRequestAdmission) ([]stripedHubLane, reverseOKStatus, error) {
 	id := newStripedConnectID()
 	lanes := make([]stripedHubLane, 0, streams)
 	var okStatus reverseOKStatus
 	for i := 0; i < streams; i++ {
 		command := fmt.Sprintf("STRIPED_CONNECT %s %d %d %s", id, i, streams, target)
-		conn, reader, status, err := m.openCommand(command)
+		conn, reader, status, err := m.openProxyCommand(req, admission, command)
 		if err != nil {
 			closeStripedHubLanes(lanes)
 			return nil, okStatus, err
@@ -1964,6 +2086,10 @@ func parseCIDRs(field string, values []string) ([]*net.IPNet, error) {
 }
 
 func (m *sessionManager) handleFetch(w http.ResponseWriter, req *http.Request) {
+	m.handleFetchAdmission(w, req, nil)
+}
+
+func (m *sessionManager) handleFetchAdmission(w http.ResponseWriter, req *http.Request, admission *proxyRequestAdmission) {
 	rawURL := req.URL.Query().Get("url")
 	if rawURL == "" {
 		http.Error(w, "missing url", http.StatusBadRequest)
@@ -1975,7 +2101,7 @@ func (m *sessionManager) handleFetch(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	encodedURL := base64.RawURLEncoding.EncodeToString([]byte(rawURL))
-	stream, reader, statusLine, err := m.openCommand("FETCH " + encodedURL)
+	stream, reader, statusLine, err := m.openProxyCommand(req, admission, "FETCH "+encodedURL)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
@@ -2036,6 +2162,10 @@ func parseEncodedHeader(line string) (string, string, bool) {
 }
 
 func resolveTarget(authority string) (string, error) {
+	return resolveTargetContext(context.Background(), authority)
+}
+
+func resolveTargetContext(parent context.Context, authority string) (string, error) {
 	host, port, err := net.SplitHostPort(authority)
 	if err != nil {
 		return "", err
@@ -2043,7 +2173,7 @@ func resolveTarget(authority string) (string, error) {
 	if net.ParseIP(host) != nil {
 		return authority, nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 	if err != nil {
@@ -3041,12 +3171,22 @@ func relayWithHandshakeRetryContext(ctx context.Context, client net.Conn, target
 }
 
 func handleFetchStream(stream net.Conn, encodedURL string, opts clientOptions) {
+	// A fetch command has no further client-to-egress payload. Bind its HTTP
+	// target to that stream's EOF so closing a managed Hub stream also cancels
+	// a target currently blocked in Body.Read, rather than waiting for 90s.
+	ctx, cancel := context.WithCancel(clientSessionContext(opts))
+	defer cancel()
+	go func() {
+		var unexpected [1]byte
+		_, _ = stream.Read(unexpected[:])
+		cancel()
+	}()
 	rawURL, err := base64.RawURLEncoding.DecodeString(encodedURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(stream, "ERR %v\n", err)
 		return
 	}
-	req, err := http.NewRequestWithContext(clientSessionContext(opts), http.MethodGet, string(rawURL), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, string(rawURL), nil)
 	if err != nil {
 		_, _ = fmt.Fprintf(stream, "ERR %v\n", err)
 		return
@@ -3055,12 +3195,10 @@ func handleFetchStream(stream net.Conn, encodedURL string, opts clientOptions) {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{RootCAs: fetchRootCAs()},
 		DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
-			if opts.sessionContext == nil {
-				ctx = context.Background()
-			}
 			return dialTargetContext(ctx, addr, opts.AddressFamily, opts.TargetBindInterface)
 		},
 	}
+	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: 90 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {

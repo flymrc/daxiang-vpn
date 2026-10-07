@@ -16,6 +16,10 @@ import (
 // Pin root->leaf with openat/nofollow and inspect held handles. O_NONBLOCK makes
 // substitution by a FIFO fail promptly. Source ownership/mode is never changed.
 func readProtectedProfile(path string) ([]byte, error) {
+	return readProtectedSource(path, 32768)
+}
+
+func readProtectedSource(path string, maxBytes int64) ([]byte, error) {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return nil, deviceauth.ErrInvalid
 	}
@@ -74,7 +78,7 @@ func readProtectedProfile(path string) ([]byte, error) {
 	check := func() error {
 		info, err := f.Stat()
 		now, pe := os.Lstat(path)
-		if err != nil || pe != nil || !info.Mode().IsRegular() || now.Mode()&os.ModeSymlink != 0 || !os.SameFile(before, info) || !os.SameFile(info, now) || info.Size() != before.Size() || !info.ModTime().Equal(before.ModTime()) || info.Size() < 1 || info.Size() > 32768 {
+		if err != nil || pe != nil || !info.Mode().IsRegular() || now.Mode()&os.ModeSymlink != 0 || !os.SameFile(before, info) || !os.SameFile(info, now) || info.Size() != before.Size() || !info.ModTime().Equal(before.ModTime()) || info.Size() < 1 || info.Size() > maxBytes {
 			return deviceauth.ErrInvalid
 		}
 		st, ok := info.Sys().(*syscall.Stat_t)
@@ -90,7 +94,7 @@ func readProtectedProfile(path string) ([]byte, error) {
 		if _, err := f.Seek(0, io.SeekStart); err != nil {
 			return nil, deviceauth.ErrInvalid
 		}
-		b, err := io.ReadAll(io.LimitReader(f, 32769))
+		b, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
 		if err != nil || int64(len(b)) != before.Size() || check() != nil {
 			return nil, deviceauth.ErrInvalid
 		}

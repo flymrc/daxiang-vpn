@@ -610,3 +610,5 @@ last_reconciled_at
 第四波本地离线update CLI已保存明确批准Policy/Previous和累计floor；缺失登记/提交未知拒绝继续，旧候选不能重放覆盖较新水位。它尚未接入实际安装或外部防回滚锚，同存储owner恢复旧快照仍可回滚。本片不替代现有campaign分母/窗口、现场授权撤销或生产迁移。[更新状态边界](../30-implementation/trusted-update-state.md)。
 
 第六波[provisional 清册](../30-implementation/migration-inventory.md)在隔离开发分支补齐人工批准 raw SHA 的固定 baseline、source 全生命周期、追加 unknown、单调负事实及持久 observer run/gap。它不等于正式 campaign：owner/installation 引用仅是声明，跨历史短ID/真实安装保管链未完成；逐负类别时间、rotate 全入口、T0 后连续30天窗口仍未闭合。旧异常 metadata 回填补一次 unknown 负事实、保留原 secure 记账，不能合计为去重请求总数，也无法恢复此前被覆盖的 provenance。T0、readiness、生产事实源和本计划的生产勾选保持原定义。
+
+第七波[proxy启动屏障](../30-implementation/device-proxy-startup-barrier.md)只在隔离开发源启用：固定受管scope、protected私有UDS、最终DB/WG fenced proof和短期绝对grant接入真正reverse产品入口；失联/过期/清理unknown均拒绝。实际内核WG部分撤销反例的受管proxy已可阻断且保留protected/unknown。此证据不代替全部WG INPUT/FORWARD、同IP设备公钥、现场持续撤销SLA、导入/恢复/手机/安装签名或连续campaign，现有NO-GO与G01–G05保持。

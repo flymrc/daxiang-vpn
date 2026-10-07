@@ -16,7 +16,119 @@ import (
 	"time"
 
 	"zongheng-vpn/hub/internal/deviceauth"
+	dc "zongheng-vpn/shared/devicecontract"
+	"zongheng-vpn/shared/proxygate"
 )
+
+// This controller proves Service ordering only. Product reverse admission and
+// UDS loss/lease expiry require the separate actual Linux process fixture.
+type startupUnitController struct {
+	policy   proxygate.Policy
+	closed   atomic.Bool
+	grants   atomic.Int64
+	grantErr error
+}
+
+func (c *startupUnitController) Policy() proxygate.Policy { return c.policy.Clone() }
+func (c *startupUnitController) GrantUntil(ctx context.Context, _ time.Time) error {
+	if ctx.Err() != nil || c.closed.Load() {
+		return proxygate.ErrClosed
+	}
+	c.grants.Add(1)
+	return c.grantErr
+}
+
+func TestProfileServiceRefusesMissingGateBeforeReconciling(t *testing.T) {
+	f := newRealWGFixture(t)
+	e := &startupBarrierExecutor{Executor: f.executor, entered: make(chan struct{}), release: make(chan struct{})}
+	s, address, _ := startupServiceFixture(t, f, e, true, http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("refused profile served handler") }))
+	s.gatePolicy = nil
+	err := s.Run(context.Background())
+	if err == nil || err.Error() != "device authority proxy gate configuration required" {
+		t.Fatal("profile without gate accepted")
+	}
+	requireNoStartupListener(t, address)
+	select {
+	case <-e.entered:
+		t.Fatal("unconfigured gate reached runtime reconciliation")
+	default:
+	}
+}
+
+func TestProfileServiceClosedACKFailureDoesNotReconcileOrListen(t *testing.T) {
+	f := newRealWGFixture(t)
+	e := &startupBarrierExecutor{Executor: f.executor, entered: make(chan struct{}), release: make(chan struct{})}
+	s, address, _ := startupServiceFixture(t, f, e, true, http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("unacknowledged gate served handler") }))
+	s.gateDial = func(context.Context, string, proxygate.Policy) (proxyController, error) {
+		return nil, errors.New("SYNTHETIC_INTERNAL_SECRET")
+	}
+	err := s.Run(context.Background())
+	if err == nil || err.Error() != "device authority proxy gate closed acknowledgement failed" {
+		t.Fatal("closed ACK failure leaked diagnostic or succeeded")
+	}
+	requireNoStartupListener(t, address)
+	select {
+	case <-e.entered:
+		t.Fatal("unacknowledged gate reached runtime reconciliation")
+	default:
+	}
+}
+
+func TestProfileServiceGrantACKFailureClosesBeforeTLS(t *testing.T) {
+	f := newRealWGFixture(t)
+	customer := newRealWGNode(t, newRealWGKey(t), "10.250.0.2/32", nil)
+	defer customer.close()
+	f.enrollAndApply(t, customer)
+	f.tick()
+	e := &startupBarrierExecutor{Executor: f.executor, entered: make(chan struct{}), release: make(chan struct{})}
+	close(e.release)
+	s, address, _ := startupServiceFixture(t, f, e, true, http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("unacknowledged grant served handler") }))
+	control := &startupUnitController{policy: s.gatePolicy.Clone(), grantErr: errors.New("SYNTHETIC_ACK_SECRET")}
+	s.gateDial = func(context.Context, string, proxygate.Policy) (proxyController, error) { return control, nil }
+	err := s.Run(context.Background())
+	if err == nil || err.Error() != "device authority initial proxy convergence failed" {
+		t.Fatal("grant ACK failure leaked diagnostic or succeeded")
+	}
+	if control.grants.Load() != 1 || !control.closed.Load() {
+		t.Fatal("unknown grant did not close control before return")
+	}
+	requireNoStartupListener(t, address)
+}
+
+func TestProfileServiceCancellationClosesBeforeBlockedSnapshotReturns(t *testing.T) {
+	f := newRealWGFixture(t)
+	customer := newRealWGNode(t, newRealWGKey(t), "10.250.0.2/32", nil)
+	defer customer.close()
+	f.enrollAndApply(t, customer)
+	e := &startupBarrierExecutor{Executor: f.executor, entered: make(chan struct{}), release: make(chan struct{})}
+	s, address, _ := startupServiceFixture(t, f, e, true, http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("cancelled startup served handler") }))
+	control := &startupUnitController{policy: s.gatePolicy.Clone()}
+	s.gateDial = func(context.Context, string, proxygate.Policy) (proxyController, error) { return control, nil }
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	result := make(chan error, 1)
+	go func() { result <- s.Run(ctx) }()
+	select {
+	case <-e.entered:
+	case <-ctx.Done():
+		t.Fatal("held real snapshot not reached")
+	}
+	cancel()
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("cancelled startup succeeded")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("cancelled startup did not reap")
+	}
+	if !control.closed.Load() || control.grants.Load() != 0 {
+		t.Fatal("cancelled startup left control or granted")
+	}
+	requireNoStartupListener(t, address)
+}
+func (c *startupUnitController) Closed(context.Context) error { return nil }
+func (c *startupUnitController) Close() error                 { c.closed.Store(true); return nil }
 
 type startupBarrierExecutor struct {
 	deviceauth.Executor
@@ -63,6 +175,24 @@ func startupServiceFixture(t *testing.T, f *realWGFixture, e deviceauth.Executor
 		c.ProxyProfilePath = "owned-synthetic-profile"
 	}
 	s := &Service{Store: f.store, DB: f.db, Scheduler: scheduler, HTTP: &http.Server{Addr: address, Handler: h, ReadHeaderTimeout: time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{certificate}}}, config: c}
+	if profileOn {
+		policy := realWGFixturePolicy(f)
+		policyDigest, err := deviceauth.CanonicalPolicyDigest(policy)
+		if err != nil {
+			t.Fatal(err)
+		}
+		profileDigest, err := dc.ProxyRouteProfileDigest(realWGProfile(f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		gate := proxygate.Policy{Version: 1, Epoch: realWGFixtureEpoch, Interface: "ownedfixture0", ManagedBy: realWGFixtureManager, PolicySHA256: policyDigest, ProfileSHA256: profileDigest, Listener: realWGFixtureProxy, ManagedSources: policy.AddressPools, RetainedSources: []string{"10.250.0.3/32", "10.250.0.7/32"}}
+		if err := ValidateProxyGatePolicy(policy, realWGProfile(f), "ownedfixture0", gate); err != nil {
+			t.Fatal(err)
+		}
+		s.gatePolicy = &gate
+		controller := &startupUnitController{policy: gate}
+		s.gateDial = func(context.Context, string, proxygate.Policy) (proxyController, error) { return controller, nil }
+	}
 	return s, address, client
 }
 func requireNoStartupListener(t *testing.T, address string) {

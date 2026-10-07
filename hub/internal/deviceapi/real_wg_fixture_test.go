@@ -445,7 +445,7 @@ func newRealWGFixture(t *testing.T) *realWGFixture {
 	}
 	f.db, f.databasePath = db, path
 	t.Cleanup(func() { f.db.Close() })
-	f.store, err = deviceauth.New(context.Background(), db, deviceauth.Options{Policy: deviceauth.Policy{Epoch: realWGFixtureEpoch, ManagedBy: realWGFixtureManager, AddressPools: []string{"10.250.0.0/24"}, Protected: []deviceauth.Protection{{Prefix: "10.250.0.1/32"}, {Prefix: "10.250.0.3/32", PublicKey: f.protected.key.publicBase64()}}}})
+	f.store, err = deviceauth.New(context.Background(), db, deviceauth.Options{Policy: realWGFixturePolicy(f)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -466,7 +466,7 @@ func (f *realWGFixture) reopenAuthority() {
 		f.t.Fatal("reopen owned persistent authority")
 	}
 	f.db = db
-	f.store, err = deviceauth.New(context.Background(), db, deviceauth.Options{Policy: deviceauth.Policy{Epoch: realWGFixtureEpoch, ManagedBy: realWGFixtureManager, AddressPools: []string{"10.250.0.0/24"}, Protected: []deviceauth.Protection{{Prefix: "10.250.0.1/32"}, {Prefix: "10.250.0.3/32", PublicKey: f.protected.key.publicBase64()}}}})
+	f.store, err = deviceauth.New(context.Background(), db, deviceauth.Options{Policy: realWGFixturePolicy(f)})
 	if err != nil {
 		f.t.Fatal("restore owned persisted authority after restart")
 	}
@@ -474,6 +474,10 @@ func (f *realWGFixture) reopenAuthority() {
 	if err != nil {
 		f.t.Fatal(err)
 	}
+}
+
+func realWGFixturePolicy(f *realWGFixture) deviceauth.Policy {
+	return deviceauth.Policy{Epoch: realWGFixtureEpoch, ManagedBy: realWGFixtureManager, AddressPools: []string{"10.250.0.2/32", "10.250.0.4/32"}, Protected: []deviceauth.Protection{{Prefix: "10.250.0.1/32"}, {Prefix: "10.250.0.3/32", PublicKey: f.protected.key.publicBase64()}}}
 }
 func (f *realWGFixture) tick() {
 	f.t.Helper()

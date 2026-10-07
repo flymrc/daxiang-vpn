@@ -5,6 +5,8 @@ import "testing"
 func TestProxyBootstrapRequiresExplicitProfileOptIn(t *testing.T) {
 	t.Setenv("ZHHUB_DEVICE_AUTH_ENABLED", "0")
 	t.Setenv("ZHHUB_DEVICE_PROXY_PROFILE", "SYNTHETIC_PROFILE_PATH")
+	t.Setenv("ZHHUB_DEVICE_PROXY_GATE_POLICY", "SYNTHETIC_GATE_POLICY")
+	t.Setenv("ZHHUB_DEVICE_PROXY_GATE_SOCKET", "SYNTHETIC_GATE_SOCKET")
 	if c, on, err := deviceConfigFromEnv(); err != nil || on || c.ProxyProfilePath != "" {
 		t.Fatal("profile alone enabled authority")
 	}
@@ -20,6 +22,9 @@ func TestProxyBootstrapRequiresExplicitProfileOptIn(t *testing.T) {
 	c, on, err = deviceConfigFromEnv()
 	if err != nil || !on || c.ProxyProfilePath != "SYNTHETIC_PROFILE_PATH" {
 		t.Fatal("explicit profile lost")
+	}
+	if c.ProxyGatePolicyPath != "SYNTHETIC_GATE_POLICY" || c.ProxyGateSocketPath != "SYNTHETIC_GATE_SOCKET" {
+		t.Fatal("explicit protected gate hosting lost")
 	}
 	t.Setenv("ZHHUB_DEVICE_WG_INTERFACE", "wg0")
 	if _, _, err := deviceConfigFromEnv(); err == nil {

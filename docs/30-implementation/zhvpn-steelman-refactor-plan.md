@@ -1,6 +1,6 @@
 # zhvpn Steelman 重构计划
 
-> 创建：2026-10-06 JST。状态：IN_PROGRESS；前六波已本地提交；第六波 `bf0f608` 固定provisional清册/持久观察缺口/管理台消费者，冻结v8统一门禁exit0、十目标clean开发构建与hash一致。源码、实机、生产实施分别记录。
+> 创建：2026-10-06 JST。状态：IN_PROGRESS；第七波已实现受管proxy启动/续期屏障，冻结v11统一门禁exit0与Linux真实产品/WG验收通过；clean开发构建和本地提交见本波worklog。源码、实机、生产实施分别记录。
 > 基线：[2026-10-05 多维审计](../90-history/worklogs/2026-10-05-zhvpn-project-audit.md)。49/100 是该日的工程成熟度评估，不能作为本日运行状态或后续验收结果。
 
 ## 1. Steelman 的完成定义
@@ -110,7 +110,7 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 
 - [x] **P4.1** 建立一次性激活→设备登记→设备 credential 的模型；挑战具有 nonce、用途、期限与请求绑定，设备证明私钥持有。并发消费、重放、跨用途重放、过期激活及幂等重试均受事务约束。实际 CLI/Hub/SQLite TLS、Windows race及Linux普通回归已通过；这是隔离v2入口，当前生产迁移仍在P4.2/P8。
 - [ ] **P4.2** 将可变授权关系迁入现有 SQLite 能力：device/public key/address/generation/state/expiry、唯一约束、撤销记录和操作结果；完成受控导入、校验、备份和恢复，不保持 YAML/DB 双权威。保留 token→安装实例→device 的历史关联、campaign 分母、处置与观测记录，同步其对账合同；切换事实源不重设 T0 或缩短窗口，也不自动把旧 token 观测视为新设备的合规证明。
-- [x] **P4.3** API 事务提交 desired state 与 durable outbox；单一受控 peer 执行者按 generation 应用/撤销，跨进程互斥并防止旧任务覆盖新撤销。响应区分已提交与已生效。Windows Job/Linux helper真实进程崩溃、跨Store竞争、迟到取消负例以及第五波真实用户态 WG/CLI 流量撤销通过；外部数据面启动失败屏障、持续撤销 SLA 与生产切换仍在 P4.G/P8。
+- [x] **P4.3** API 事务提交 desired state 与 durable outbox；单一受控 peer 执行者按 generation 应用/撤销，跨进程互斥并防止旧任务覆盖新撤销。响应区分已提交与已生效。Windows Job/Linux helper真实进程崩溃、跨Store竞争、迟到取消负例以及第五波真实用户态 WG/CLI 流量撤销通过；第七波真实受管proxy启动失败屏障也已通过。其他WG路径、持续撤销SLA与生产切换仍在P4.G/P8。
 - [ ] **P4.4** 授权状态变化产生可重试 apply/revoke：禁用、到期、删除必须 revoke；换钥撤销旧公钥；重新启用是显式重新授权，保留历史撤销记录。A 不能认领 B 或管理 peer 的地址/公钥。reconciler 只处理已登记资产，Hub/API/WG 重启后不从旧 conf 复活撤销权限。
 - [ ] **P4.5** 租约基于明确设备/会话身份，IP 作为审计信号；XFF 只由可信入口和明确代理赋值。所有入口设置请求体/字段、header/read/write/idle、并发、速率及子进程总截止时间。
 - [ ] **P4.6** 演练同时换钥/禁用、重复/乱序任务、提交/执行中崩溃、同 NAT、多网络切换与备份恢复；初始撤销目标为健康 Hub p99≤5s、最长≤30s，异常明确 `revoke_pending/degraded` 并告警，不能伪报生效。
@@ -137,7 +137,7 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 
 ### P7 — 本地自动门禁与可追踪发行
 
-- [x] **P7.1** 建立一个本地自动门禁入口，失败立即中止发行：合同/生成漂移、Go test/vet、可用环境的 race、GUI check、Rust test/check、SDK 测试与安全扫描；各失败保持原始输出和证据。10-07冻结v6 `check-steelman.ps1` exit0；SDK33/Rust41、真实CLI-HubTLS与离线更新CLI、CLI/SDK builder9/16、NSIS13+完整模板、Admin消费者20及npm省略负例。第五波 start schema 漂移和真实 WG/CLI/Service 六组已接正式 gate。Linux race不可用，正式签名/发行仍在P7.G。
+- [x] **P7.1** 建立一个本地自动门禁入口，失败立即中止发行：合同/生成漂移、Go test/vet、可用环境的race、GUI check、Rust test/check、SDK测试与安全扫描；各失败保持原始输出和证据。10-07第七波冻结v11 `check-steelman.ps1` exit0；SDK33/Rust41、真实CLI-HubTLS/WG与离线更新CLI、CLI/SDK builder9/16、NSIS13+完整模板、Admin消费者43及npm省略负例。proxygate同源schema已接正式gate；Linux新增独立真实产品/内核WG八项屏障fixture与vet通过。Linux race不可用，正式签名/发行仍在P7.G。
 - [ ] **P7.2** Windows/macOS 与 Hub/Android 目标组合均有编译检查；需要行为证据的 OS 用实机/受控 VM 运行，交叉编译不勾平台验收。用可控时钟/同步条件修复计时敏感测试，不能放宽断言掩盖失败。
 - [ ] **P7.3** 干净 worktree 使用锁定依赖、显式产品/版本/协议/完整 SHA/工具链和空产物目录构建；本地 dev 可标 dev，release 不接受不可追踪的 `local` 或错误父仓库 VCS 标记。
 - [ ] **P7.4** 发布清单记录构建与源码关系、hash、依赖清单/SBOM、安全扫描及有期限的例外、兼容矩阵和批准产物；明确可复现/可追溯边界，不以不同 OS/工具链必须字节相同作为未经证明的承诺。
@@ -182,6 +182,7 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 | 2026-10-07 | 第四波离线更新水位与当前只读资产 | `a2ecd68` | 冻结v5 gate exit0、九目标clean开发构建、实际CLI八进程/31条独立检查、Windows race/Linux普通；Hub/本机运行binary只读复核 | [更新worklog](../90-history/worklogs/2026-10-07-zhvpn-trusted-update-state.md)、[当前资产](../90-history/worklogs/2026-10-07-live-readonly-inventory.md) | 安装/签名/外部防回滚、Mac/手机、全部生产门禁仍未完成 |
 | 2026-10-07 | 第五波 v2 设备凭据与真实代理数据面 | `17e7689` | 冻结v6 gate exit0；九目标clean开发构建/hash一致；Windows实际 CLI/TLS/SQLite/sing-box/WG/owned proxy/target 与撤销；WSL实际 WG/TLS、native control 与初始 Service 负例 | [第五波 worklog](../90-history/worklogs/2026-10-07-v2-proxy-bootstrap.md)、[设备启动合同](v2-proxy-bootstrap.md) | 初始对账部分失败时外部旧 WG peer 仍可达的实际反例；持续租约/撤销 SLA、迁移、实机与生产仍未完成 |
 | 2026-10-07 | 第六波provisional清册/单调历史/持久observer | `bf0f608` | 冻结v8 gate exit0、十目标clean/hash一致；actual SQLite/HTTP、9原生children与旧坏metadata洗白修复；Admin43/编译Chrome21条分页和五旧页签 | [第六波worklog](../90-history/worklogs/2026-10-07-migration-inventory.md)、[清册合同](migration-inventory.md) | 真实lineage/受控导入、逐负类别时间/T0连续窗口、外部数据面屏障、日志/恢复/实机/签名与生产未完成 |
+| 2026-10-07 | 第七波真实proxy启动/续期屏障 | 本地源码与构建收据见worklog | 冻结v11统一gate exit0；Linux真实产品/内核WG八项验收、Shared/Reverse专项和vet通过；半撤销、跨expiry、ACK丢失、真实SIGKILL/重启正负对照 | [第七波worklog](../90-history/worklogs/2026-10-07-device-proxy-startup-barrier.md)、[屏障合同](device-proxy-startup-barrier.md) | 其他WG路径/同IP公钥、完整设备会话与生产撤销SLA、日志/恢复/实机/签名/正式campaign继续未完成 |
 
 本轮切片检查点单独登记，不代替上面的完整任务/阶段门禁：
 
@@ -205,13 +206,14 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 - [x] device Ed25519 输入共享 canonical/small-order 拒绝；离线 authority 恢复比较、保护文件读取及极端时间/非法 UTF-8/超大 TEXT 独立反例通过。`ready_to_restore=false`，实际恢复/最新事实保管链未完成。
 - [x] device bind/start 经正常 TLS 取得短期配置投影；本地独立 WG 密钥、generation/profile/精确路由绑定实际 engine，错误 bytes/迟到取消拒绝；真实 CLI→WG→目标 marker、实际撤销与 protected peer 保留通过。Service TLS initial Tick 不是完整外部数据面屏障，P4.G/G01 仍未完成。
 - [x] provisional清册显式批准raw SHA、immutable baseline/extra、失效source保留、单调历史及observer预落run/sticky gap；旧坏secure metadata后来合法观测洗白反例修复。canonical Admin contract2/只读迁移页、实际21条分页与迟到权限/秘密负例、Windows race/Linux普通及冻结v8统一门禁通过。真实lineage、逐负类别时间、T0连续窗口及正式campaign仍未闭合。
+- [x] 实际TCP/TCP-TLS proxy默认关闭Admission、protected UDS及最终fenced DB/WG grant；先Reserve后Open与有限quarantine，迟到Attach/容量同session ABA反例修复。冻结v11统一gate及Linux实际产品/内核WG半撤销、跨expiry、SIGKILL/重启验收通过；QUIC gated hosting在load/bind前拒绝。仅本route，不代称全部WG屏障/持续设备授权/生产SLA。
 - [ ] Mac 实机/真实 WinINET/已安装升级、生产授权导入/campaign、备份恢复撤销合并、手机迁移及签名/更新链按阶段继续验收。
 
 | 里程碑 | 当前状态 |
 | --- | --- |
 | 计划 | 已编写，按切片执行中 |
-| 实现 | CLI/GUI/SDK代理接线、Hub v2 authority及监督、设备消费者、reverse mTLS、本地门禁；第六波provisional清册/单调事实/持久observer及只读页面；生产迁移与跨平台余项仍推进 |
-| 新验证 | 第六波冻结v8统一gate通过、十目标clean/hash一致；前五波九目标clean构建；Windows实际CLI/WG及撤销、WSL WG/TLS；第六actual SQLite/HTTP/原生进程与编译Chrome消费者通过。10-07线上只读仍为旧binary。owned fixture和合成HKCU不替代生产/真实用户代理/实机证据 |
+| 实现 | CLI/GUI/SDK代理接线、Hub v2 authority及监督、设备消费者、reverse mTLS、本地门禁；第六波provisional清册/持久observer及只读页面；第七波真实proxy启动/续期屏障与有限quarantine；生产迁移与跨平台余项仍推进 |
+| 新验证 | 第七波冻结v11统一gate及Linux实际产品/内核WG八项屏障验收通过，clean开发构建见本波worklog；第六actual SQLite/HTTP/原生进程与编译Chrome消费者通过。10-07线上只读仍为旧binary。owned fixture和合成HKCU不替代生产/真实用户代理/实机证据 |
 | 生产切换 | 未开始，既有安全迁移仍遵循自己的 NO-GO 状态 |
 | Steelman 终验 | 未完成 |
 
@@ -221,4 +223,4 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 
 后续依赖按实际顺序：完成本轮源冻结门禁/开发产物 → 受控凭据/平台适配与迁移清册 → 干净可信发布/签名及更新协议 → 逐实例 canary与手机迁移 → 当前授权事实源切换和完整观察 → P9多维独立评分。生产切换、30天连续窗口、Mac/手机物理证据不能由本地测试或代码量勾选；全部 G01–G05 仍未达终验。
 
-剩余不仅是硬件验收：Mac OS adapter、真实campaign/installation lineage、逐负类别时间与持续窗口、外部 WG/proxy 启动失败屏障、持续设备/会话授权、受控导入、最新撤销事实保管链与实际恢复、安装维护协议/外部更新防回滚、远端结果确认、日志容量与性能指标仍有源码缺口。第六波已补provisional固定分母/完整source与历史阻断，但不能代称正式campaign。第五波已补v2 credential到真实proxy bootstrap，但启动TTL不等于连续租约；初始对账部分失败的实际反例证明，仅拒绝TLS监听不能关闭旧WG数据面。不能把局部完成勾作整个阶段或生产安全迁移。见[第六波worklog](../90-history/worklogs/2026-10-07-migration-inventory.md)及[下一proxy屏障清单](device-proxy-startup-barrier-plan.md)。
+剩余不仅是硬件验收：Mac OS adapter、真实campaign/installation lineage、逐负类别时间与持续窗口、其他WG路径/同来源IP公钥隔离、持续设备/会话授权、yamux contextual Open/原子write fence/内部容量、受控导入、最新撤销事实保管链与实际恢复、安装维护协议/外部更新防回滚、远端结果确认、日志容量与性能指标仍有源码缺口。第六波已补provisional固定分母/完整source与历史阻断，第七波已补真实受管proxy启动屏障；它们不能代称正式campaign、全部WG隔离或完整连续租约。初始对账部分失败的实际反例现经产品proxy负对照阻断；不能把局部完成勾作整个阶段或生产安全迁移。见[第六波worklog](../90-history/worklogs/2026-10-07-migration-inventory.md)及[第七波清单](device-proxy-startup-barrier-plan.md)。

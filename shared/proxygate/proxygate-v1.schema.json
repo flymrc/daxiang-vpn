@@ -1,0 +1,145 @@
+{
+  "$defs": {
+    "control_frame": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "hello",
+            "closed",
+            "grant",
+            "ack"
+          ],
+          "type": "string"
+        },
+        "binding": {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        "nonce": {
+          "pattern": "^[a-f0-9]{32}$",
+          "type": "string"
+        },
+        "sequence": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "session": {
+          "pattern": "^[a-f0-9]{32}$",
+          "type": "string"
+        },
+        "until_unix_nano": {
+          "description": "Absolute receiver-host lease deadline; hello/closed zero, grant strictly future and at most five seconds. ACK mirrors command.",
+          "maximum": 9223372036854775807,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "version": {
+          "const": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version",
+        "binding",
+        "session",
+        "nonce",
+        "sequence",
+        "action",
+        "until_unix_nano"
+      ],
+      "type": "object"
+    },
+    "policy": {
+      "additionalProperties": false,
+      "properties": {
+        "controller_uid": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "epoch": {
+          "maxLength": 32,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$",
+          "type": "string"
+        },
+        "interface": {
+          "maxLength": 15,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$",
+          "type": "string"
+        },
+        "listener": {
+          "description": "Canonical nonzero IPv4 literal AddrPort, nonzero port; no DNS or wildcard.",
+          "maxLength": 21,
+          "type": "string"
+        },
+        "managed_by": {
+          "maxLength": 32,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$",
+          "type": "string"
+        },
+        "managed_sources": {
+          "description": "Canonical masked IPv4 CIDRs /8..32. Every managed and retained prefix pair must be disjoint.",
+          "items": {
+            "maxLength": 18,
+            "type": "string"
+          },
+          "maxItems": 512,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "policy_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        "profile_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        "retained_sources": {
+          "description": "Canonical masked IPv4 CIDRs /8..32. Every managed and retained prefix pair must be disjoint.",
+          "items": {
+            "maxLength": 18,
+            "type": "string"
+          },
+          "maxItems": 512,
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "version": {
+          "const": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version",
+        "epoch",
+        "interface",
+        "managed_by",
+        "policy_sha256",
+        "profile_sha256",
+        "listener",
+        "controller_uid",
+        "managed_sources",
+        "retained_sources"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:zhvpn:proxygate:v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Linux protected private UDS and SO_PEERCRED. Exact Go compact struct-order JSON; policy has no LF, control frame has one LF. All fields required, nonnull and exact-case; duplicates and trailing bytes refused. A receiver-generated nonce and session, entire policy SHA256 binding, exact sequential commands and CLOSED ACK precede grants. Admission pre-reserves one existing HTTP client slot. Every upstream must Reserve before OpenStream, then Attach the returned connection or Abort only when no connection was created. Pending and late resources remain in the same bounded quarantine until real Close or explicit Abort; Release cannot erase a pending creation. EOF, timeout, malformed messages and resource overflow invalidate only the immutable managed scope, cancel contexts and set I/O deadlines before bounded quarantined transport cleanup. A CLOSED ACK waits for physical Close and pending creation completion; an unknown or blocked cleanup never receives an ACK or a new owner/grant. A command or shutdown timeout does not prove transport resources reaped. The absolute lease deadline cannot be extended by transport delay. Scope-external sources retain previous admission behavior.",
+  "title": "zhvpn immutable proxy source scope and local control v1",
+  "x-closed-idle-timeout-ms": 40000,
+  "x-command-timeout-ms": 1000,
+  "x-max-admissions": 4096,
+  "x-max-cleanup-connections": 16384,
+  "x-max-cleanup-workers": 16,
+  "x-max-lease-ms": 5000,
+  "x-max-message-bytes": 1024,
+  "x-max-policy-bytes": 32768,
+  "x-max-tracked-connections": 4
+}
