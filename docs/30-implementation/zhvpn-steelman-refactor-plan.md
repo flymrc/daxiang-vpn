@@ -1,6 +1,6 @@
 # zhvpn Steelman 重构计划
 
-> 创建：2026-10-06 JST。状态：IN_PROGRESS；第八波源码 `3b5a2c5` 已本地提交，Windows v13统一门禁/Linux v3实际产品验收exit0，十目标clean开发构建/hash一致，见第八波worklog与收据。源码、实机、生产实施分别记录。
+> 创建：2026-10-06 JST。状态：IN_PROGRESS；第八波源码 `3b5a2c5` 已本地提交，Windows v13统一门禁/Linux v3实际产品验收exit0，十目标clean开发构建/hash一致，见第八波worklog与收据。16:14–16:21 JST另完成Hub/reverse与单Windows CLI兼容canary部署/真实连通；v2授权、手机和正式发行仍未切换。源码、实机、生产实施分别记录。
 > 基线：[2026-10-05 多维审计](../90-history/worklogs/2026-10-05-zhvpn-project-audit.md)。49/100 是该日的工程成熟度评估，不能作为本日运行状态或后续验收结果。
 
 ## 1. Steelman 的完成定义
@@ -215,9 +215,11 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 | --- | --- |
 | 计划 | 已编写，按切片执行中 |
 | 实现 | CLI/GUI/SDK代理接线、Hub v2 authority及监督、设备消费者、reverse mTLS、本地门禁；provisional清册/持久observer及只读页面；真实proxy启动屏障/有限quarantine与上游派发fence；专用CLI安全日志/独立health；生产迁移与跨平台余项仍推进 |
-| 新验证 | 第八波冻结Windows v13统一gate/Linux v3日志与实际产品/内核WG验收exit0、十目标clean/hash一致；第六actual SQLite/HTTP/原生进程与编译Chrome消费者通过。先前10-07线上只读快照为旧binary，本波未再核验生产。owned fixture和合成HKCU不替代生产/真实用户代理/实机证据 |
-| 生产切换 | 未开始，既有安全迁移仍遵循自己的 NO-GO 状态 |
+| 新验证 | 第八波冻结Windows v13统一gate/Linux v3日志与实际产品/内核WG验收exit0、十目标clean/hash一致；第六actual SQLite/HTTP/原生进程与编译Chrome消费者通过。先前10-07只读快照为旧binary；随后16:14–16:21兼容canary已部署并真实连通，见部署worklog。owned fixture和合成HKCU仍不替代真实系统代理/Mac/手机TLS证据 |
+| 生产切换 | 已完成3b5a2c5兼容Hub/reverse+单Windows CLI canary及真实HTTPS/IPv6连通；v2/手机TLS/正式发行未切换，既有安全迁移仍NO-GO |
 | Steelman 终验 | 未完成 |
+
+- [x] 2026-10-07第八波兼容binary部署及单Windows新版CLI真实连通：来源3b5a2c5、三目标hash一致、手机双session恢复、28peer映射保留、ready/logging healthy、代理HTTPS/IPv6响应通过，见[部署记录](../90-history/worklogs/2026-10-07-wave8-compat-deployment.md)。这是一项受控dev canary，不勾选P8整体、安全迁移或正式签名发行。
 
 ## 8. 2026-10-07 接线与发行边界
 

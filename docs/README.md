@@ -12,6 +12,8 @@
 
 ## 当前状态速览
 
+2026-10-07 已完成[第八波兼容部署与本机新版 Windows CLI 连通验收](90-history/worklogs/2026-10-07-wave8-compat-deployment.md)。Hub/reverse/CLI 来源 `3b5a2c5`，既有手机双会话恢复、实际 HTTPS 与 IPv6 出口请求成功；v2授权、手机mTLS及正式发行仍未完成。
+
 ```text
 Hub: 36.50.84.68 / 10.66.0.1
   |
@@ -110,6 +112,8 @@ Hub 管理控制台 v1 作为 `zhhub` 第二个 listener 运行,本机监听 `12
 - [Hub 安全审查 2026-06-04](40-security/security-audit-2026-06-04.md)
 
 ## 90 History
+
+- [2026-10-07 第八波兼容部署与新版客户端连通](90-history/worklogs/2026-10-07-wave8-compat-deployment.md)
 
 - [2026-10-07 运行时接线与独立审计](90-history/worklogs/2026-10-07-zhvpn-runtime-integration.md)
 - [2026-10-07 第二波安全与管理台边界](90-history/worklogs/2026-10-07-zhvpn-security-boundaries.md)

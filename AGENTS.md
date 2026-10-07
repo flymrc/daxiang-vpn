@@ -31,7 +31,7 @@
 
 - `clients/` — **客户端**(终端用户侧)。`clients/cli/` = CLI 客户端;`clients/desktop-gui/` = mac/windows PC 单一跨平台 GUI。客户 Android App 必须放在 `clients/android/`；其既有受控 canary/未发行状态不因本轮桌面重构改变。
 - `hub/` — **Hub 服务端**(授权 API)。
-- `egress/` — **出口节点**(基础设施侧,非终端客户端)。`egress/reverse/` = Android 反向 TCP/yamux 出口数据面；2026-10-06 只读实机证据为 Pixel 7a 运行 `zhreverse`，QUIC 仅实验且现有全零 pin 不构成可用回滚。`egress/proxy/` = sing-box 出口代理(Mac/PC 出口🅿️预留,不再用于 Android 生产);`egress/android-status/` = 安卓出口监控 App;`egress/android-control/` = 安卓出口远程控制+自愈，当前 Pixel 7a 运行 `zhandroid-control`，绑隧道 IP 10.66.0.101:2022、仅公钥。具体运行路径/hash 以[本日基线](docs/90-history/worklogs/2026-10-06-zhvpn-asset-baseline.md)为准。
+- `egress/` — **出口节点**(基础设施侧,非终端客户端)。`egress/reverse/` = Android 反向 TCP/yamux 出口数据面；2026-10-06 的 Pixel 7a/zhreverse 为历史只读证据；2026-10-07 用户提供的当前约定为 Motorola 兼容 dxreverse。16:14 JST 本轮仅部署新版 Hub reverse，既有手机未替换；QUIC 仅实验且历史全零 pin 不构成可用回滚。`egress/proxy/` = sing-box 出口代理(Mac/PC 出口🅿️预留,不再用于 Android 生产);`egress/android-status/` = 安卓出口监控 App;`egress/android-control/` = 安卓出口远程控制+自愈，历史 Pixel 7a 的 zhandroid-control 记录不代替当前用户提供的 Motorola dxandroid-control/watchdog 布局；本轮未登录手机重新取证。当前 Hub/Windows CLI hash 与真实连通见[10-07部署记录](docs/90-history/worklogs/2026-10-07-wave8-compat-deployment.md)。
 - `shared/` — 客户端与出口共用的 Go 包(`config`、`paths`、`proxy`)。
 - `scripts/` — 运维脚本(如 `check-android-egress-health.ps1`、`measure-android-egress.ps1`)。
 

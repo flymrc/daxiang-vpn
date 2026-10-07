@@ -1,5 +1,9 @@
 # Hub 授权 API 部署
 
+2026-10-07 当前 Hub/reverse 的兼容 canary 来自 `3b5a2c5`，实际 binary hash、私有备份、SQLite副本预检和Windows端到端验收见[部署记录](../../90-history/worklogs/2026-10-07-wave8-compat-deployment.md)。已部署代码中的v2 authority仍默认关闭，当前可变授权仍为tokens.yaml；raw TCP、Caddy、UFW与WG拓扑未切换。下面历史构建命令保留作旧流程参考；新版产物使用README统一门禁/构建清单，不以开发构建冒充正式签名发行。
+
+替换 binary 前备份units/drop-ins、tokens/reverse配置，并使用SQLite online backup取得一致数据库副本；在独立loopback端口和数据库副本预检。上传hash复核后同目录staging/原子替换，依次重启并复核三listener健康、手机双session和受保护peer映射。启动失败只恢复该服务binary，不自动覆盖当前数据库事实；恢复旧数据库须另核验上线后的观测/撤销记录。
+
 ## 构建
 
 在本机 `zongheng-vpn` 仓库根目录执行：

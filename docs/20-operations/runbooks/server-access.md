@@ -8,6 +8,20 @@
 
 ## Hub 服务器
 
+### 2026-10-07 第八波当前部署
+
+16:14 JST 已部署 `3b5a2c5` 的兼容 Hub/reverse，16:20 JST 本机新版 Windows CLI 真实连通通过。备份与变更步骤见[部署 worklog](../../90-history/worklogs/2026-10-07-wave8-compat-deployment.md)。下文较早 hash 是历史记录，当前以本节为准。
+
+| 当前对象 | SHA256 |
+| --- | --- |
+| `/opt/zongheng/zhhub/zhhub` | `66c2547881883ca53fcd9497a450173d4c999f226be2993a2a429dbd01947196` |
+| `/opt/zongheng/zhreverse/zhreverse` | `edc832259698127d87f31d3eb50020bb0be1dbc91c9e734e3d2e0cb9fcd608d7` |
+| 本机 `%LOCALAPPDATA%/ZonghengVPN/bin/zhvpn.exe` | `6892481f810aeeae276b024ccdea6ebb3f25102fa00654bf778d5a7acf30a7ba` |
+
+服务/端口保持：Hub 18080兼容、127.0.0.1:18079可信入口、127.0.0.1:18100 Admin；reverse TCP :39093、WG proxy 10.66.0.1:18081、96/48、idle2m/preempt10s。v2 authority和proxy gate为OFF。28个WG peer映射及tokens/reverse配置hash一致。手机旧实现双会话自动重连，没有替换手机或Mac。
+
+Hub备份目录 `/root/zongheng-backups/20261007-wave8-3b5a2c5` 为0700，含online SQLite备份；本机备份在 `%LOCALAPPDATA%/ZonghengVPN/backups/20261007-wave8-3b5a2c5`，仅当前用户/SYSTEM/Administrators访问。CLI旧凭据显式迁移为保护ACL，原WG key bytes保持。此次dev canary可连接，但迁移观测仍unknown、正式安全收口保持NO-GO。
+
 - 角色：流量 Hub / WireGuard 中转服务器
 - 公网 IP：`36.50.84.68`
 - 公网域名：`jp-proxy.ruichao.dev`。2026-07-01 当前 DNS 仍为 Cloudflare 代理记录,源站由 Caddy 接管 `80/443` 并反代管理控制台与客户端授权 API `/api/client/*`。
@@ -43,7 +57,7 @@ ssh -i ~/.ssh/zongheng_server root@36.50.84.68
 - admin 授权码分页上线备份：`/root/zongheng-backups/20260701135152-admin-token-pagination`；对应 `zhhub` SHA256 `482bc633fad2619793018b4e35939abe806dc52b11b46fecb801b544aa6b35d4`。
 - admin 出口 IP 双栈显示上线备份：`/root/zongheng-backups/20260701140319-admin-exit-ip-dual-stack`；对应 `zhhub` SHA256 `757c52d6dc2b82b1d00276dec6e844b5ee0807829e23fc3724f809e6c15599d1`。
 - admin 出口卡片布局修复上线备份：`/root/zongheng-backups/20260702003327-admin-egress-card-layout`；当时 `zhhub` SHA256 `53c1aba5fe06ed36c4860abf6bd7abac26c1ffb5774e8c892693cc2c8d8f3818`。
-- 客户端迁移观测上线备份：`/root/zongheng-backups/20260827235455-client-observer`；源码提交 `fa4190a9dbee2d37be3c350eff0dd7d1eece12e0`，当前 `zhhub` SHA256 `0d36e906f9720b29e23e0de0c1909bf2253937b2ebf81de7caa04c8cd6796bec`。本次只部署 observation-only、双 listener 和 Caddy `18079` 上游，不含防火墙、token、WireGuard 或 Android 变更。
+- 客户端迁移观测上线备份：`/root/zongheng-backups/20260827235455-client-observer`；源码提交 `fa4190a9dbee2d37be3c350eff0dd7d1eece12e0`，当时 `zhhub` SHA256 `0d36e906f9720b29e23e0de0c1909bf2253937b2ebf81de7caa04c8cd6796bec`。本次只部署 observation-only、双 listener 和 Caddy `18079` 上游，不含防火墙、token、WireGuard 或 Android 变更。
 - 管理控制台监听：`127.0.0.1:18100`；Caddy 对公网提供 `https://jp-proxy.ruichao.dev/admin/` 并反代到本地 listener,根路径 `/` 和未知路径都返回 404。
 - 关键 env：`ZHHUB_TOKENS`、`ZHHUB_LISTEN`、`ZHHUB_TRUSTED_PROXY_LISTEN=127.0.0.1:18079`、`ZHHUB_ADMIN_LISTEN=127.0.0.1:18100`、`ZHHUB_ADMIN_DB=/opt/zongheng/zhhub/admin.db`、`ZHHUB_ADMIN_PASSWORD_HASH`、`ZHHUB_ADMIN_AUDIT_RETENTION_DAYS=90`、`ZHHUB_ADMIN_AUDIT_MAX_ROWS=50000`、`ZHHUB_ADMIN_LOGIN_ATTEMPT_RETENTION_DAYS=7`、`ZHHUB_ADMIN_LOGIN_ATTEMPT_MAX_ROWS=10000`、`ZHHUB_ADMIN_DB_MAINTENANCE_MINUTES=60`、`ZHHUB_ADMIN_EXIT_IP_CHECK_URL=https://api64.ipify.org`、`ZHHUB_ADMIN_EXIT_IPV6_CHECK_URL=https://api6.ipify.org`、`ZHHUB_ADMIN_EXIT_IPV4_CHECK_URL=https://api.ipify.org`、`ZHHUB_ADMIN_EXIT_IP_CHECK_TIMEOUT_SECONDS=8`、`ZHHUB_ANDROID_CONTROL_KEY=/root/.ssh/zhandroid_control_hub`、`ZHHUB_ANDROID_CONTROL_KNOWN_HOSTS=/root/.ssh/zhandroid_control_known_hosts`、`ZHHUB_ANDROID_CARRIER_CACHE_SECONDS=300`、`ZHHUB_TOKEN_LEASE_SECONDS=30`。
 - 一键换 IP 依赖 `ZHHUB_ANDROID_CONTROL_KEY` 指向的私钥能登手机控制面 `10.66.0.101:2022`。

@@ -1,6 +1,6 @@
 # 客户端实例与代理恢复合同
 
-> 2026-10-06。Steelman 首切片实现与验收说明；不代表生产客户端已升级。
+> 2026-10-06。Steelman 首切片实现与验收说明；首切片当时未部署；2026-10-07本机Windows CLI已做兼容canary升级，见[部署记录](../90-history/worklogs/2026-10-07-wave8-compat-deployment.md)，不代表全体客户或新版GUI已升级。
 > 总清单见 [重构计划](zhvpn-steelman-refactor-plan.md)。授权/撤销的后续合同见 [设备合同](device-auth-revocation-contract.md)。
 
 ## 当前责任边界

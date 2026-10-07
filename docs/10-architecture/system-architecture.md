@@ -1,5 +1,7 @@
 # 纵横 VPN 架构设计
 
+2026-10-07 16:14–16:21 JST：第八波源码 `3b5a2c5` 已以兼容配置部署到 `zhhub.service`、`zhreverse-hub.service` 和本机 Windows CLI。真实客户端经 WG→Hub reverse→既有手机出口完成 HTTPS/IPv6 smoke，28 个 peer 映射和现有端口保持。v2 authority/proxy gate 均未启用，raw TCP 手机协议与 tokens.yaml 授权事实源保留；GUI未重打包，产物仍为未签名 dev canary。当前运行事实与备份见[部署记录](../90-history/worklogs/2026-10-07-wave8-compat-deployment.md)。
+
 ## 目标
 
 构建并维护一套流量分发系统，包含：

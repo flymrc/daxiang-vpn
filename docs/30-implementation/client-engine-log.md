@@ -1,6 +1,6 @@
 # 专用客户端引擎事件与日志健康
 
-2026-10-07，第八波隔离开发实现，尚未发行。对应[实施清单](client-engine-log-plan.md)与[工作记录](../90-history/worklogs/2026-10-07-client-engine-observability.md)。普通 `RunEngine` 库调用保持原有输出与生命周期，只有CLI隐藏后台child启用本合同；Linux客户端后台启动仍不因此实现。
+2026-10-07，第八波隔离开发实现；16:18–16:21 JST本机Windows CLI已做未签名dev canary部署并通过认证ready/logging healthy及真实出口请求，见[部署记录](../90-history/worklogs/2026-10-07-wave8-compat-deployment.md)。尚未正式发行或全面分发。对应[实施清单](client-engine-log-plan.md)与[工作记录](../90-history/worklogs/2026-10-07-client-engine-observability.md)。普通 `RunEngine` 库调用保持原有输出与生命周期，只有CLI隐藏后台child启用本合同；Linux客户端后台启动仍不因此实现。
 
 ## 持久合同和归属
 

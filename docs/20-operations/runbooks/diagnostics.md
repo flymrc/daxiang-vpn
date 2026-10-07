@@ -11,6 +11,17 @@
 
 ## 0. 流量路径回顾
 
+2026-10-07 第八波兼容 canary 的真实 smoke 已通过，见[当前部署记录](../../90-history/worklogs/2026-10-07-wave8-compat-deployment.md)。新版独立 CLI 在原 `%LOCALAPPDATA%/ZonghengVPN/bin/zhvpn.exe` 路径，代理仍7890。只读验收示例：
+
+```powershell
+& "$env:LOCALAPPDATA/ZonghengVPN/bin/zhvpn.exe" version --json
+& "$env:LOCALAPPDATA/ZonghengVPN/bin/zhvpn.exe" status --json --no-ip-check
+curl.exe --proxy http://127.0.0.1:7890 --max-time 15 --fail https://jp-proxy.ruichao.dev/healthz
+curl.exe --proxy http://127.0.0.1:7890 --max-time 15 --fail 'https://api64.ipify.org?format=json'
+```
+
+`ready`/`logging_state=healthy` 分别证明认证实例/日志状态；必须结合实际代理目标响应与Hub WG handshake/transfer验证连通。新 CLI 拒绝旧继承权限凭据；升级按部署记录先私有备份/归档、保留WG key，再生成保护ACL文件，不能递归改父目录权限。运行中的日志可能持有共享限制，优先使用认证日志health，不通过删除锁或强停writer读取。此次未验证所有IPv4/IPv6目标、真实系统代理操作或新版GUI安装包。
+
 ```text
 客户端  --WireGuard-->  Hub(36.50.84.68, wg0/10.66.0.1)
    --WireGuard Peer 间转发 / Hub 本地 reverse proxy
