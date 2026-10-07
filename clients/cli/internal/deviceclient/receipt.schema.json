@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zongheng.invalid/contracts/device-cli-receipt-v2",
+  "title": "Explicit device CLI v2 receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "command", "ok", "outcome", "pending"],
+  "properties": {
+    "contract_version": {"const": 2},
+    "command": {"enum": ["activate", "status", "apply", "disable", "revoke", "rotate-credential", "recover", "cancel-pending", "unknown"]},
+    "ok": {"type": "boolean"},
+    "outcome": {"enum": ["credential_created", "credential_rotated", "credential_recovered", "accepted", "status", "operation_recovered", "cancelled", "rejected", "result_unknown", "local_error"]},
+    "pending": {"type": "boolean"},
+    "code": {"enum": ["invalid_request", "unauthorized", "conflict", "not_found", "unavailable", "rate_limited", "invalid_server", "connection_failure", "invalid_response", "local_storage_failure", "invalid_arguments", "invalid_ca_file", "command_timeout", "server_mismatch", "pending_resolution_required", "already_activated", "invalid_activation_input", "not_activated", "result_unknown", "no_pending_intent"]},
+    "request_id": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128},
+    "credential": {"$ref": "#/$defs/credential"},
+    "operation": {"$ref": "#/$defs/operation"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"ok": {"const": true}}},
+      "then": {
+        "properties": {"pending": {"const": false}},
+        "not": {"required": ["code"]},
+        "oneOf": [
+          {"properties": {"command": {"const": "activate"}, "outcome": {"const": "credential_created"}}, "required": ["credential"], "not": {"required": ["operation"]}},
+          {"properties": {"command": {"const": "rotate-credential"}, "outcome": {"const": "credential_rotated"}}, "required": ["credential"], "not": {"required": ["operation"]}},
+          {"properties": {"command": {"enum": ["recover", "cancel-pending"]}, "outcome": {"const": "credential_recovered"}}, "required": ["credential"], "not": {"required": ["operation"]}},
+          {"properties": {"command": {"enum": ["apply", "disable", "revoke"]}, "outcome": {"const": "accepted"}, "operation": {"properties": {"effective": {"const": false}}}}, "required": ["operation"], "not": {"required": ["credential"]}},
+          {"properties": {"command": {"const": "status"}, "outcome": {"const": "status"}}, "required": ["operation"], "not": {"required": ["credential"]}},
+          {"properties": {"command": {"enum": ["recover", "cancel-pending"]}, "outcome": {"const": "operation_recovered"}}, "required": ["operation"], "not": {"required": ["credential"]}},
+          {"properties": {"command": {"const": "cancel-pending"}, "outcome": {"const": "cancelled"}}, "required": ["request_id"], "not": {"anyOf": [{"required": ["credential"]}, {"required": ["operation"]}]}}
+        ]
+      },
+      "else": {"required": ["code"], "properties": {"outcome": {"enum": ["rejected", "result_unknown", "local_error"]}}, "not": {"anyOf": [{"required": ["credential"]}, {"required": ["operation"]}]}}
+    },
+    {"if": {"properties": {"outcome": {"const": "result_unknown"}}}, "then": {"required": ["request_id", "code"], "properties": {"pending": {"const": true}, "code": {"const": "result_unknown"}}}}
+  ],
+  "$defs": {
+    "credential": {
+      "type": "object", "additionalProperties": false,
+      "required": ["device_id", "credential_id", "auth_public_key", "expires_unix_seconds"],
+      "properties": {
+        "device_id": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+        "credential_id": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+        "auth_public_key": {"type": "string", "minLength": 44, "maxLength": 44},
+        "expires_unix_seconds": {"type": "integer", "minimum": 1}
+      }
+    },
+    "operation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["operation_id", "device_id", "action", "generation", "state", "accepted", "effective", "last_error", "deadline_unix_seconds"],
+      "properties": {
+        "operation_id": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+        "device_id": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+        "action": {"enum": ["apply", "disable", "revoke", "expire"]},
+        "generation": {"type": "integer", "minimum": 1},
+        "state": {"enum": ["pending", "degraded", "done", "superseded"]},
+        "accepted": {"const": true}, "effective": {"type": "boolean"},
+        "last_error": {"type": "string", "maxLength": 1024},
+        "deadline_unix_seconds": {"type": "integer", "minimum": 1}
+      },
+      "allOf": [{"if": {"properties": {"effective": {"const": true}}}, "then": {"properties": {"state": {"const": "done"}}}}]
+    }
+  }
+}

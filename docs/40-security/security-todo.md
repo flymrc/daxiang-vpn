@@ -116,3 +116,8 @@ P0 各项已由 [Hub 安全审查报告 2026-06-04](../40-security/security-audi
 开发分支已建立 [CLI JSON 合同与 SDK 诊断脱敏](../30-implementation/cli-json-contract-v1.md)、[设备授权离线模型](../30-implementation/device-auth-foundation.md)和[CLI 代理租约核心](../30-implementation/system-proxy-lease-foundation.md)。数据库排队替换、过期 apply、策略 slice 别名以及损坏 journal 的拒绝路径已纳入回归。授权模型使用 fake 数据面，租约核心没有接入真实 CLI；不能据此勾选生产有效撤销、权限安装、reverse TLS 或全局代理集成。
 
 当前 token 的启停/到期只描述 API 授权判断，不能推定已经建立的 WG peer 或 reverse stream 同时失权。credential/API 接线、真实 WG 执行与到期调度、手机 mTLS、legacy 收口和正式发行继续按 [Steelman 清单](../30-implementation/zhvpn-steelman-refactor-plan.md)与既有 campaign 迁移门禁执行。
+
+
+## 2026-10-07 本地接线
+
+CLI 代理租约已进入真实引擎控制器，GUI 新建 v2 只调用 CLI；Hub 设备签名 API/后台调度及 reverse tcp-tls 已有合成端到端回归，执行监督与独立负例纳入同一轮门禁。说明见[运行时接线](../30-implementation/steelman-runtime-integration.md)。旧正文中的“未接入”描述的是10-06历史切片，不代表当前开发分支；生产 TokenStore/wg0、raw TCP、campaign 和签名/实机验收尚未切换，不能勾选安全迁移完成。

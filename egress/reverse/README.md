@@ -50,6 +50,14 @@ GOOS=linux GOARCH=arm64 go build -o dist/reverse/zhreverse-linux-arm64 ./egress/
 
 ## Configs
 
+The locally implemented secure migration path is explicit `transport: tcp-tls`:
+TLS 1.3, mutual certificate verification, Hub DNS/URI validation, registered
+per-egress leaf credentials, expiry/revocation of existing yamux sessions and
+bounded credential overlap. Read [the versioned contract](SECURE_PROTOCOL.md)
+for required configuration, initialization, atomic rotation and local evidence.
+It is not deployed by this change; existing production `tcp` remains legacy
+shared-token TCP until the approved phone canary and retirement gates pass.
+
 Example configs:
 
 - Hub: `docs/20-operations/configs/egress/hub-reverse-server.yaml.example`
@@ -195,4 +203,6 @@ curl -L -o /dev/null \
 ```
 
 Remove any temporary public firewall rule after manual testing. The production
-Hub service needs the configured UDP listener open.
+Hub service needs its configured transport listener open: current production
+TCP uses TCP; experimental QUIC uses UDP. Secure migration listener and firewall
+changes require an explicit change sheet.

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "advisory": "GO-2026-5932",
+      "tier": "module",
+      "expires": "2026-11-06",
+      "reason": "x/crypto is required for SSH/curve25519. Its deprecated openpgp packages have no published fix and are not imported by the scanned product build. Imported-package or symbol evidence is never covered by this exception.",
+      "source": "https://pkg.go.dev/vuln/GO-2026-5932"
+    }
+  ],
+  "cargo_warnings": [
+    {"advisory":"RUSTSEC-2024-0370","kind":"unmaintained","package":"proc-macro-error","expires":"2026-11-06","reason":"GTK/Linux-only dependency absent from the supported Windows/macOS target trees. Not an exception for importing this package."},
+    {"advisory":"RUSTSEC-2024-0429","kind":"unsound","package":"glib","expires":"2026-11-06","reason":"GTK/Linux-only dependency absent from the supported Windows/macOS target trees. This does not approve a Linux desktop release."},
+    {"advisory":"RUSTSEC-2025-0081","kind":"unmaintained","package":"unic-char-property","expires":"2026-11-06","reason":"Tauri urlpattern transitive Unicode tokenizer; no patched upstream dependency available in the validated tree. Revisit upstream or replace tokenizer by the deadline."},
+    {"advisory":"RUSTSEC-2025-0075","kind":"unmaintained","package":"unic-char-range","expires":"2026-11-06","reason":"Tauri urlpattern Unicode tokenizer; maintainability exception only, no vulnerability finding waived."},
+    {"advisory":"RUSTSEC-2025-0080","kind":"unmaintained","package":"unic-common","expires":"2026-11-06","reason":"Tauri urlpattern Unicode tokenizer; maintainability exception only, no vulnerability finding waived."},
+    {"advisory":"RUSTSEC-2025-0100","kind":"unmaintained","package":"unic-ucd-ident","expires":"2026-11-06","reason":"Tauri urlpattern Unicode tokenizer; maintainability exception only, no vulnerability finding waived."},
+    {"advisory":"RUSTSEC-2025-0098","kind":"unmaintained","package":"unic-ucd-version","expires":"2026-11-06","reason":"Tauri urlpattern Unicode tokenizer; maintainability exception only, no vulnerability finding waived."}
+  ]
+}

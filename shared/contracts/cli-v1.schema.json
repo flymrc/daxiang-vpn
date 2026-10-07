@@ -117,6 +117,50 @@
           }
         },
         {
+          "if": {
+            "required": [
+              "system_proxy_state"
+            ]
+          },
+          "then": {
+            "required": [
+              "owned",
+              "noop"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "system_proxy_state": {
+                "const": "acquired"
+              }
+            },
+            "required": [
+              "system_proxy_state"
+            ]
+          },
+          "then": {
+            "allOf": [
+              {
+                "required": [
+                  "lease_id"
+                ]
+              },
+              {
+                "properties": {
+                  "owned": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "owned"
+                ]
+              }
+            ]
+          }
+        },
+        {
           "not": {
             "anyOf": [
               {
@@ -176,12 +220,33 @@
           "pattern": "^[a-z][a-z0-9_]*$",
           "type": "string"
         },
+        "go_version": {
+          "description": "Actual Go toolchain embedded in this binary.",
+          "type": "string"
+        },
+        "journal_path": {
+          "description": "Private recovery file location, without its contents.",
+          "type": "string"
+        },
+        "lease_id": {
+          "description": "Opaque non-secret lease identity; explicit release must name this lease.",
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
         "message": {
           "description": "Human-readable outcome.",
           "type": "string"
         },
+        "noop": {
+          "description": "Acquire reused a lease, or release/recover found none. Reused intent may still require OS repair; not evidence of OS proxy health.",
+          "type": "boolean"
+        },
         "ok": {
           "description": "Outcome of the requested command; it does not imply tunnel or egress health.",
+          "type": "boolean"
+        },
+        "owned": {
+          "description": "This command operated on its exact instance's lease; absent is unknown.",
           "type": "boolean"
         },
         "product": {
@@ -197,8 +262,34 @@
           "description": "Configured local proxy address.",
           "type": "string"
         },
+        "source_commit": {
+          "description": "Explicit repository commit, independent of embedded parent repository VCS metadata. Unknown for unlabelled developer builds.",
+          "pattern": "^([0-9a-f]{40}|unknown)$",
+          "type": "string"
+        },
+        "source_state": {
+          "description": "Clean/dirty source state at build time; clean does not imply a signed release.",
+          "enum": [
+            "clean",
+            "dirty",
+            "unknown"
+          ],
+          "type": "string"
+        },
         "status": {
           "description": "Existing command-specific result text, including rotate trigger outcome; not a durable operation protocol.",
+          "type": "string"
+        },
+        "system_proxy_state": {
+          "description": "Proxy lease outcome. Recorded is durable intent only, not live OS or engine health.",
+          "enum": [
+            "absent",
+            "recorded",
+            "foreign",
+            "acquired",
+            "released",
+            "recovered"
+          ],
           "type": "string"
         },
         "version": {

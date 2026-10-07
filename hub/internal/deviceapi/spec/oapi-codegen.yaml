@@ -1,0 +1,4 @@
+package: devicecontract
+generate:
+  models: true
+output: ../../../shared/devicecontract/types.gen.go

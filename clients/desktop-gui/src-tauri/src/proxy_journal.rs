@@ -14,6 +14,39 @@ const SCHEMA_VERSION: u32 = 1;
 const MANUAL_RECOVERY: &str =
     "记录已保留。请先手动核对并恢复 Windows 代理设置，再将记录重命名归档，最后重试断开或退出";
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BackupKind {
+    LegacyGui,
+    CliLease,
+}
+
+pub fn backup_kind(data: &[u8]) -> Result<BackupKind, String> {
+    let value: serde_json::Value = serde_json::from_slice(data)
+        .map_err(|_| invalid_journal("system_proxy_journal_invalid", "代理恢复记录损坏"))?;
+    match value
+        .get("schema_version")
+        .and_then(serde_json::Value::as_u64)
+    {
+        Some(1) => {
+            decode(data)?;
+            Ok(BackupKind::LegacyGui)
+        }
+        Some(2)
+            if value.get("owner").and_then(serde_json::Value::as_str) == Some("cli-runtime")
+                && value.get("scope").and_then(serde_json::Value::as_str)
+                    == Some("wininet-hkcu") =>
+        {
+            // Classification only. The GUI cannot use this as ownership or
+            // readiness evidence; CLI independently validates the whole WAL.
+            Ok(BackupKind::CliLease)
+        }
+        _ => Err(invalid_journal(
+            "system_proxy_journal_incompatible",
+            "无法识别代理恢复记录的版本或归属",
+        )),
+    }
+}
+
 fn invalid_journal(code: &str, reason: &str) -> String {
     format!("{code}: {reason}；{MANUAL_RECOVERY}")
 }
@@ -25,6 +58,7 @@ pub struct RegistryValue {
     pub bytes: Vec<u8>,
 }
 
+#[cfg(test)]
 impl RegistryValue {
     pub fn dword(value: u32) -> Self {
         Self {
@@ -72,6 +106,7 @@ pub trait RegistryAdapter {
 pub trait JournalStore {
     fn load(&mut self) -> Result<Option<Vec<u8>>, String>;
     /// Must refuse replacement and durably persist before any registry writes.
+    #[cfg(test)]
     fn create(&mut self, data: &[u8]) -> Result<(), String>;
     fn remove(&mut self) -> Result<(), String>;
 }
@@ -85,7 +120,9 @@ fn decode(data: &[u8]) -> Result<Journal, String> {
             "旧代理备份没有写入归属，无法安全自动恢复",
         ));
     }
-    let journal: Journal = serde_json::from_value(value)
+    // Deserialize directly so duplicate keys cannot silently override an
+    // ownership/type/value field through serde_json::Value's last-key wins.
+    let journal: Journal = serde_json::from_slice(data)
         .map_err(|_| invalid_journal("system_proxy_journal_invalid", "代理恢复记录格式无效"))?;
     if journal.schema_version != SCHEMA_VERSION
         || journal.owner != "desktop-gui"
@@ -125,6 +162,7 @@ fn conflict(name: &str) -> String {
     format!("system_proxy_ownership_conflict: {name} 已被其他程序修改；未覆盖新设置，恢复记录已保留。请先核对 Windows 代理设置；若确认保留当前新设置，可将记录重命名归档后重试退出")
 }
 
+#[cfg(test)]
 pub fn enable(
     registry: &mut impl RegistryAdapter,
     store: &mut impl JournalStore,
@@ -245,6 +283,11 @@ pub fn restore(
     registry.notify().map_err(|e| {
         format!("system_proxy_notify_failed: {e}; 恢复记录已保留，请重试断开或退出")
     })?;
+    for field in &journal.fields {
+        if read_field(registry, &field.name)? != field.original {
+            return Err(conflict(&field.name));
+        }
+    }
     store.remove().map_err(|e| {
         format!(
             "system_proxy_journal_remove_failed: {e}; 设置已恢复，恢复记录已保留，请重试断开或退出"
@@ -267,6 +310,7 @@ mod tests {
         fail_write: Option<usize>,
         fail_notify: bool,
         mutate_on_read: Option<(usize, String, RegistryValue)>,
+        mutate_on_notify: Option<(String, RegistryValue)>,
     }
 
     impl RegistryAdapter for FakeRegistry {
@@ -299,6 +343,9 @@ mod tests {
         }
         fn notify(&mut self) -> Result<(), String> {
             self.notifications += 1;
+            if let Some((name, value)) = self.mutate_on_notify.as_ref() {
+                self.values.insert(name.clone(), value.clone());
+            }
             if self.fail_notify {
                 Err("notification failed".to_string())
             } else {
@@ -345,6 +392,49 @@ mod tests {
             Some(RegistryValue::string("localhost")),
             None,
         ]
+    }
+
+    #[test]
+    fn migration_classification_never_adopts_a_cli_lease_as_gui_recovery() {
+        let mut registry = FakeRegistry::default();
+        let mut store = FakeStore::default();
+        enable(&mut registry, &mut store, desired()).unwrap();
+        assert_eq!(
+            backup_kind(store.data.as_ref().unwrap()).unwrap(),
+            BackupKind::LegacyGui
+        );
+        let cli = br#"{"schema_version":2,"owner":"cli-runtime","scope":"wininet-hkcu"}"#;
+        assert_eq!(backup_kind(cli).unwrap(), BackupKind::CliLease);
+        let mut foreign = FakeStore {
+            data: Some(cli.to_vec()),
+            ..Default::default()
+        };
+        let mut untouched = FakeRegistry::default();
+        assert!(restore(&mut untouched, &mut foreign).is_err());
+        assert_eq!(untouched.reads, 0);
+        assert_eq!(untouched.writes, 0);
+        assert!(foreign.data.is_some());
+        for invalid in [
+            br#"{"schema_version":99}"#.as_slice(),
+            br#"{"schema_version":1,"schema_version":1}"#.as_slice(),
+            b"invalid",
+        ] {
+            assert!(backup_kind(invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn notification_time_external_change_retains_legacy_recovery_material() {
+        let mut registry = FakeRegistry::default();
+        let mut store = FakeStore::default();
+        enable(&mut registry, &mut store, desired()).unwrap();
+        let foreign = RegistryValue::string("external-proxy:8888");
+        registry.mutate_on_notify = Some(("ProxyServer".to_string(), foreign.clone()));
+        assert!(restore(&mut registry, &mut store)
+            .unwrap_err()
+            .contains("ownership_conflict"));
+        assert!(store.data.is_some());
+        assert_eq!(registry.values.get("ProxyServer"), Some(&foreign));
     }
 
     fn existing() -> FakeRegistry {

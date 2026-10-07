@@ -60,7 +60,7 @@ func TestDTOFieldsMatchCanonicalSourceWithoutSecrets(t *testing.T) {
 			if field.OmitEmpty {
 				tag += ",omitempty"
 			}
-			if actual.Name != field.GoName || actual.Tag.Get("json") != tag || actual.Type.Name() != field.GoType {
+			if actual.Name != field.GoName || actual.Tag.Get("json") != tag || strings.TrimPrefix(actual.Type.String(), "contracts.") != field.GoType {
 				t.Fatalf("%s.%s no longer matches canonical source", definition.Name, field.GoName)
 			}
 			for _, private := range privateFieldNames {
@@ -96,5 +96,16 @@ func TestSchemaExposesOnlyPublicFieldsAndNoFutureHealthClaims(t *testing.T) {
 	}
 	if evidenceSemantics()["time"] == "" || evidenceSemantics()["tunnel"] == "" {
 		t.Fatal("missing unknown/freshness semantics")
+	}
+}
+
+func TestOptionalProxyReceiptPreservesFalseWithoutChangingLegacyResults(t *testing.T) {
+	data, _ := json.Marshal(Result{OK: true, SystemProxyState: "acquired", Owned: Bool(true), Noop: Bool(false)})
+	if !bytes.Contains(data, []byte(`"noop":false`)) {
+		t.Fatal("false lease evidence omitted")
+	}
+	legacy, _ := json.Marshal(Result{OK: true})
+	if bytes.Contains(legacy, []byte(`"noop"`)) || bytes.Contains(legacy, []byte(`"owned"`)) {
+		t.Fatal("legacy result gained invented lease evidence")
 	}
 }

@@ -4,7 +4,7 @@
 
 2026-10-05 Hub `zhreverse` 已上线满额空闲 CONNECT 抢占（阈值 10 秒；并发上限仍为全局 96 / 每客户端 48）。生产校验与备份见[服务器访问文档](docs/20-operations/runbooks/server-access.md)；该次部署未更改手机。2026-10-06 只读复核确认控制地址 `10.66.0.101` 当前是 Pixel 7a，运行 `zhreverse/zhandroid-control`，TCP 尚无 TLS；以[本日资产基线](docs/90-history/worklogs/2026-10-06-zhvpn-asset-baseline.md)为准。
 
-2026-10-06 开始 [Steelman 重构](docs/30-implementation/zhvpn-steelman-refactor-plan.md)。隔离开发分支已实现实例认证/安全停止、保留运行日志及 Windows 代理恢复 journal，并继续建立 [CLI JSON 同源合同](docs/30-implementation/cli-json-contract-v1.md)和设备授权离线持久模型；协议、兼容与验证边界见[客户端合同](docs/30-implementation/client-runtime-safety-contract.md)。这些变化尚未发行或部署，离线模型未接管生产授权。
+2026-10-06 开始 [Steelman 重构](docs/30-implementation/zhvpn-steelman-refactor-plan.md)。2026-10-07 隔离开发分支继续接入真实引擎代理租约、GUI typed commands、设备 v2 签名 API/调度与受限执行者、reverse 双端 mTLS，并补本地安全扫描和可追踪开发构建；具体状态与平台边界见[运行时接线](docs/30-implementation/steelman-runtime-integration.md)。这些变化尚未发行或部署，未接管当前生产授权或退役 raw TCP。
 
 ## 目录
 
@@ -41,26 +41,20 @@ docs/
   90-history/         工作记录、阶段复盘
 
 dist/
-  windows-amd64/      Windows x64 客户端发布包
-  windows-arm64/      Windows ARM64 客户端发布包
+  windows-amd64/      历史 Windows x64 构建目录
+  windows-arm64/      历史 Windows ARM64 构建目录
 ```
 
 ## 构建
 
 ```powershell
-# Windows 客户端
-clients/cli/build.ps1 -Version X.Y.Z
-# macOS CLI
-VERSION=X.Y.Z ./clients/cli/build-macos.sh
-# Hub 服务端
-pushd hub/admin/web
-npm ci
-npm run build:embed
-popd
-go build -o dist/hub ./hub
-# 安卓出口代理（arm64）
-$env:GOOS="linux"; $env:GOARCH="arm64"; go build -o dist/reverse/zhreverse-linux-arm64 ./egress/reverse
+# Windows CLI：统一门禁，显式未签名开发构建；目录必须不存在
+clients/cli/build.ps1 -Development -Version dev -OutputDirectory C:\artifacts\zhvpn-cli-dev-unique
+# CLI 两平台、Hub及helper、reverse和Android控制的九目标开发矩阵
+pwsh -NoProfile -File scripts/build-steelman-dev.ps1 -OutputDirectory C:\artifacts\zhvpn-matrix-dev-unique
 ```
+
+macOS CLI 入口为 `./clients/cli/build-macos.sh -Development -OutputDirectory /tmp/zhvpn-cli-dev-unique`，需要 PowerShell 7。正式 CLI 签名/公证尚未验收，默认 release 明确拒绝。开发矩阵与 SHA256 清单只证明编译和源码对应关系，产物标记 `release_ready=false`；桌面和 SDK 发行边界见各自 README。
 
 ## 当前 MVP
 

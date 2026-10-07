@@ -597,3 +597,8 @@ last_reconciled_at
 | 连续零 legacy/direct/unknown 天数 | 0 |
 | Readiness | `false` |
 | 当前 blocker | 客户端版本未批准/发布；campaign、端到端证据和逐实例清册未建立；最终收口保持 NO-GO |
+
+
+## 2026-10-07 Steelman 接线补充
+
+隔离开发分支已新增真实 CLI 代理控制、Hub v2 签名 API/后台对账、reverse 双端 mTLS 与本地发行门禁，见[运行时接线](../30-implementation/steelman-runtime-integration.md)。这些代码和本地测试未导入 legacy token/安装实例，未更改 campaign 分母、T0、30天窗口、readiness 或生产入口；当前观测不能自动认领为新版设备授权证明。

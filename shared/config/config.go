@@ -63,13 +63,20 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	return Decode(data)
+}
+
+// Decode separates the format from its caller's private storage policy.
+func Decode(data []byte) (Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return Config{}, err
+		return Config{}, errors.New("客户端配置格式无效")
 	}
 	cfg.ApplyDefaults()
 	return cfg, nil
 }
+
+func Encode(cfg Config) ([]byte, error) { return yaml.Marshal(cfg) }
 
 func Save(path string, cfg Config) error {
 	data, err := yaml.Marshal(cfg)

@@ -12,12 +12,15 @@ class ZHVpnExecutableNotFound(ZHVpnError):
 
 
 class ZHVpnTimeout(ZHVpnError):
-    """Raised when a CLI command times out."""
+    """The local wait expired; a mutating command may already have acted."""
 
-    def __init__(self, command: Sequence[str], timeout: float):
+    def __init__(self, command: Sequence[str], timeout: float, *, result_unknown: bool = False):
         self.command = list(command)
         self.timeout = timeout
-        super().__init__(f"zhvpn command timed out after {timeout}s: {' '.join(self.command)}")
+        self.result_unknown = result_unknown
+        self.error_code = "command_outcome_unknown" if result_unknown else "command_timeout"
+        suffix = "; outcome is unknown; do not automatically repeat the operation" if result_unknown else ""
+        super().__init__(f"zhvpn command timed out after {timeout}s: {' '.join(self.command)}{suffix}")
 
 
 class ZHVpnCommandError(ZHVpnError):

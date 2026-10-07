@@ -1,5 +1,7 @@
 # CLI 系统代理租约核心
 
+> 2026-10-07 后续实现：本文记录 10-06 基础切片；API、真实控制器接线与执行监督的当前开发状态见 [运行时接线](steelman-runtime-integration.md)。生产启用与实机验收仍单独登记。
+
 > 2026-10-06 JST。本地 foundation：`clients/cli/internal/runtime/systemproxy` 状态机和 `shared/systemproxy` Windows adapter；尚未接入 CLI 命令、真实引擎控制 RPC、stop hook 或 GUI。当前 GUI 仍使用[恢复合同](client-runtime-safety-contract.md)中的 v1 journal，P3.1 未完成。
 
 ## 租约与授权边界

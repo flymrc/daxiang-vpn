@@ -22,19 +22,27 @@ type Status struct {
 
 // Result is the public v1 CLI DTO.
 type Result struct {
-	OK              bool   `json:"ok"`
-	Status          string `json:"status,omitempty"`
-	Egress          string `json:"egress,omitempty"`
-	Proxy           string `json:"proxy,omitempty"`
-	Before          string `json:"before,omitempty"`
-	After           string `json:"after,omitempty"`
-	Message         string `json:"message,omitempty"`
-	Product         string `json:"product,omitempty"`
-	Version         string `json:"version,omitempty"`
-	ProtocolVersion int    `json:"protocol_version,omitempty"`
-	Error           string `json:"error,omitempty"`
-	ErrorCode       string `json:"error_code,omitempty"`
-	ContractVersion int    `json:"contract_version,omitempty"`
+	OK               bool   `json:"ok"`
+	Status           string `json:"status,omitempty"`
+	Egress           string `json:"egress,omitempty"`
+	Proxy            string `json:"proxy,omitempty"`
+	Before           string `json:"before,omitempty"`
+	After            string `json:"after,omitempty"`
+	Message          string `json:"message,omitempty"`
+	Product          string `json:"product,omitempty"`
+	Version          string `json:"version,omitempty"`
+	ProtocolVersion  int    `json:"protocol_version,omitempty"`
+	SourceCommit     string `json:"source_commit,omitempty"`
+	SourceState      string `json:"source_state,omitempty"`
+	GoVersion        string `json:"go_version,omitempty"`
+	Error            string `json:"error,omitempty"`
+	ErrorCode        string `json:"error_code,omitempty"`
+	ContractVersion  int    `json:"contract_version,omitempty"`
+	SystemProxyState string `json:"system_proxy_state,omitempty"`
+	LeaseID          string `json:"lease_id,omitempty"`
+	Owned            *bool  `json:"owned,omitempty"`
+	Noop             *bool  `json:"noop,omitempty"`
+	JournalPath      string `json:"journal_path,omitempty"`
 }
 
 // EngineIdentity is the public v1 CLI DTO.

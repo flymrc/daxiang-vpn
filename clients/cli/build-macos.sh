@@ -1,47 +1,6 @@
 #!/usr/bin/env bash
-# 构建纵横 VPN macOS CLI 发布包。
-#
-# 与 Windows CLI 一样，sing-box 以代码库形式编译进 zhvpn；默认使用
-# 用户态 WireGuard/gVisor，不需要管理员权限或系统 TUN。
-
+# Explicit development build entry point. Formal macOS signing/notarization
+# remains unavailable; the shared builder refuses release before any build.
 set -euo pipefail
-cd "$(dirname "$0")"
-
-repo_root="$(cd ../.. && pwd)"
-tags="with_gvisor"
-host_os="$(go env GOOS)"
-host_arch="$(go env GOARCH)"
-version="${VERSION:?set VERSION to the release version}"
-if [[ "$version" == "dev" ]]; then
-  echo "VERSION must be an explicit release version" >&2
-  exit 1
-fi
-ldflags="-s -w -X zongheng-vpn/clients/cli/internal/buildinfo.Product=cli -X zongheng-vpn/clients/cli/internal/buildinfo.Version=$version"
-
-targets=(
-  "arm64:macos-arm64"
-  "amd64:macos-amd64"
-)
-
-for target in "${targets[@]}"; do
-  arch="${target%%:*}"
-  dir="${target#*:}"
-  out_dir="$repo_root/dist/$dir"
-  out="$out_dir/zhvpn"
-  mkdir -p "$out_dir"
-
-  echo "构建 macOS $arch -> $out"
-  GOOS=darwin GOARCH="$arch" go build -tags "$tags" -trimpath -ldflags "$ldflags" -o "$out" .
-  chmod 755 "$out"
-  if [[ "$host_os" == "darwin" && "$arch" == "$host_arch" ]]; then
-    identity="$($out version --json)"
-    if [[ "$identity" != *'"product":"cli"'* || "$identity" != *'"version":"'"$version"'"'* || "$identity" != *'"protocol_version":2'* ]]; then
-      echo "CLI identity mismatch: $identity" >&2
-      exit 1
-    fi
-  fi
-  size_bytes=$(wc -c < "$out" | tr -d ' ')
-  echo "  完成：$size_bytes bytes"
-done
-
-echo "全部构建完成。"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+exec pwsh -NoLogo -NoProfile -NonInteractive -File "$repo_root/scripts/build-cli.ps1" -Platform macos "$@"

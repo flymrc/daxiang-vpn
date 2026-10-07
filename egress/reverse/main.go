@@ -72,13 +72,15 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: zhreverse server|client [flags]")
+		return errors.New("usage: zhreverse server|client|registry [flags]")
 	}
 	switch args[0] {
 	case "server":
 		return runServer(args[1:])
 	case "client":
 		return runClient(args[1:])
+	case "registry":
+		return runSecureRegistry(args[1:])
 	default:
 		return fmt.Errorf("unknown mode: %s", args[0])
 	}
@@ -90,39 +92,49 @@ type reverseConfig struct {
 }
 
 type serverOptions struct {
-	Listen            string        `json:"listen" yaml:"listen"`
-	Proxy             string        `json:"proxy" yaml:"proxy"`
-	Token             string        `json:"token,omitempty" yaml:"token,omitempty"`
-	TokenFile         string        `json:"token_file,omitempty" yaml:"token_file,omitempty"`
-	Transport         string        `json:"transport" yaml:"transport"`
-	Resolve           string        `json:"resolve" yaml:"resolve"`
-	TLSCertFile       string        `json:"tls_cert_file,omitempty" yaml:"tls_cert_file,omitempty"`
-	TLSKeyFile        string        `json:"tls_key_file,omitempty" yaml:"tls_key_file,omitempty"`
-	EnableFetch       bool          `json:"enable_fetch,omitempty" yaml:"enable_fetch,omitempty"`
-	AllowedProxyCIDRs []string      `json:"allowed_proxy_cidrs,omitempty" yaml:"allowed_proxy_cidrs,omitempty"`
-	DebugAllowedCIDRs []string      `json:"debug_allowed_cidrs,omitempty" yaml:"debug_allowed_cidrs,omitempty"`
-	MaxProxyConns     int           `json:"max_proxy_connections,omitempty" yaml:"max_proxy_connections,omitempty"`
-	MaxProxyConnsPeer int           `json:"max_proxy_connections_per_client,omitempty" yaml:"max_proxy_connections_per_client,omitempty"`
-	ProxyIdleTimeout  time.Duration `json:"proxy_idle_timeout,omitempty" yaml:"proxy_idle_timeout,omitempty"`
-	ProxyPreemptIdle  time.Duration `json:"proxy_preempt_idle,omitempty" yaml:"proxy_preempt_idle,omitempty"`
-	V4OnlyDirect      bool          `json:"v4_only_direct,omitempty" yaml:"v4_only_direct,omitempty"`
+	Listen             string        `json:"listen" yaml:"listen"`
+	Proxy              string        `json:"proxy" yaml:"proxy"`
+	Token              string        `json:"token,omitempty" yaml:"token,omitempty"`
+	TokenFile          string        `json:"token_file,omitempty" yaml:"token_file,omitempty"`
+	Transport          string        `json:"transport" yaml:"transport"`
+	Resolve            string        `json:"resolve" yaml:"resolve"`
+	TLSCertFile        string        `json:"tls_cert_file,omitempty" yaml:"tls_cert_file,omitempty"`
+	TLSKeyFile         string        `json:"tls_key_file,omitempty" yaml:"tls_key_file,omitempty"`
+	TLSCAFile          string        `json:"tls_ca_file,omitempty" yaml:"tls_ca_file,omitempty"`
+	HubID              string        `json:"hub_id,omitempty" yaml:"hub_id,omitempty"`
+	EgressRegistryFile string        `json:"egress_registry_file,omitempty" yaml:"egress_registry_file,omitempty"`
+	EnableFetch        bool          `json:"enable_fetch,omitempty" yaml:"enable_fetch,omitempty"`
+	AllowedProxyCIDRs  []string      `json:"allowed_proxy_cidrs,omitempty" yaml:"allowed_proxy_cidrs,omitempty"`
+	DebugAllowedCIDRs  []string      `json:"debug_allowed_cidrs,omitempty" yaml:"debug_allowed_cidrs,omitempty"`
+	MaxProxyConns      int           `json:"max_proxy_connections,omitempty" yaml:"max_proxy_connections,omitempty"`
+	MaxProxyConnsPeer  int           `json:"max_proxy_connections_per_client,omitempty" yaml:"max_proxy_connections_per_client,omitempty"`
+	ProxyIdleTimeout   time.Duration `json:"proxy_idle_timeout,omitempty" yaml:"proxy_idle_timeout,omitempty"`
+	ProxyPreemptIdle   time.Duration `json:"proxy_preempt_idle,omitempty" yaml:"proxy_preempt_idle,omitempty"`
+	V4OnlyDirect       bool          `json:"v4_only_direct,omitempty" yaml:"v4_only_direct,omitempty"`
 }
 
 type clientOptions struct {
-	Server                      string        `json:"server" yaml:"server"`
-	Token                       string        `json:"token,omitempty" yaml:"token,omitempty"`
-	TokenFile                   string        `json:"token_file,omitempty" yaml:"token_file,omitempty"`
-	Reconnect                   time.Duration `json:"reconnect" yaml:"reconnect"`
-	Transport                   string        `json:"transport" yaml:"transport"`
-	Connections                 int           `json:"connections" yaml:"connections"`
-	AddressFamily               string        `json:"address_family,omitempty" yaml:"address_family,omitempty"`
-	TunnelBindInterface         string        `json:"tunnel_bind_interface,omitempty" yaml:"tunnel_bind_interface,omitempty"`
-	TunnelFallbackInterface     string        `json:"tunnel_fallback_interface,omitempty" yaml:"tunnel_fallback_interface,omitempty"`
-	TunnelFallbackAfterFailures int           `json:"tunnel_fallback_after_failures,omitempty" yaml:"tunnel_fallback_after_failures,omitempty"`
-	TunnelPrimaryRetryInterval  time.Duration `json:"tunnel_primary_retry_interval,omitempty" yaml:"tunnel_primary_retry_interval,omitempty"`
-	TargetBindInterface         string        `json:"target_bind_interface,omitempty" yaml:"target_bind_interface,omitempty"`
-	ServerCertSHA256            string        `json:"server_cert_sha256,omitempty" yaml:"server_cert_sha256,omitempty"`
-	InsecureSkipVerify          bool          `json:"insecure_skip_verify,omitempty" yaml:"insecure_skip_verify,omitempty"`
+	Server                      string          `json:"server" yaml:"server"`
+	Token                       string          `json:"token,omitempty" yaml:"token,omitempty"`
+	TokenFile                   string          `json:"token_file,omitempty" yaml:"token_file,omitempty"`
+	Reconnect                   time.Duration   `json:"reconnect" yaml:"reconnect"`
+	Transport                   string          `json:"transport" yaml:"transport"`
+	Connections                 int             `json:"connections" yaml:"connections"`
+	AddressFamily               string          `json:"address_family,omitempty" yaml:"address_family,omitempty"`
+	TunnelBindInterface         string          `json:"tunnel_bind_interface,omitempty" yaml:"tunnel_bind_interface,omitempty"`
+	TunnelFallbackInterface     string          `json:"tunnel_fallback_interface,omitempty" yaml:"tunnel_fallback_interface,omitempty"`
+	TunnelFallbackAfterFailures int             `json:"tunnel_fallback_after_failures,omitempty" yaml:"tunnel_fallback_after_failures,omitempty"`
+	TunnelPrimaryRetryInterval  time.Duration   `json:"tunnel_primary_retry_interval,omitempty" yaml:"tunnel_primary_retry_interval,omitempty"`
+	TargetBindInterface         string          `json:"target_bind_interface,omitempty" yaml:"target_bind_interface,omitempty"`
+	ServerCertSHA256            string          `json:"server_cert_sha256,omitempty" yaml:"server_cert_sha256,omitempty"`
+	InsecureSkipVerify          bool            `json:"insecure_skip_verify,omitempty" yaml:"insecure_skip_verify,omitempty"`
+	TLSCAFile                   string          `json:"tls_ca_file,omitempty" yaml:"tls_ca_file,omitempty"`
+	TLSCertFile                 string          `json:"tls_cert_file,omitempty" yaml:"tls_cert_file,omitempty"`
+	TLSKeyFile                  string          `json:"tls_key_file,omitempty" yaml:"tls_key_file,omitempty"`
+	TLSServerName               string          `json:"tls_server_name,omitempty" yaml:"tls_server_name,omitempty"`
+	HubID                       string          `json:"hub_id,omitempty" yaml:"hub_id,omitempty"`
+	EgressID                    string          `json:"egress_id,omitempty" yaml:"egress_id,omitempty"`
+	sessionContext              context.Context // runtime only; never a configuration field
 }
 
 func defaultServerOptions() serverOptions {
@@ -235,10 +247,13 @@ func runServer(args []string) error {
 	proxyAddr := fs.String("proxy", defaults.Proxy, "local HTTP CONNECT proxy address")
 	token := fs.String("token", defaults.Token, "shared auth token")
 	tokenFile := fs.String("token-file", defaults.TokenFile, "file containing shared auth token")
-	transport := fs.String("transport", defaults.Transport, "reverse transport: tcp or quic")
+	transport := fs.String("transport", defaults.Transport, "reverse transport: tcp, tcp-tls, or quic")
 	resolve := fs.String("resolve", defaults.Resolve, "target DNS side: server or client")
-	tlsCertFile := fs.String("tls-cert-file", defaults.TLSCertFile, "TLS certificate for QUIC")
-	tlsKeyFile := fs.String("tls-key-file", defaults.TLSKeyFile, "TLS key for QUIC")
+	tlsCertFile := fs.String("tls-cert-file", defaults.TLSCertFile, "TLS certificate/bundle for QUIC or tcp-tls")
+	tlsKeyFile := fs.String("tls-key-file", defaults.TLSKeyFile, "TLS private key/bundle for QUIC or tcp-tls")
+	tlsCAFile := fs.String("tls-ca-file", defaults.TLSCAFile, "TCP TLS trust anchors PEM file")
+	hubID := fs.String("hub-id", defaults.HubID, "registered Hub certificate URI identity for tcp-tls")
+	egressRegistryFile := fs.String("egress-registry-file", defaults.EgressRegistryFile, "versioned registered egress credential JSON file for tcp-tls")
 	enableFetch := fs.Bool("enable-fetch", defaults.EnableFetch, "enable diagnostic /fetch endpoint")
 	maxProxyConns := fs.Int("max-proxy-connections", defaults.MaxProxyConns, "maximum concurrent CONNECT proxy sessions; 0 disables the limit")
 	maxProxyConnsPeer := fs.Int("max-proxy-connections-per-client", defaults.MaxProxyConnsPeer, "maximum concurrent CONNECT proxy sessions per client IP; 0 disables the limit")
@@ -281,6 +296,15 @@ func runServer(args []string) error {
 	if explicit["tls-key-file"] {
 		opts.TLSKeyFile = *tlsKeyFile
 	}
+	if explicit["tls-ca-file"] {
+		opts.TLSCAFile = *tlsCAFile
+	}
+	if explicit["hub-id"] {
+		opts.HubID = *hubID
+	}
+	if explicit["egress-registry-file"] {
+		opts.EgressRegistryFile = *egressRegistryFile
+	}
 	if explicit["enable-fetch"] {
 		opts.EnableFetch = *enableFetch
 	}
@@ -299,11 +323,14 @@ func runServer(args []string) error {
 	if explicit["v4-only-direct"] {
 		opts.V4OnlyDirect = *v4OnlyDirect
 	}
+	if err := validateSecureServerOptions(opts); err != nil {
+		return err
+	}
 	resolvedToken, err := resolveToken(opts.Token, opts.TokenFile)
 	if err != nil {
 		return err
 	}
-	if resolvedToken == "" {
+	if resolvedToken == "" && opts.Transport != secureTCPTransport {
 		return errors.New("--token is required")
 	}
 	if opts.Resolve != "server" && opts.Resolve != "client" {
@@ -365,6 +392,8 @@ func runServer(args []string) error {
 
 func serveTunnel(opts serverOptions, token string, manager *sessionManager, ready chan<- error) error {
 	switch opts.Transport {
+	case secureTCPTransport:
+		return serveSecureTCPTunnel(opts, manager, ready)
 	case "tcp":
 		return serveTCPTunnel(opts.Listen, token, manager, ready)
 	case "quic":
@@ -539,6 +568,7 @@ type sessionManager struct {
 	proxyPreemptions      int64
 	proxyMetricsMu        sync.Mutex
 	proxyMetrics          proxyMetricStore
+	secureTransport       *secureTCPServer
 }
 
 type sessionHealth struct {
@@ -549,29 +579,31 @@ type sessionHealth struct {
 }
 
 type sessionHealthReport struct {
-	GeneratedAt                  time.Time            `json:"generated_at"`
-	SessionCount                 int                  `json:"session_count"`
-	Sessions                     []sessionHealthEntry `json:"sessions"`
-	ActiveProxyConnections       int                  `json:"active_proxy_connections"`
-	ActiveProxyConnectionsByPeer map[string]int       `json:"active_proxy_connections_by_peer,omitempty"`
-	ActiveProxyConnectionsPeak   int                  `json:"active_proxy_connections_peak,omitempty"`
-	ActiveProxyPeakByPeer        map[string]int       `json:"active_proxy_connections_peak_by_peer,omitempty"`
-	MaxProxyConnections          int                  `json:"max_proxy_connections,omitempty"`
-	MaxProxyConnectionsPerClient int                  `json:"max_proxy_connections_per_client,omitempty"`
-	ProxyIdleTimeoutMillis       int64                `json:"proxy_idle_timeout_ms,omitempty"`
-	ProxyPreemptIdleMillis       int64                `json:"proxy_preempt_idle_ms,omitempty"`
-	ProxyIdlePreemptions         int64                `json:"proxy_idle_preemptions,omitempty"`
-	ProxyMetrics                 proxyMetricReport    `json:"proxy_metrics"`
+	GeneratedAt                  time.Time              `json:"generated_at"`
+	SessionCount                 int                    `json:"session_count"`
+	Sessions                     []sessionHealthEntry   `json:"sessions"`
+	ActiveProxyConnections       int                    `json:"active_proxy_connections"`
+	ActiveProxyConnectionsByPeer map[string]int         `json:"active_proxy_connections_by_peer,omitempty"`
+	ActiveProxyConnectionsPeak   int                    `json:"active_proxy_connections_peak,omitempty"`
+	ActiveProxyPeakByPeer        map[string]int         `json:"active_proxy_connections_peak_by_peer,omitempty"`
+	MaxProxyConnections          int                    `json:"max_proxy_connections,omitempty"`
+	MaxProxyConnectionsPerClient int                    `json:"max_proxy_connections_per_client,omitempty"`
+	ProxyIdleTimeoutMillis       int64                  `json:"proxy_idle_timeout_ms,omitempty"`
+	ProxyPreemptIdleMillis       int64                  `json:"proxy_preempt_idle_ms,omitempty"`
+	ProxyIdlePreemptions         int64                  `json:"proxy_idle_preemptions,omitempty"`
+	ProxyMetrics                 proxyMetricReport      `json:"proxy_metrics"`
+	ReverseSecurity              *reverseSecurityReport `json:"reverse_security,omitempty"`
 }
 
 type sessionHealthEntry struct {
-	Index                int    `json:"index"`
-	RemoteAddr           string `json:"remote_addr"`
-	ActiveStreams        int    `json:"active_streams"`
-	ConsecutiveFailures  int    `json:"consecutive_failures"`
-	EWMACommandRTTMillis int64  `json:"ewma_command_rtt_ms"`
-	LastFailureAgoMillis int64  `json:"last_failure_ago_ms,omitempty"`
-	SchedulerScoreMillis int64  `json:"scheduler_score_ms"`
+	Index                int                    `json:"index"`
+	RemoteAddr           string                 `json:"remote_addr"`
+	ActiveStreams        int                    `json:"active_streams"`
+	ConsecutiveFailures  int                    `json:"consecutive_failures"`
+	EWMACommandRTTMillis int64                  `json:"ewma_command_rtt_ms"`
+	LastFailureAgoMillis int64                  `json:"last_failure_ago_ms,omitempty"`
+	SchedulerScoreMillis int64                  `json:"scheduler_score_ms"`
+	Security             *secureSessionIdentity `json:"security,omitempty"`
 }
 
 type tunnelBenchReport struct {
@@ -938,7 +970,7 @@ func (m *sessionManager) sessionHealthSnapshot() sessionHealthReport {
 				lastFailureAgo = 0
 			}
 		}
-		report.Sessions = append(report.Sessions, sessionHealthEntry{
+		entry := sessionHealthEntry{
 			Index:                i,
 			RemoteAddr:           session.RemoteAddr().String(),
 			ActiveStreams:        health.activeStreams,
@@ -946,7 +978,12 @@ func (m *sessionManager) sessionHealthSnapshot() sessionHealthReport {
 			EWMACommandRTTMillis: health.ewmaCommandRTT.Milliseconds(),
 			LastFailureAgoMillis: lastFailureAgo,
 			SchedulerScoreMillis: m.sessionScoreAtLocked(session, now).Milliseconds(),
-		})
+		}
+		if secure, ok := session.(*secureYamuxSession); ok {
+			identity := secure.identity
+			entry.Security = &identity
+		}
+		report.Sessions = append(report.Sessions, entry)
 	}
 	m.mu.Unlock()
 
@@ -973,6 +1010,9 @@ func (m *sessionManager) sessionHealthSnapshot() sessionHealthReport {
 	m.activeProxyMu.Unlock()
 
 	report.ProxyMetrics = m.proxyMetricsSnapshot()
+	if m.secureTransport != nil {
+		report.ReverseSecurity = m.secureTransport.health()
+	}
 
 	return report
 }
@@ -2028,7 +2068,7 @@ func runClient(args []string) error {
 	token := fs.String("token", defaults.Token, "shared auth token")
 	tokenFile := fs.String("token-file", defaults.TokenFile, "file containing shared auth token")
 	reconnect := fs.Duration("reconnect", defaults.Reconnect, "reconnect delay")
-	transport := fs.String("transport", defaults.Transport, "reverse transport: tcp or quic")
+	transport := fs.String("transport", defaults.Transport, "reverse transport: tcp, tcp-tls, or quic")
 	connections := fs.Int("connections", defaults.Connections, "number of parallel reverse connections")
 	addressFamily := fs.String("address-family", defaults.AddressFamily, "target dial address family: auto, ipv4, or ipv6")
 	tunnelBindInterface := fs.String("tunnel-bind-interface", defaults.TunnelBindInterface, "Linux interface for reverse tunnel TCP dials; empty uses system routing")
@@ -2038,6 +2078,12 @@ func runClient(args []string) error {
 	targetBindInterface := fs.String("target-bind-interface", defaults.TargetBindInterface, "Linux interface for target TCP/DNS dials; empty uses system routing")
 	serverCertSHA256 := fs.String("server-cert-sha256", defaults.ServerCertSHA256, "expected SHA-256 fingerprint of QUIC server certificate")
 	insecureSkipVerify := fs.Bool("insecure-skip-verify", defaults.InsecureSkipVerify, "allow QUIC without certificate pinning; unsafe")
+	tlsCAFile := fs.String("tls-ca-file", defaults.TLSCAFile, "TCP TLS trust anchors PEM file")
+	tlsCertFile := fs.String("tls-cert-file", defaults.TLSCertFile, "egress TLS certificate for tcp-tls")
+	tlsKeyFile := fs.String("tls-key-file", defaults.TLSKeyFile, "egress TLS private key for tcp-tls")
+	tlsServerName := fs.String("tls-server-name", defaults.TLSServerName, "required Hub DNS/IP certificate name for tcp-tls")
+	hubID := fs.String("hub-id", defaults.HubID, "expected Hub certificate URI identity for tcp-tls")
+	egressID := fs.String("egress-id", defaults.EgressID, "egress certificate URI identity for tcp-tls")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -2092,11 +2138,32 @@ func runClient(args []string) error {
 	if explicit["insecure-skip-verify"] {
 		opts.InsecureSkipVerify = *insecureSkipVerify
 	}
+	if explicit["tls-ca-file"] {
+		opts.TLSCAFile = *tlsCAFile
+	}
+	if explicit["tls-cert-file"] {
+		opts.TLSCertFile = *tlsCertFile
+	}
+	if explicit["tls-key-file"] {
+		opts.TLSKeyFile = *tlsKeyFile
+	}
+	if explicit["tls-server-name"] {
+		opts.TLSServerName = *tlsServerName
+	}
+	if explicit["hub-id"] {
+		opts.HubID = *hubID
+	}
+	if explicit["egress-id"] {
+		opts.EgressID = *egressID
+	}
+	if err := validateSecureClientOptions(opts); err != nil {
+		return err
+	}
 	resolvedToken, err := resolveToken(opts.Token, opts.TokenFile)
 	if err != nil {
 		return err
 	}
-	if opts.Server == "" || resolvedToken == "" {
+	if opts.Server == "" || (resolvedToken == "" && opts.Transport != secureTCPTransport) {
 		return errors.New("--server and --token are required")
 	}
 	if opts.Connections < 1 || opts.Connections > 64 {
@@ -2247,6 +2314,8 @@ func interfaceLabel(iface string) string {
 
 func clientOnce(transport string, serverAddr string, token string, opts clientOptions, tunnelBind *tunnelBindController) error {
 	switch transport {
+	case secureTCPTransport:
+		return secureTCPClientOnce(serverAddr, opts, tunnelBind)
 	case "tcp":
 		return tcpClientOnce(serverAddr, token, opts, tunnelBind)
 	case "quic":
@@ -2336,7 +2405,15 @@ func quicClientOnce(serverAddr string, token string, opts clientOptions) error {
 func handleClientStream(stream net.Conn, opts clientOptions) {
 	defer stream.Close()
 	reader := bufio.NewReader(stream)
-	line, err := reader.ReadString('\n')
+	var line string
+	var err error
+	if opts.sessionContext != nil {
+		_ = stream.SetReadDeadline(time.Now().Add(secureHandshakeTimeout))
+		line, err = readLineBytewise(stream, 4096)
+		_ = stream.SetReadDeadline(time.Time{})
+	} else {
+		line, err = reader.ReadString('\n')
+	}
 	if err != nil {
 		return
 	}
@@ -2369,7 +2446,7 @@ func handleConnectStream(stream net.Conn, reader *bufio.Reader, target string, o
 		return
 	}
 	dialStarted := time.Now()
-	targetConn, err := dialTarget(target, opts.AddressFamily, opts.TargetBindInterface)
+	targetConn, err := dialTargetContext(clientSessionContext(opts), target, opts.AddressFamily, opts.TargetBindInterface)
 	targetDialLatency := time.Since(dialStarted)
 	if err != nil {
 		_, _ = fmt.Fprintf(stream, "ERR %v\n", err)
@@ -2379,8 +2456,8 @@ func handleConnectStream(stream net.Conn, reader *bufio.Reader, target string, o
 		_ = targetConn.Close()
 		return
 	}
-	relayWithHandshakeRetry(&bufferedConn{Conn: stream, reader: reader}, targetConn, target, func() (net.Conn, error) {
-		return dialTarget(target, opts.AddressFamily, opts.TargetBindInterface)
+	relayWithHandshakeRetryContext(opts.sessionContext, &bufferedConn{Conn: stream, reader: reader}, targetConn, target, func() (net.Conn, error) {
+		return dialTargetContext(clientSessionContext(opts), target, opts.AddressFamily, opts.TargetBindInterface)
 	})
 }
 
@@ -2556,13 +2633,13 @@ func handleStripedConnectStream(stream net.Conn, args string, opts clientOptions
 		handleStripedPrimaryLane(stream, group, target, opts)
 		return
 	}
-	handleStripedExtraLane(stream, group, laneIndex)
+	handleStripedExtraLane(stream, group, laneIndex, opts)
 }
 
 func handleStripedPrimaryLane(stream net.Conn, group *stripedClientGroup, target string, opts clientOptions) {
 	defer stripedClientGroups.Delete(group.id)
 	dialStarted := time.Now()
-	targetConn, err := dialTarget(target, opts.AddressFamily, opts.TargetBindInterface)
+	targetConn, err := dialTargetContext(clientSessionContext(opts), target, opts.AddressFamily, opts.TargetBindInterface)
 	targetDialLatency := time.Since(dialStarted)
 	if err != nil {
 		_, _ = fmt.Fprintf(stream, "ERR %v\n", err)
@@ -2575,7 +2652,7 @@ func handleStripedPrimaryLane(stream net.Conn, group *stripedClientGroup, target
 		return
 	}
 	group.markLaneReady(0)
-	if !waitForSignal(group.allReadyCh, stripedLaneAttachTimeout) {
+	if !waitForSignalContext(clientSessionContext(opts), group.allReadyCh, stripedLaneAttachTimeout) {
 		group.fail(errors.New("striped lanes did not attach in time"))
 		return
 	}
@@ -2586,8 +2663,8 @@ func handleStripedPrimaryLane(stream net.Conn, group *stripedClientGroup, target
 	group.run()
 }
 
-func handleStripedExtraLane(stream net.Conn, group *stripedClientGroup, laneIndex int) {
-	if !waitForSignal(group.targetReadyCh, stripedTargetReadyTimeout) {
+func handleStripedExtraLane(stream net.Conn, group *stripedClientGroup, laneIndex int, opts clientOptions) {
+	if !waitForSignalContext(clientSessionContext(opts), group.targetReadyCh, stripedTargetReadyTimeout) {
 		_, _ = io.WriteString(stream, "ERR striped target not ready\n")
 		group.fail(errors.New("striped target not ready in time"))
 		return
@@ -2601,7 +2678,11 @@ func handleStripedExtraLane(stream net.Conn, group *stripedClientGroup, laneInde
 		return
 	}
 	group.markLaneReady(laneIndex)
-	<-group.done
+	select {
+	case <-group.done:
+	case <-clientSessionContext(opts).Done():
+		group.fail(errors.New("reverse session closed"))
+	}
 }
 
 func (g *stripedClientGroup) run() {
@@ -2723,6 +2804,8 @@ const (
 
 type handshakeRelay struct {
 	mu         sync.Mutex
+	writeMu    sync.Mutex // secure writes/replay serialize without blocking closeBoth
+	secure     bool
 	target     net.Conn
 	replay     []byte // 已发给目标的客户端字节,重拨后整体重放
 	replayOK   bool   // 重放仍可行;目标回过字节或缓冲超限后永久关闭
@@ -2739,8 +2822,15 @@ func looksLikeTLSClientHello(p []byte) bool {
 }
 
 func (r *handshakeRelay) writeToTarget(p []byte) error {
+	if r.secure {
+		r.writeMu.Lock()
+		defer r.writeMu.Unlock()
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.closed {
+		return net.ErrClosed
+	}
 	if r.replayOK && !r.settled {
 		if !r.seenClient {
 			r.seenClient = true
@@ -2763,7 +2853,20 @@ func (r *handshakeRelay) writeToTarget(p []byte) error {
 			}
 		}
 	}
-	if _, err := r.target.Write(p); err != nil {
+	target := r.target
+	var err error
+	if r.secure {
+		// Cancellation may close the target while it does not read. Never hold
+		// the state lock across secure network I/O; closeBoth uses that lock.
+		r.mu.Unlock()
+		_ = target.SetWriteDeadline(time.Now().Add(30 * time.Second))
+		_, err = target.Write(p)
+		_ = target.SetWriteDeadline(time.Time{})
+		r.mu.Lock()
+	} else {
+		_, err = target.Write(p)
+	}
+	if err != nil {
 		if r.armed && r.replayOK && !r.settled && !r.closed {
 			// 写失败的字节都在 replay 缓冲里,看门狗随后会重拨重放。
 			return nil
@@ -2804,16 +2907,33 @@ func (r *handshakeRelay) disarm() bool {
 }
 
 func (r *handshakeRelay) swapTarget(newConn net.Conn) error {
+	if r.secure {
+		r.writeMu.Lock()
+		defer r.writeMu.Unlock()
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closed || !r.replayOK || r.settled {
 		_ = newConn.Close()
 		return errors.New("handshake replay no longer possible")
 	}
-	_ = r.target.Close()
+	oldConn := r.target
 	r.target = newConn
 	_ = newConn.SetReadDeadline(time.Now().Add(handshakeFirstByteTimeout))
-	if _, err := newConn.Write(r.replay); err != nil {
+	var err error
+	if r.secure {
+		replay := append([]byte(nil), r.replay...)
+		r.mu.Unlock()
+		_ = oldConn.Close()
+		_ = newConn.SetWriteDeadline(time.Now().Add(30 * time.Second))
+		_, err = newConn.Write(replay)
+		_ = newConn.SetWriteDeadline(time.Time{})
+		r.mu.Lock()
+	} else {
+		_ = oldConn.Close()
+		_, err = newConn.Write(r.replay)
+	}
+	if err != nil {
 		return err
 	}
 	return nil
@@ -2824,7 +2944,14 @@ func (r *handshakeRelay) swapTarget(newConn net.Conn) error {
 // 时重拨并重放已缓冲的客户端字节,总共最多 handshakeMaxDials 次拨号;额度
 // 用完退回普通阻塞中继。目标回过第一个字节后重放窗口永久关闭。
 func relayWithHandshakeRetry(client net.Conn, targetConn net.Conn, target string, redial func() (net.Conn, error)) {
-	relay := &handshakeRelay{target: targetConn, replayOK: true}
+	relayWithHandshakeRetryContext(nil, client, targetConn, target, redial)
+}
+
+// A non-nil session context belongs to the authenticated TCP TLS lifetime. It
+// closes established targets and any replay replacement independently of a
+// target's progress. Legacy TCP/QUIC retain their existing relay behavior.
+func relayWithHandshakeRetryContext(ctx context.Context, client net.Conn, targetConn net.Conn, target string, redial func() (net.Conn, error)) {
+	relay := &handshakeRelay{target: targetConn, replayOK: true, secure: ctx != nil}
 
 	var closeOnce sync.Once
 	closeBoth := func() {
@@ -2833,9 +2960,19 @@ func relayWithHandshakeRetry(client net.Conn, targetConn net.Conn, target string
 			relay.closed = true
 			tc := relay.target
 			relay.mu.Unlock()
-			_ = client.Close()
-			_ = tc.Close()
+			if relay.secure {
+				// Do not wait for a yamux FIN write before releasing the target.
+				_ = tc.Close()
+				_ = client.Close()
+			} else {
+				_ = client.Close()
+				_ = tc.Close()
+			}
 		})
+	}
+	if ctx != nil {
+		stopCancel := context.AfterFunc(ctx, closeBoth)
+		defer stopCancel()
 	}
 
 	var wg sync.WaitGroup
@@ -2909,7 +3046,7 @@ func handleFetchStream(stream net.Conn, encodedURL string, opts clientOptions) {
 		_, _ = fmt.Fprintf(stream, "ERR %v\n", err)
 		return
 	}
-	req, err := http.NewRequest(http.MethodGet, string(rawURL), nil)
+	req, err := http.NewRequestWithContext(clientSessionContext(opts), http.MethodGet, string(rawURL), nil)
 	if err != nil {
 		_, _ = fmt.Fprintf(stream, "ERR %v\n", err)
 		return
@@ -2917,8 +3054,11 @@ func handleFetchStream(stream net.Conn, encodedURL string, opts clientOptions) {
 	req.Header.Set("User-Agent", "zhreverse-fetch/0")
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{RootCAs: fetchRootCAs()},
-		DialContext: func(_ context.Context, _, addr string) (net.Conn, error) {
-			return dialTarget(addr, opts.AddressFamily, opts.TargetBindInterface)
+		DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
+			if opts.sessionContext == nil {
+				ctx = context.Background()
+			}
+			return dialTargetContext(ctx, addr, opts.AddressFamily, opts.TargetBindInterface)
 		},
 	}
 	client := &http.Client{Transport: transport, Timeout: 90 * time.Second}
@@ -3039,19 +3179,43 @@ func dnsCachePut(host string, ips []net.IPAddr, now time.Time) {
 }
 
 func dialTarget(target string, addressFamily string, bindInterface string) (net.Conn, error) {
+	return dialTargetContext(context.Background(), target, addressFamily, bindInterface)
+}
+
+func clientSessionContext(opts clientOptions) context.Context {
+	if opts.sessionContext != nil {
+		return opts.sessionContext
+	}
+	return context.Background()
+}
+
+func waitForSignalContext(ctx context.Context, ch <-chan struct{}, timeout time.Duration) bool {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-ch:
+		return true
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return false
+	}
+}
+
+func dialTargetContext(ctx context.Context, target string, addressFamily string, bindInterface string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(target)
 	if err != nil {
 		return nil, err
 	}
 	bindInterface = strings.TrimSpace(bindInterface)
 	if net.ParseIP(host) != nil {
-		return dialTCP(target, 15*time.Second, bindInterface)
+		return dialTCPContext(ctx, target, 15*time.Second, bindInterface)
 	}
 	ips, cached := dnsCacheGet(host, time.Now())
 	if !cached {
 		// Hub-side openCommand gives the whole CONNECT 20s, so keep DNS and the
 		// dial attempts on separate budgets instead of sharing one context.
-		dnsCtx, dnsCancel := context.WithTimeout(context.Background(), 6*time.Second)
+		dnsCtx, dnsCancel := context.WithTimeout(ctx, 6*time.Second)
 		resolver := publicResolver(bindInterface)
 		resolved, err := resolver.LookupIPAddr(dnsCtx, host)
 		dnsCancel()
@@ -3067,7 +3231,7 @@ func dialTarget(target string, addressFamily string, bindInterface string) (net.
 		if attempt >= 2 {
 			break
 		}
-		conn, err := dialTCP(net.JoinHostPort(ip.IP.String(), port), 6*time.Second, bindInterface)
+		conn, err := dialTCPContext(ctx, net.JoinHostPort(ip.IP.String(), port), 6*time.Second, bindInterface)
 		if err == nil {
 			return conn, nil
 		}
@@ -3080,11 +3244,15 @@ func dialTarget(target string, addressFamily string, bindInterface string) (net.
 }
 
 func dialTCP(address string, timeout time.Duration, bindInterface string) (net.Conn, error) {
+	return dialTCPContext(context.Background(), address, timeout, bindInterface)
+}
+
+func dialTCPContext(ctx context.Context, address string, timeout time.Duration, bindInterface string) (net.Conn, error) {
 	dialer, err := netDialer(timeout, bindInterface)
 	if err != nil {
 		return nil, err
 	}
-	return dialer.DialContext(context.Background(), "tcp", address)
+	return dialer.DialContext(ctx, "tcp", address)
 }
 
 func publicResolver(bindInterface string) *net.Resolver {

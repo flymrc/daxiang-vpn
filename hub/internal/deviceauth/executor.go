@@ -140,7 +140,7 @@ func (s *Store) Process(ctx context.Context, id string, executor Executor) error
 	if !identifier(id) || executor == nil {
 		return ErrInvalid
 	}
-	unlock, err := s.acquire(ctx)
+	unlock, executionFence, err := s.acquirePinned(ctx)
 	if err != nil {
 		return err
 	}
@@ -198,7 +198,7 @@ func (s *Store) Process(ctx context.Context, id string, executor Executor) error
 		return ErrSuperseded
 	}
 	fence := Fence{Epoch: op.Epoch, DeviceID: d.ID, Generation: d.Generation, Sequence: op.Fence}
-	actionCtx, cancel := context.WithTimeout(ctx, s.opts.ActionTimeout)
+	actionCtx, cancel := context.WithTimeout(context.WithValue(ctx, executionFenceKey{}, executionFence), s.opts.ActionTimeout)
 	defer cancel()
 	beforePeers, err := executor.Snapshot(actionCtx, fence)
 	if d.State == "active" && !s.opts.Now().Before(d.ValidUntil) {
@@ -335,13 +335,13 @@ func (s *Store) expireLocked(d Device) error {
 	sum := sha256.Sum256([]byte(fmt.Sprintf("executor-expiry:%s:%d", d.ID, d.Generation)))
 	op, err := s.submit(ctx, Command{Actor: Actor{ID: "deviceauth-expiry-reconciler", OwnerID: d.OwnerID}, DeviceID: d.ID, Action: "expire", IdempotencyKey: hex.EncodeToString(sum[:]), ExpectedGeneration: d.Generation, Reason: "authorization deadline reached during reconciliation"}, true)
 	if err != nil {
-		return fmt.Errorf("%w: expiry persistence unavailable", ErrExpired)
+		return fmt.Errorf("%w: expiry persistence unavailable", ErrExecutionUnknown)
 	}
 	if err = s.write(ctx, func(c *sql.Conn) error {
 		_, err := c.ExecContext(ctx, `UPDATE deviceauth_outbox SET state='degraded',last_error='expired_during_execution' WHERE operation_id=? AND state='pending'`, op.ID)
 		return err
 	}); err != nil {
-		return fmt.Errorf("%w: expiry signal unavailable", ErrExpired)
+		return fmt.Errorf("%w: expiry signal unavailable", ErrExecutionUnknown)
 	}
 	return ErrExpired
 }

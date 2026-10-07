@@ -53,6 +53,9 @@ func New(ctx context.Context, db *sql.DB, opts Options) (*Store, error) {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
+	if err := normalizeResources(&opts.Resources); err != nil {
+		return nil, err
+	}
 	if opts.ActionTimeout == 0 {
 		opts.ActionTimeout = 5 * time.Second
 	}
@@ -88,10 +91,21 @@ func New(ctx context.Context, db *sql.DB, opts Options) (*Store, error) {
 	}
 	defer unlock()
 	err = s.write(ctx, func(c *sql.Conn) error {
+		var existing int
+		if err := c.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='deviceauth_meta'`).Scan(&existing); err != nil {
+			return err
+		}
+		if existing != 0 {
+			// Draft schema v1 is not silently adopted or partially altered. The
+			// isolated authority has no automatic production migration contract.
+			if err := s.checkPolicy(ctx, c); err != nil {
+				return err
+			}
+		}
 		if _, err := c.ExecContext(ctx, schema); err != nil {
 			return err
 		}
-		if _, err := c.ExecContext(ctx, `INSERT OR IGNORE INTO deviceauth_meta(singleton,schema_version,epoch,managed_by,policy_json,fence_path) VALUES(1,1,?,?,?,?)`, opts.Policy.Epoch, opts.Policy.ManagedBy, s.policyJSON, s.fencePath); err != nil {
+		if _, err := c.ExecContext(ctx, `INSERT OR IGNORE INTO deviceauth_meta(singleton,schema_version,epoch,managed_by,policy_json,fence_path) VALUES(1,2,?,?,?,?)`, opts.Policy.Epoch, opts.Policy.ManagedBy, s.policyJSON, s.fencePath); err != nil {
 			return err
 		}
 		return s.checkPolicy(ctx, c)
@@ -223,7 +237,7 @@ func (s *Store) checkPolicy(ctx context.Context, c *sql.Conn) error {
 	if err != nil {
 		return err
 	}
-	if version != 1 || epoch != s.opts.Policy.Epoch || managed != s.opts.Policy.ManagedBy || policy != s.policyJSON || fence != s.fencePath {
+	if version != 2 || epoch != s.opts.Policy.Epoch || managed != s.opts.Policy.ManagedBy || policy != s.policyJSON || fence != s.fencePath {
 		return ErrPolicy
 	}
 	return nil
@@ -258,6 +272,9 @@ func (s *Store) Enroll(ctx context.Context, e Enrollment) error {
 		if err := s.checkPolicy(ctx, c); err != nil {
 			return err
 		}
+		if err := s.grantResources(ctx, c); err != nil {
+			return err
+		}
 		_, err := c.ExecContext(ctx, `INSERT INTO deviceauth_devices(device_id,owner_id,role,state,valid_until) VALUES(?,?,'customer','active',?)`, e.DeviceID, e.OwnerID, e.ValidUntil.UTC().UnixNano())
 		if err != nil {
 			return fmt.Errorf("%w: device enrollment", ErrConflict)
@@ -275,6 +292,12 @@ func (s *Store) Submit(ctx context.Context, cmd Command) (Operation, error) {
 // fenceHeld is only used by the trusted executor to persist an observed expiry;
 // all public desired-state entrypoints always acquire the same process fence.
 func (s *Store) submit(ctx context.Context, cmd Command, fenceHeld bool) (Operation, error) {
+	return s.submitChecked(ctx, cmd, fenceHeld, nil)
+}
+
+// check executes within the same authority fence and SQLite transaction as the
+// desired mutation; failed authorization and rejected commands consume nothing.
+func (s *Store) submitChecked(ctx context.Context, cmd Command, fenceHeld bool, check func(*sql.Conn) error, complete ...func(*sql.Conn, Operation) error) (Operation, error) {
 	if !identifier(cmd.Actor.ID) || !identifier(cmd.Actor.OwnerID) || !identifier(cmd.DeviceID) || !identifier(cmd.IdempotencyKey) || cmd.ExpectedGeneration < 0 || len(cmd.Reason) > 1024 || !utf8.ValidString(cmd.Reason) {
 		return Operation{}, ErrInvalid
 	}
@@ -306,10 +329,14 @@ func (s *Store) submit(ctx context.Context, cmd Command, fenceHeld bool) (Operat
 		defer unlock()
 	}
 	var op Operation
-	var overdue bool
 	err := s.write(ctx, func(c *sql.Conn) error {
 		if err := s.checkPolicy(ctx, c); err != nil {
 			return err
+		}
+		if check != nil {
+			if err := check(c); err != nil {
+				return err
+			}
 		}
 		d, err := deviceRow(ctx, c, cmd.DeviceID)
 		if err != nil {
@@ -327,6 +354,9 @@ func (s *Store) submit(ctx context.Context, cmd Command, fenceHeld bool) (Operat
 			return ErrExpired
 		}
 		if cmd.Action == "apply" {
+			if err := s.grantResources(ctx, c); err != nil {
+				return err
+			}
 			// Superseding an operation cannot reset an old-key revocation budget.
 			var blocked bool
 			err := c.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM deviceauth_operations o JOIN deviceauth_outbox b USING(operation_id) WHERE o.device_id=? AND b.state IN ('pending','degraded') AND o.deadline<=?) OR EXISTS(SELECT 1 FROM deviceauth_tombstones t JOIN deviceauth_bindings b USING(public_key) WHERE b.device_id=? AND t.verified_at IS NULL AND t.committed_at<=?)`, d.ID, now.UnixNano(), d.ID, now.Add(-s.opts.RevocationBudget).UnixNano()).Scan(&blocked)
@@ -334,9 +364,10 @@ func (s *Store) submit(ctx context.Context, cmd Command, fenceHeld bool) (Operat
 				return err
 			}
 			if blocked {
-				overdue = true
-				_, err = c.ExecContext(ctx, `UPDATE deviceauth_outbox SET state='degraded',last_error='deadline_exceeded' WHERE state IN ('pending','degraded') AND operation_id IN (SELECT operation_id FROM deviceauth_operations WHERE device_id=?)`, d.ID)
-				return err // commit degradation; do not create a new grant
+				// Rejecting a grant rolls back challenge/request/audit consumption
+				// too. Persist the existing degradation separately under this same
+				// fence, never by committing a rejected command's auth transaction.
+				return ErrOverdue
 			}
 		}
 		if cmd.Action == "expire" && now.Before(d.ValidUntil) {
@@ -349,6 +380,13 @@ func (s *Store) submit(ctx context.Context, cmd Command, fenceHeld bool) (Operat
 				return ErrConflict
 			}
 			op, err = operationRow(ctx, c, oldID)
+			if err == nil {
+				for _, fn := range complete {
+					if err = fn(c, op); err != nil {
+						return err
+					}
+				}
+			}
 			return err
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -443,16 +481,33 @@ func (s *Store) submit(ctx context.Context, cmd Command, fenceHeld bool) (Operat
 			return err
 		}
 		op, err = operationRow(ctx, c, id)
+		if err == nil {
+			for _, fn := range complete {
+				if err = fn(c, op); err != nil {
+					return err
+				}
+			}
+		}
 		return err
 	})
-	if err == nil && overdue {
+	if errors.Is(err, ErrOverdue) {
+		degradeErr := s.write(ctx, func(c *sql.Conn) error {
+			if err := s.checkPolicy(ctx, c); err != nil {
+				return err
+			}
+			_, err := c.ExecContext(ctx, `UPDATE deviceauth_outbox SET state='degraded',last_error='deadline_exceeded' WHERE state IN ('pending','degraded') AND operation_id IN (SELECT operation_id FROM deviceauth_operations WHERE device_id=?)`, cmd.DeviceID)
+			return err
+		})
+		if degradeErr != nil {
+			return Operation{}, degradeErr
+		}
 		return Operation{}, ErrOverdue
 	}
 	return op, err
 }
 
 // RefreshDeadlines persists overdue signals without clearing tombstones or
-// granting permissions. No background scheduler/production alert is wired here.
+// granting permissions. The opt-in device authority scheduler calls it too.
 func (s *Store) RefreshDeadlines(ctx context.Context) (int64, error) {
 	unlock, err := s.acquire(ctx)
 	if err != nil {

@@ -15,7 +15,11 @@ param(
     [ValidateSet("auto", "cargo", "cargo-xwin")]
     [string]$Runner = "auto",
 
-    [switch]$OpenFolder
+    [switch]$OpenFolder,
+    [switch]$Development,
+    [string]$SigningCertificateThumbprint,
+    [string]$SigningToolPath,
+    [string]$TimestampUrl = "https://timestamp.digicert.com"
 )
 
 $ErrorActionPreference = "Stop"
@@ -51,25 +55,25 @@ function Target-Triple([string]$value) {
 
 function Get-InstallerInfo([string]$target) {
     $triple = Target-Triple $target
-    $bundleDir = Join-Path $guiDir "src-tauri\target\$triple\release\bundle\nsis"
-    if (-not (Test-Path $bundleDir)) {
-        $bundleDir = Join-Path $guiDir "src-tauri\target\release\bundle\nsis"
-    }
-    if (-not (Test-Path $bundleDir)) {
-        throw "bundle directory not found: $bundleDir"
-    }
-    $installer = Get-ChildItem $bundleDir -Filter "*setup.exe" |
-        Sort-Object LastWriteTime -Descending |
-        Select-Object -First 1
-    if (-not $installer) {
-        throw "installer not found in $bundleDir"
-    }
-    $hash = Get-FileHash $installer.FullName -Algorithm SHA256
-    [pscustomobject]@{
-        Target = $target
-        Path = $installer.FullName
-        SizeMB = [math]::Round($installer.Length / 1MB, 2)
-        SHA256 = $hash.Hash
+    $targetBase = Join-Path $guiDir 'src-tauri/target'
+    if ($env:CARGO_TARGET_DIR) { $targetBase = [IO.Path]::GetFullPath($env:CARGO_TARGET_DIR) }
+    $bundleDir = Join-Path $targetBase "$triple/release/bundle/nsis"
+    $manifestPath = Join-Path $bundleDir 'build-manifest.json'
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'Current build manifest is missing; refuse to select an older installer.' }
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $expectedCommit = (& git -C $repo rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or $manifest.source_commit -ne $expectedCommit -or $manifest.target -ne $triple -or $manifest.development -ne [bool]$Development -or @($manifest.artifacts).Count -eq 0) { throw 'Installer manifest identity mismatch.' }
+    foreach ($entry in $manifest.artifacts) {
+        if ([IO.Path]::GetFileName($entry.file) -ne $entry.file) { throw 'Installer manifest path is invalid.' }
+        $installer = Get-Item -LiteralPath (Join-Path $bundleDir $entry.file)
+        $hash = Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256
+        if ($hash.Hash.ToLowerInvariant() -ne $entry.sha256) { throw 'Installer hash mismatch.' }
+        [pscustomobject]@{
+            Target = $target
+            Path = $installer.FullName
+            SizeMB = [math]::Round($installer.Length / 1MB, 2)
+            SHA256 = $hash.Hash
+        }
     }
 }
 
@@ -78,7 +82,10 @@ $results = @()
 
 foreach ($target in $targets) {
     Write-Host "==> building desktop GUI target: $target"
-    & $innerBuild -Target $target -Runner $Runner
+    $buildParameters = @{Target=$target;Runner=$Runner;Development=$Development;TimestampUrl=$TimestampUrl}
+    if ($SigningCertificateThumbprint) { $buildParameters.SigningCertificateThumbprint=$SigningCertificateThumbprint }
+    if ($SigningToolPath) { $buildParameters.SigningToolPath=$SigningToolPath }
+    & $innerBuild @buildParameters
     if ($LASTEXITCODE -ne 0) { throw "desktop GUI build failed for $target" }
     $results += Get-InstallerInfo $target
 }

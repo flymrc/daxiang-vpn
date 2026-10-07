@@ -61,27 +61,35 @@ func databaseIdentity(ctx context.Context, db *sql.DB) (string, os.FileInfo, err
 }
 
 func (s *Store) acquire(ctx context.Context) (func(), error) {
+	unlock, _, err := s.acquirePinned(ctx)
+	return unlock, err
+}
+
+// The executor-only variant exposes the already-locked open file description to
+// an independent Linux supervisor. Its inherited descriptor keeps the SAME
+// flock alive after an authority crash; it never unlocks it explicitly.
+func (s *Store) acquirePinned(ctx context.Context) (func(), *os.File, error) {
 	parent, err := paths.CanonicalRoot(filepath.Dir(s.databasePath))
 	if err != nil || parent != filepath.Dir(s.databasePath) {
-		return nil, fmt.Errorf("%w: database directory changed", ErrPolicy)
+		return nil, nil, fmt.Errorf("%w: database directory changed", ErrPolicy)
 	}
 	dbFile, err := openRegular(s.databasePath, false)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	info, err := dbFile.Stat()
 	_ = dbFile.Close()
 	if err != nil || !os.SameFile(info, s.databaseInfo) {
-		return nil, fmt.Errorf("%w: database file changed", ErrPolicy)
+		return nil, nil, fmt.Errorf("%w: database file changed", ErrPolicy)
 	}
 	f, err := openRegular(s.fencePath, true)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for {
 		if err := ctx.Err(); err != nil {
 			_ = f.Close()
-			return nil, err
+			return nil, nil, err
 		}
 		err = lockFile(f)
 		if err == nil {
@@ -89,14 +97,14 @@ func (s *Store) acquire(ctx context.Context) (func(), error) {
 		}
 		if !isLockBusy(err) {
 			_ = f.Close()
-			return nil, err
+			return nil, nil, err
 		}
 		timer := time.NewTimer(10 * time.Millisecond)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
 			_ = f.Close()
-			return nil, ctx.Err()
+			return nil, nil, ctx.Err()
 		case <-timer.C:
 		}
 	}
@@ -105,7 +113,7 @@ func (s *Store) acquire(ctx context.Context) (func(), error) {
 	if err != nil || nameErr != nil || !os.SameFile(locked, named) || named.Mode()&os.ModeSymlink != 0 {
 		_ = unlockFile(f)
 		_ = f.Close()
-		return nil, fmt.Errorf("%w: fence file changed", ErrPolicy)
+		return nil, nil, fmt.Errorf("%w: fence file changed", ErrPolicy)
 	}
 	// Waiting for the fence may have taken arbitrarily long. Re-open/check the
 	// database AFTER acquiring it, and keep the no-delete Windows handle through
@@ -115,22 +123,22 @@ func (s *Store) acquire(ctx context.Context) (func(), error) {
 	if err != nil || parent != filepath.Dir(s.databasePath) {
 		_ = unlockFile(f)
 		_ = f.Close()
-		return nil, ErrPolicy
+		return nil, nil, ErrPolicy
 	}
 	pinned, err := openRegular(s.databasePath, false)
 	if err != nil {
 		_ = unlockFile(f)
 		_ = f.Close()
-		return nil, err
+		return nil, nil, err
 	}
 	info, err = pinned.Stat()
 	if err != nil || !os.SameFile(info, s.databaseInfo) {
 		_ = pinned.Close()
 		_ = unlockFile(f)
 		_ = f.Close()
-		return nil, fmt.Errorf("%w: database file changed while waiting for fence", ErrPolicy)
+		return nil, nil, fmt.Errorf("%w: database file changed while waiting for fence", ErrPolicy)
 	}
-	return func() { _ = unlockFile(f); _ = f.Close(); _ = pinned.Close() }, nil
+	return func() { _ = unlockFile(f); _ = f.Close(); _ = pinned.Close() }, f, nil
 }
 
 // Rechecked at each SQLite phase and before each external mutation. On Unix an

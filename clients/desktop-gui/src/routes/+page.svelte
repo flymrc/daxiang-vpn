@@ -10,6 +10,8 @@
   let fastMode = $state(false);
   let busy = $state(false);
   let errMsg = $state("");
+  let statusError = $state("");
+  let recoveryError = $state("");
   let info = $state("");
   let status = $state<Status | null>(null);
   let appVersion = $state("0.4.9");
@@ -21,17 +23,16 @@
   let poll: ReturnType<typeof setInterval> | undefined;
   let refreshing = false;
 
-  const connected = $derived(!!status && (status.running || status.proxy_reachable));
+  const connected = $derived(isConnected(status));
   const IP_REFRESH_INTERVAL_MS = 60_000;
   const IP_RETRY_INTERVAL_MS = 5_000;
 
-  function loadLastToken() {
-    const saved = localStorage.getItem(LAST_TOKEN_KEY);
-    if (saved && !token.trim()) token = saved;
-  }
-
   function isConnected(s: Status | null) {
-    return !!s && (s.running || s.proxy_reachable);
+    return !!s && s.running && s.engine_state === "ready"
+      && s.proxy_reachable && !s.error && !s.error_code
+      && /^[0-9a-f]{32}$/.test(s.instance_id ?? "")
+      && /^[0-9a-f]{64}$/.test(s.config_generation ?? "")
+      && s.control_protocol_version === 1;
   }
 
   function rememberIPs(s: Status) {
@@ -58,10 +59,15 @@
     const interval = hasObservedIP ? IP_REFRESH_INTERVAL_MS : IP_RETRY_INTERVAL_MS;
     if (!force && now - lastIPRefreshAt < interval) return;
     ipRefreshing = true;
+    const currentObservation = status;
     try {
       const s = await api.statusIp();
-      if (isConnected(s)) {
-        status = { ...(status ?? s), ...s };
+      // IP probes are observational. A delayed response cannot restore a
+      // snapshot invalidated by a failed/newer status or another instance.
+      if (status === currentObservation && isConnected(status) && isConnected(s)
+        && s.instance_id === currentObservation?.instance_id
+        && s.config_generation === currentObservation?.config_generation) {
+        status = { ...status!, egress_ip: s.egress_ip, egress_ipv4: s.egress_ipv4, egress_ipv6: s.egress_ipv6 };
         rememberIPs(s);
       }
     } catch (e) {
@@ -79,8 +85,9 @@
     try {
       const s = await api.status();
       status = s;
+      statusError = "";
+      recoveryError = s.system_proxy_error ?? "";
       view = s.error_code === "client_config_unavailable" || s.error?.includes("未找到配置") ? "login" : "main";
-      if (view === "login") loadLastToken();
       if (!isConnected(s)) {
         lastIPv4 = "";
         lastIPv6 = "";
@@ -90,7 +97,13 @@
         void refreshIp(forceIp);
       }
     } catch (e) {
-      errMsg = String(e);
+      status = null;
+      lastIPv4 = "";
+      lastIPv6 = "";
+      ipChecked = false;
+      lastIPRefreshAt = 0;
+      statusError = String(e);
+      if (view === "loading") view = "main";
     } finally {
       refreshing = false;
     }
@@ -104,7 +117,6 @@
       const trimmed = token.trim();
       const r = await api.login(trimmed);
       if (r.ok) {
-        localStorage.setItem(LAST_TOKEN_KEY, trimmed);
         token = "";
         await refresh(true);
       } else {
@@ -123,7 +135,7 @@
     info = "";
     try {
       const r = connected ? await api.disconnect() : await api.connect(globalProxy, fastMode);
-      if (!r.ok) errMsg = r.message || "操作失败";
+      if (!r.ok) errMsg = r.error || r.message || "操作失败";
       else if (r.warning) errMsg = r.warning;
       await refresh(!connected);
     } catch (e) {
@@ -140,7 +152,8 @@
     try {
       const r = await api.rotateIp();
       if (r.ok && r.status === "busy") info = r.message || "换 IP 正在进行中，请稍后再试";
-      else if (r.ok) info = `已换 IP：${r.before ?? "?"} → ${r.after ?? "?"}`;
+      else if (r.ok && r.status === "triggered") info = `换 IP 请求已触发，出口观察：${r.before ?? "未知"} → ${r.after ?? "未知"}`;
+      else if (r.ok) info = r.message || "请求已返回，请刷新出口观察。";
       else errMsg = r.error || "换 IP 失败";
       lastIPRefreshAt = 0;
       await refresh(true);
@@ -158,7 +171,7 @@
     try {
       const r = await api.logout();
       if (!r.ok) {
-        errMsg = r.message || "登出失败";
+        errMsg = r.error || r.message || "登出失败";
         return;
       }
       await refresh();
@@ -192,7 +205,9 @@
   }
 
   onMount(() => {
-    loadLastToken();
+    // Retire the previous plaintext authorization-code cache. Login state is
+    // read from the CLI's protected configuration; a code is entered when needed.
+    try { localStorage.removeItem(LAST_TOKEN_KEY); } catch { /* restricted storage must not block login */ }
     api.appVersion().then((v) => (appVersion = v)).catch(() => {});
     refresh(true);
     poll = setInterval(() => {
@@ -226,12 +241,12 @@
   {:else}
     <section class="card">
       <div class="dot {connected ? 'on' : 'off'}"></div>
-      <p class="state">{busy ? "处理中…" : connected ? "已连接" : "未连接"}</p>
+      <p class="state">{busy ? "处理中…" : !status ? "连接状态待确认" : connected ? "已连接" : status.engine_state === "degraded" || status.engine_state === "ready" ? "连接状态待恢复" : "未连接"}</p>
 
       <button
         class="toggle {connected ? 'danger' : 'primary'}"
         onclick={toggle}
-        disabled={busy}
+        disabled={busy || !status}
       >
         {connected ? "断开" : "连接"}
       </button>
@@ -271,9 +286,9 @@
   {#if info}
     <p class="info-msg">{info}</p>
   {/if}
-  {#if errMsg || status?.system_proxy_error}
-    <p class="error" role="alert">{status?.system_proxy_error || errMsg}</p>
-  {/if}
+  {#each [...new Set([recoveryError, errMsg, statusError, status?.error].filter(Boolean))] as diagnostic}
+    <p class="error" role="alert">{diagnostic}</p>
+  {/each}
 </main>
 
 <style>

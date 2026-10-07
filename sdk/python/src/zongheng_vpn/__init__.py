@@ -7,7 +7,7 @@ from .errors import (
     ZHVpnJSONError,
     ZHVpnTimeout,
 )
-from .models import ActionResult, LoginResult, RotateResult, Status, StatusEvidence, VersionResult
+from .models import ActionResult, LoginResult, RotateResult, Status, StatusEvidence, SystemProxyResult, VersionResult
 
 __all__ = [
     "ActionResult",
@@ -16,6 +16,7 @@ __all__ = [
     "RotateResult",
     "Status",
     "StatusEvidence",
+    "SystemProxyResult",
     "VersionResult",
     "ZHVpnCommandError",
     "ZHVpnContractError",

@@ -487,6 +487,23 @@ wg show wg0 endpoints
 
 ---
 
+## 4.2 运行时租约与本地门禁（开发分支）
+
+以下是尚未部署的新协议；先确认实际运行版本再用。`zhvpn system-proxy inspect --json` 只读 WAL，`recorded` 不表示代理已生效。Acquire/Release/Recover 会改本用户代理，必须符合本次明确操作意图；release 需要回执中的 lease ID，recover 必须在原 home 引擎已停止后执行。`engine_action_result_unknown` 表示响应丢失，先 inspect 并核验同一实例，不反复 acquire；恢复失败保留 WAL 和引擎，不能手工按 PID 强杀。
+
+本机 Roaming ACL 不符合严格 resolver 时会拒绝真实路径；先诊断 Owner/DACL/目录归属，不把增加允许 SID 或改整棵 profile ACL 当作修复。输出公开 status/receipt 即可，禁止 dump 含 HMAC 密钥的 engine-state 或完整配置。详细拒绝与恢复见 [运行时合同](../../30-implementation/steelman-runtime-integration.md)。
+
+```powershell
+pwsh -NoProfile -File scripts/check-steelman.ps1 -EvidenceDirectory <全新私有扫描目录>
+pwsh -NoProfile -File scripts/build-steelman-dev.ps1 -OutputDirectory <全新开发产物目录>
+```
+
+统一门禁先运行合同/行为，再保存 Windows/Linux/Darwin 的 amd64/arm64 的 govulncheck 原始流、解析 summary、npm audit、Cargo audit 和 Windows/macOS target tree。扫描网络失败、空/损坏报告、未知发现或过期例外均拒绝；JSON scanner exit=0 不能单独证明无可达漏洞。当前例外到 2026-11-06，须届时重新核查。交叉源码扫描和交叉编译不是平台实机运行验收。
+
+新 Hub v2 服务默认关闭；必须显式配置独立客户 interface、绝对 WG/helper 路径和 `ZHHUB_DEVICE_SUPERVISOR_BIN`。Linux supervisor 持同一执行 fence，Hub 崩溃时先关闭子树再释放；helper 自身崩溃且发现不能证明归属的 detached child 时保持 fence/degraded，需要受控人工核验，不能删 lock 文件或整体恢复旧 WG conf 解堵。此流程没有接管当前 `wg0` 或修改 RDP/管理员/手机 peer。
+
+---
+
 ## 5. 历史基线（2026-06-03 实测,Mac 出口已弃用）
 
 留作对照，知道「正常」长什么样：

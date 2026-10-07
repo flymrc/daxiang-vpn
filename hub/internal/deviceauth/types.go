@@ -1,7 +1,7 @@
-// Package deviceauth is an OFFLINE authorization persistence foundation.
-// Nothing imports it from the production TokenStore, API, or service entrypoint.
-// Caller authentication, credential/nonce issuance, expiry scheduling, campaign
-// migration and a privileged WireGuard adapter are deliberately not implemented.
+// Package deviceauth implements persisted customer authority and exact-peer
+// reconciliation. Only the explicit isolated TLS v2 opt-in path uses it; legacy
+// TokenStore/YAML production authority and its interface are never adopted.
+// Campaign migration, authority cutover and backup revocation merge are pending.
 package deviceauth
 
 import (
@@ -22,6 +22,8 @@ var (
 	ErrVerification     = errors.New("deviceauth: runtime verification failed")
 	ErrExecutionUnknown = errors.New("deviceauth: external execution result unknown")
 	ErrPolicy           = errors.New("deviceauth: authority policy does not match")
+	ErrSupervision      = errors.New("deviceauth: crash-safe external execution supervision is required")
+	ErrQuota            = errors.New("deviceauth: retained authority resource ceiling reached")
 )
 
 type Protection struct {
@@ -46,11 +48,19 @@ type Options struct {
 	Now              func() time.Time
 	ActionTimeout    time.Duration
 	RevocationBudget time.Duration
+	// Positive lower ceilings are useful for controlled fixtures. The hosting
+	// service uses the fixed defaults and exposes no API/env to relax them.
+	Resources ResourceLimits
 }
 
-// Actor is already authenticated by the future caller, not a credential accepted
+type ResourceLimits struct {
+	GrantHighWaterBytes                                                int64
+	Devices, Credentials, Activations, Requests, Audits, Cancellations int64
+}
+
+// Actor is already authenticated by a trusted local caller, not a credential accepted
 // from an HTTP body. This module checks persisted ownership but does not prove
-// that ID/OwnerID came from a live, authorized credential.
+// that ID/OwnerID came from a live, authorized credential. HTTP uses SubmitSigned.
 type Actor struct{ ID, OwnerID string }
 
 type Enrollment struct {

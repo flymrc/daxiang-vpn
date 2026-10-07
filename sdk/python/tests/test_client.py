@@ -26,7 +26,7 @@ if not args:
 
 cmd = args[0]
 if cmd == "login":
-    token = args[1]
+    token = sys.stdin.read() if "--token-stdin" in args else args[1]
     if token == "ZH-BAD-SECRET":
         emit({"ok": False, "error": "invalid token: ZH-BAD-SECRET"}, 1)
     emit({"ok": True, "egress": "Rakuten", "proxy": "127.0.0.1:7890"})
@@ -36,7 +36,7 @@ if cmd == "stop":
     emit({"ok": True, "message": "stopped"})
 if cmd == "status":
     if "--no-ip-check" in args:
-        emit({"running": True, "proxy_reachable": True, "proxy": "127.0.0.1:7890", "egress": "Rakuten"})
+        emit({"running": True, "proxy_reachable": True, "proxy": "127.0.0.1:7890", "egress": "Rakuten", "engine_state": "ready", "instance_id": "0123456789abcdef0123456789abcdef", "config_generation": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "control_protocol_version": 1})
     emit({"running": True, "proxy_reachable": True, "proxy": "127.0.0.1:7890", "egress": "Rakuten", "egress_ipv6": "240b::1", "egress_ip": "240b::1"})
 if cmd == "rotate-ip":
     emit({"ok": True, "status": "triggered", "egress": "Rakuten", "before": "240b::1", "after": "240b::2", "message": ""})

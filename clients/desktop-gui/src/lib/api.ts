@@ -9,11 +9,10 @@ export type Status = StatusDTO & {
 // Mirrors zhvpn `login --json`.
 export type LoginResult = ResultDTO;
 
-// connect/disconnect wrap `start`/`stop` (human output → {ok, message}).
-// connect(globalProxy=true) enables Windows system proxy; fast=true passes
+// connect/disconnect consume typed `start`/`stop --json` results.
+// connect(globalProxy=true) requests a CLI-owned Windows proxy lease; fast=true passes
 // `--fast` through to the sidecar and may trigger UAC.
 export type ActionResult = ResultDTO & {
-  message: string;
   warning?: string;
 };
 

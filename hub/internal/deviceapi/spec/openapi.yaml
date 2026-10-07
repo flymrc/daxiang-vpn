@@ -1,0 +1,338 @@
+openapi: 3.0.3
+info:
+  title: Zongheng opt-in device authority
+  version: 2.0.0
+  description: TLS-only isolated customer authority. No automatic YAML adoption. Device private keys never cross this API. Accepted desired state is not verified WireGuard access.
+servers:
+  - url: https://localhost:18443
+paths:
+  /api/v2/challenges:
+    post:
+      operationId: createChallenge
+      description: Issues a single-use nonce only after Ed25519 proof of possession. Challenge proof is X-ZH-Challenge-Proof over UTF-8 JSON string array [zhvpn-device-challenge,v2,POST,/api/v2/challenges,SHA256(exact raw challenge JSON),X-ZH-Client-Nonce,decimal X-ZH-Client-Expires]. Client nonce is lowercase 128-bit hex; expiration must be future and at most 60 seconds away. Identical proof replay returns the same still-unconsumed challenge and creates no row. Expired challenge rows are removed under the authority fence. Activation first checks its secret then the proposed new key; ordinary calls use a currently registered live key. Historical operation receipt uses only its original signing key and matching request/idempotency, even after revocation, without granting authority.
+      parameters:
+        - {name: X-ZH-Challenge-Proof, in: header, required: true, schema: {type: string, maxLength: 88}}
+        - {name: X-ZH-Client-Nonce, in: header, required: true, schema: {type: string, pattern: '^[a-f0-9]{32}$'}}
+        - {name: X-ZH-Client-Expires, in: header, required: true, schema: {type: integer, format: int64, minimum: 1}}
+        - {name: X-ZH-Resolve-Owner-Proof, in: header, required: false, schema: {type: string, maxLength: 88}, description: Required only for request.resolve credential.rotate. Original credential key signs the identical challenge proof bytes; primary challenge proof uses the proposed new key.}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ChallengeRequest'}
+      responses:
+        '200':
+          description: Bound challenge
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Challenge'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '429': {$ref: '#/components/responses/Error'}
+  /api/v2/activate:
+    post:
+      operationId: activateDevice
+      parameters:
+        - {$ref: '#/components/parameters/ChallengeId'}
+        - {$ref: '#/components/parameters/Nonce'}
+        - {$ref: '#/components/parameters/Expires'}
+        - {$ref: '#/components/parameters/RequestId'}
+        - {$ref: '#/components/parameters/Signature'}
+      description: Atomically consumes activation and nonce, creates device and Ed25519 credential and audit. Concurrent or replayed activation is rejected. Signature is sent as X-ZH-Signature; challenge id, request id and expiration as X-ZH-Challenge, X-ZH-Request-ID and X-ZH-Expires. Signing bytes are UTF-8 JSON array [zhvpn-device-request,v2,purpose,method,path,body_sha256,device_id,credential_id,challenge_id,nonce,request_id,expires_unix_seconds].
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ActivationRequest'}
+      responses:
+        '201':
+          description: Public credential identity, no private key
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Credential'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /api/v2/commands:
+    post:
+      operationId: submitCommand
+      parameters:
+        - {$ref: '#/components/parameters/DeviceId'}
+        - {$ref: '#/components/parameters/CredentialId'}
+        - {$ref: '#/components/parameters/ChallengeId'}
+        - {$ref: '#/components/parameters/Nonce'}
+        - {$ref: '#/components/parameters/Expires'}
+        - {$ref: '#/components/parameters/RequestId'}
+        - {$ref: '#/components/parameters/Signature'}
+      security: [{DeviceSignature: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Command'}
+      responses:
+        '202':
+          description: Durable accepted operation, never proof of tunnel handshake
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Operation'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /api/v2/operations/{operation_id}:
+    get:
+      operationId: getOperation
+      security: [{DeviceSignature: []}]
+      description: Signed empty-body status query requires a currently active device and credential. Self revoke disables subsequent queries; trusted local administration may inspect it. Effective means latest desired generation verified against WG allowed-ips, not a WG private-key possession or traffic proof.
+      parameters:
+        - {name: operation_id, in: path, required: true, schema: {type: string, pattern: '^[a-f0-9]{32}$'}}
+        - {$ref: '#/components/parameters/DeviceId'}
+        - {$ref: '#/components/parameters/CredentialId'}
+        - {$ref: '#/components/parameters/ChallengeId'}
+        - {$ref: '#/components/parameters/Nonce'}
+        - {$ref: '#/components/parameters/Expires'}
+        - {$ref: '#/components/parameters/RequestId'}
+        - {$ref: '#/components/parameters/Signature'}
+      responses:
+        '200':
+          description: Current operation evidence
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Operation'}
+        '401': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+  /api/v2/credentials/rotate:
+    post:
+      operationId: rotateCredential
+      parameters:
+        - {$ref: '#/components/parameters/DeviceId'}
+        - {$ref: '#/components/parameters/CredentialId'}
+        - {$ref: '#/components/parameters/ChallengeId'}
+        - {$ref: '#/components/parameters/Nonce'}
+        - {$ref: '#/components/parameters/Expires'}
+        - {$ref: '#/components/parameters/RequestId'}
+        - {$ref: '#/components/parameters/Signature'}
+        - {name: X-ZH-New-Key-Signature, in: header, required: true, schema: {type: string, maxLength: 88}}
+      security: [{DeviceSignature: []}]
+      description: New Ed25519 public key proof uses X-ZH-New-Key-Signature over the identical canonical payload. Old credential terminates immediately (zero overlap). New credential expiry cannot extend device authorization.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RotationRequest'}
+      responses:
+        '201':
+          description: New public credential identity
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Credential'}
+        '401': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /api/v2/credentials/receipt:
+    post:
+      operationId: getCredentialReceipt
+      description: Read-only recovery of an already committed activation or rotation after response loss. Requires new-key proof and original mutation request ID, but no unknown device/credential ID. Returns only the existing public credential; requires it still active/current/unexpired. Never reactivates, rotates or extends access. Signed request identity fields are empty. Read proofs consume only bounded short-lived challenge nonces; permanent mutation request IDs and transition audits are retained and never pruned to free quota.
+      parameters:
+        - {$ref: '#/components/parameters/ChallengeId'}
+        - {$ref: '#/components/parameters/Nonce'}
+        - {$ref: '#/components/parameters/Expires'}
+        - {$ref: '#/components/parameters/RequestId'}
+        - {$ref: '#/components/parameters/Signature'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CredentialReceiptRequest'}
+      responses:
+        '200':
+          description: Existing public credential, unchanged deadline
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Credential'}
+        '401': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+  /api/v2/operations/receipt:
+    post:
+      operationId: getOperationReceipt
+      description: Read-only recovery of an existing command after 202 response loss. Uses original device and credential headers and original signing key, original command request ID and idempotency key. This limited receipt remains available after self revoke/expiry or credential rotation, without enabling ordinary status, commands or new credentials. Accepted/effective retain their normal meanings. No new operation is created, no authorization deadline is extended. Reads consume only bounded short-lived challenge nonce state; mutation request and authorization-transition audit history remain permanent.
+      parameters:
+        - {$ref: '#/components/parameters/DeviceId'}
+        - {$ref: '#/components/parameters/CredentialId'}
+        - {$ref: '#/components/parameters/ChallengeId'}
+        - {$ref: '#/components/parameters/Nonce'}
+        - {$ref: '#/components/parameters/Expires'}
+        - {$ref: '#/components/parameters/RequestId'}
+        - {$ref: '#/components/parameters/Signature'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/OperationReceiptRequest'}
+      responses:
+        '200':
+          description: Existing command receipt, no mutation
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Operation'}
+        '401': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+  /api/v2/requests/resolve:
+    post:
+      operationId: resolvePendingRequest
+      description: Explicit resolve-or-cancel only. Under the same authority fence as original mutation, an already committed matching request returns its original public receipt (including historical expiry); an uncommitted request writes a permanent cancellation tombstone and all later mutations with that principal/request ID are rejected. No grant or deadline extension occurs. Activation requires original activation secret plus proposed-key proof, even after activation expiry/consumption. Rotation uses original device/credential headers, proposed-key primary signature and original-key X-ZH-Resolve-Owner-Proof over the identical signed-request bytes. Commands use original device/credential/key, including revoked or expired keys for this narrow negative resolution only. Challenge receipt_kind/request_id/idempotency fields bind the exact target. Repeated resolution returns the same result without growth. Cancellation has a separate permanent bounded reserve; exhaustion must leave the client pending. Cancelled responses contain no credential or operation; committed responses contain exactly the receipt matching kind.
+      parameters:
+        - {$ref: '#/components/parameters/ChallengeId'}
+        - {$ref: '#/components/parameters/Nonce'}
+        - {$ref: '#/components/parameters/Expires'}
+        - {$ref: '#/components/parameters/RequestId'}
+        - {$ref: '#/components/parameters/Signature'}
+        - {name: X-ZH-Device, in: header, required: false, schema: {type: string, maxLength: 64}, description: Required for rotation and commands; forbidden for activation.}
+        - {name: X-ZH-Credential, in: header, required: false, schema: {type: string, maxLength: 64}, description: Required for rotation and commands; forbidden for activation.}
+        - {name: X-ZH-Resolve-Owner-Proof, in: header, required: false, schema: {type: string, maxLength: 88}, description: Required only for rotation; original key signs identical signed-request bytes.}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ResolveRequest'}
+      responses:
+        '200':
+          description: Committed receipt or permanent cancellation
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResolveReceipt'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '429': {$ref: '#/components/responses/Error'}
+components:
+  parameters:
+    DeviceId: {name: X-ZH-Device, in: header, required: true, schema: {type: string, maxLength: 64}}
+    CredentialId: {name: X-ZH-Credential, in: header, required: true, schema: {type: string, maxLength: 64}}
+    ChallengeId: {name: X-ZH-Challenge, in: header, required: true, schema: {type: string, pattern: '^[a-f0-9]{32}$'}}
+    Nonce: {name: X-ZH-Nonce, in: header, required: true, schema: {type: string, pattern: '^[a-f0-9]{32}$'}}
+    Expires: {name: X-ZH-Expires, in: header, required: true, schema: {type: integer, format: int64, minimum: 1}}
+    RequestId: {name: X-ZH-Request-ID, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
+    Signature: {name: X-ZH-Signature, in: header, required: true, schema: {type: string, maxLength: 88}}
+  securitySchemes:
+    DeviceSignature: {type: apiKey, in: header, name: X-ZH-Signature, description: Ed25519 canonical base64 signature; device and credential IDs in X-ZH-Device and X-ZH-Credential, bound nonce headers required.}
+  responses:
+    Error:
+      description: Stable redacted error
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code: {type: string, enum: [invalid_request, unauthorized, conflict, not_found, unavailable, rate_limited]}
+    ChallengeRequest:
+      type: object
+      additionalProperties: false
+      required: [purpose, method, path, body_sha256]
+      properties:
+        purpose: {type: string, enum: [activate, command.apply, command.disable, command.revoke, operation.status, credential.rotate, credential.receipt, operation.receipt, request.resolve]}
+        method: {type: string, enum: [GET, POST]}
+        path: {type: string, maxLength: 256}
+        body_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        device_id: {type: string, maxLength: 64}
+        credential_id: {type: string, maxLength: 64}
+        activation_credential: {type: string, maxLength: 256}
+        auth_public_key: {type: string, maxLength: 44}
+        receipt_request_id: {type: string, minLength: 1, maxLength: 128}
+        receipt_kind: {type: string, enum: [activate, credential.rotate, command.apply, command.disable, command.revoke]}
+        receipt_idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    Challenge:
+      type: object
+      additionalProperties: false
+      required: [challenge_id, nonce, expires_unix_seconds]
+      properties:
+        challenge_id: {type: string}
+        nonce: {type: string}
+        expires_unix_seconds: {type: integer, format: int64}
+    ActivationRequest:
+      type: object
+      additionalProperties: false
+      required: [activation_credential, auth_public_key]
+      properties:
+        activation_credential: {type: string, maxLength: 256}
+        auth_public_key: {type: string, maxLength: 44}
+    Credential:
+      type: object
+      additionalProperties: false
+      required: [device_id, credential_id, auth_public_key, expires_unix_seconds]
+      properties:
+        device_id: {type: string}
+        credential_id: {type: string}
+        auth_public_key: {type: string}
+        expires_unix_seconds: {type: integer, format: int64}
+    Command:
+      type: object
+      additionalProperties: false
+      required: [action, idempotency_key, expected_generation]
+      properties:
+        action: {type: string, enum: [apply, disable, revoke]}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+        expected_generation: {type: integer, format: int64, minimum: 0}
+        wg_public_key: {type: string, maxLength: 44}
+        address: {type: string, maxLength: 64}
+        reason: {type: string, maxLength: 1024}
+    RotationRequest:
+      type: object
+      additionalProperties: false
+      required: [auth_public_key]
+      properties:
+        auth_public_key: {type: string, maxLength: 44}
+    CredentialReceiptRequest:
+      type: object
+      additionalProperties: false
+      required: [kind, request_id, auth_public_key]
+      properties:
+        kind: {type: string, enum: [activate, credential.rotate]}
+        request_id: {type: string, minLength: 1, maxLength: 128}
+        auth_public_key: {type: string, maxLength: 44}
+    OperationReceiptRequest:
+      type: object
+      additionalProperties: false
+      required: [request_id, idempotency_key]
+      properties:
+        request_id: {type: string, minLength: 1, maxLength: 128}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    ResolveRequest:
+      type: object
+      additionalProperties: false
+      required: [kind, request_id]
+      properties:
+        kind: {type: string, enum: [activate, credential.rotate, command.apply, command.disable, command.revoke]}
+        request_id: {type: string, minLength: 1, maxLength: 128}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+        auth_public_key: {type: string, maxLength: 44}
+        activation_credential: {type: string, maxLength: 256}
+    ResolveReceipt:
+      type: object
+      additionalProperties: false
+      required: [state, kind, request_id]
+      properties:
+        state: {type: string, enum: [committed, cancelled]}
+        kind: {type: string, enum: [activate, credential.rotate, command.apply, command.disable, command.revoke]}
+        request_id: {type: string}
+        idempotency_key: {type: string}
+        auth_public_key: {type: string}
+        credential: {$ref: '#/components/schemas/Credential'}
+        operation: {$ref: '#/components/schemas/Operation'}
+    Operation:
+      type: object
+      additionalProperties: false
+      required: [operation_id, device_id, action, generation, state, accepted, effective, last_error, deadline_unix_seconds]
+      properties:
+        operation_id: {type: string}
+        device_id: {type: string}
+        action: {type: string}
+        generation: {type: integer, format: int64}
+        state: {type: string, enum: [pending, degraded, done, superseded]}
+        accepted: {type: boolean}
+        effective: {type: boolean}
+        last_error: {type: string}
+        deadline_unix_seconds: {type: integer, format: int64}

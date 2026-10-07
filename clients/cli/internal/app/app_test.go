@@ -13,7 +13,6 @@ import (
 
 	"zongheng-vpn/clients/cli/internal/buildinfo"
 	"zongheng-vpn/shared/config"
-	"zongheng-vpn/shared/paths"
 )
 
 func testClientConfig(token string) config.Config {
@@ -42,7 +41,7 @@ func testClientConfig(token string) config.Config {
 }
 
 func TestStatusRejectsUnownedTCPListener(t *testing.T) {
-	ctx := paths.FromRoot(t.TempDir())
+	ctx := privateTestHome(t)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -50,7 +49,7 @@ func TestStatusRejectsUnownedTCPListener(t *testing.T) {
 	defer listener.Close()
 	cfg := testClientConfig("")
 	cfg.LocalProxy.ListenPort = listener.Addr().(*net.TCPAddr).Port
-	if err := config.Save(ctx.ConfigPath, cfg); err != nil {
+	if err := savePrivateConfig(ctx, cfg); err != nil {
 		t.Fatal(err)
 	}
 	output := captureStdout(t, func() {
@@ -68,7 +67,7 @@ func TestStatusRejectsUnownedTCPListener(t *testing.T) {
 }
 
 func TestStatusTokenOnlyCacheDoesNotBootstrap(t *testing.T) {
-	ctx := paths.FromRoot(t.TempDir())
+	ctx := privateTestHome(t)
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
@@ -77,7 +76,7 @@ func TestStatusTokenOnlyCacheDoesNotBootstrap(t *testing.T) {
 	defer server.Close()
 	t.Setenv("ZHVPN_API_BASE", server.URL)
 	cfg := config.Config{License: config.LicenseConfig{Token: "ZH-SYNTHETIC-STATUS-ONLY"}, LocalProxy: config.LocalProxyConfig{ListenAddr: "127.0.0.1", ListenPort: 1}}
-	if err := config.Save(ctx.ConfigPath, cfg); err != nil {
+	if err := savePrivateConfig(ctx, cfg); err != nil {
 		t.Fatal(err)
 	}
 	output := captureStdout(t, func() {
@@ -125,7 +124,7 @@ func bootstrapTestServer(t *testing.T, cfg config.Config, calls *int) *httptest.
 }
 
 func TestDoLoginUsesLocalWireGuardPrivateKeyWhenHubOmitsPrivateKey(t *testing.T) {
-	ctx := paths.FromRoot(t.TempDir())
+	ctx := privateTestHome(t)
 	calls := 0
 	cfg := testClientConfig("ZH-TEST")
 	cfg.WireGuard.PrivateKey = ""
@@ -158,7 +157,7 @@ func TestDoLoginUsesLocalWireGuardPrivateKeyWhenHubOmitsPrivateKey(t *testing.T)
 }
 
 func TestDoLoginPersistsStatusCacheWithoutPrivateKey(t *testing.T) {
-	ctx := paths.FromRoot(t.TempDir())
+	ctx := privateTestHome(t)
 	calls := 0
 	srv := bootstrapTestServer(t, testClientConfig("ZH-TEST"), &calls)
 	defer srv.Close()
@@ -187,10 +186,10 @@ func TestDoLoginPersistsStatusCacheWithoutPrivateKey(t *testing.T) {
 }
 
 func TestLoadInstalledConfigUsesCachedStatusWithoutBootstrap(t *testing.T) {
-	ctx := paths.FromRoot(t.TempDir())
+	ctx := privateTestHome(t)
 	cfg := testClientConfig("ZH-TEST")
 	cfg.WireGuard.PrivateKey = ""
-	if err := config.Save(ctx.ConfigPath, cfg); err != nil {
+	if err := savePrivateConfig(ctx, cfg); err != nil {
 		t.Fatal(err)
 	}
 	calls := 0
@@ -211,8 +210,8 @@ func TestLoadInstalledConfigUsesCachedStatusWithoutBootstrap(t *testing.T) {
 }
 
 func TestLoadInstalledConfigMigratesTokenOnlyConfig(t *testing.T) {
-	ctx := paths.FromRoot(t.TempDir())
-	if err := config.Save(ctx.ConfigPath, config.Config{
+	ctx := privateTestHome(t)
+	if err := savePrivateConfig(ctx, config.Config{
 		License: config.LicenseConfig{Token: "ZH-TEST"},
 	}); err != nil {
 		t.Fatal(err)
@@ -245,11 +244,11 @@ func TestLoadInstalledConfigMigratesTokenOnlyConfig(t *testing.T) {
 }
 
 func TestRefreshInstalledConfigAlwaysBootstraps(t *testing.T) {
-	ctx := paths.FromRoot(t.TempDir())
+	ctx := privateTestHome(t)
 	cached := testClientConfig("ZH-TEST")
 	cached.Egress.DisplayName = "Old"
 	cached.WireGuard.PrivateKey = ""
-	if err := config.Save(ctx.ConfigPath, cached); err != nil {
+	if err := savePrivateConfig(ctx, cached); err != nil {
 		t.Fatal(err)
 	}
 	calls := 0
@@ -280,7 +279,7 @@ func TestRefreshInstalledConfigAlwaysBootstraps(t *testing.T) {
 }
 
 func TestStartPortOverridePersistsStatusCacheWithoutPrivateKey(t *testing.T) {
-	ctx := paths.FromRoot(t.TempDir())
+	ctx := privateTestHome(t)
 	cfg := testClientConfig("ZH-TEST")
 	cfg.LocalProxy.ListenPort = 7897
 

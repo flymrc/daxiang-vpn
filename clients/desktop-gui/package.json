@@ -12,6 +12,9 @@
     "tauri": "tauri"
   },
   "license": "MIT",
+  "overrides": {
+    "cookie": "0.7.2"
+  },
   "dependencies": {
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2"

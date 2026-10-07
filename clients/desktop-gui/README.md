@@ -41,10 +41,10 @@ npm run tauri dev
 ## 打包
 
 ```powershell
-./build.ps1 -Target amd64
+./build.ps1 -Target amd64 -Development
 ```
 
-产出 Windows x64 / amd64 NSIS 安装包（按用户安装，免管理员）于 `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`，sidecar `zhvpn.exe` 随包。若只想构建当前开发机架构，可用 `./build.ps1 -Target host`。
+产出 Windows x64 / amd64 NSIS 安装包（按用户安装，免管理员）于 `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`，sidecar `zhvpn.exe` 随包。若只想构建当前开发机架构，可用 `./build.ps1 -Target host -Development`。
 
 仓库根目录也提供一个更适合日常使用的包装脚本，会自动打印安装包路径和 SHA256：
 
@@ -63,8 +63,8 @@ WebView2 用 downloadBootstrapper（Win11 自带，旧系统自动拉起安装�
 
 | 命令 | 调用 | 返回 |
 | --- | --- | --- |
-| `login(token)` | `zhvpn login <token> --json` | `{ok, egress, proxy, error}` |
-| `connect(globalProxy, fast)` | `zhvpn start [--fast]`；`globalProxy=true` 时连接成功后设置 Windows 系统代理 | `{ok, message}` |
+| `login(token)` | `zhvpn login --token-stdin --json` | `{ok, egress, proxy, error}` |
+| `connect(globalProxy, fast)` | `zhvpn start [--fast]`；`globalProxy=true` 时连接成功后调用 CLI system-proxy acquire | `{ok, message}` |
 | `disconnect()` | `zhvpn stop` | `{ok, message}` |
 | `status()` | `zhvpn status --json --no-ip-check` | `{running, proxy, proxy_reachable, egress, error}` |
 | `statusIp()` | `zhvpn status --json` | `{running, proxy, proxy_reachable, egress, egress_ip, egress_ipv4, egress_ipv6, error}` |
@@ -72,4 +72,12 @@ WebView2 用 downloadBootstrapper（Win11 自带，旧系统自动拉起安装�
 
 `status()` 在 Rust 后端有全局异步锁，前端也会跳过仍在进行中的刷新；主窗口和托盘同时轮询时不会叠出多个长期停留的 `zhvpn.exe status --json` 子进程。CLI `status` 使用登录/start 写入的本地状态缓存，不会把 Hub bootstrap 当成心跳；`start` 仍会强刷新授权配置，缓存不持久化 WireGuard 私钥。公网出口 IP 由 `statusIp()` 按需/低频刷新，GUI 会同时展示 IPv6 与 IPv4，并保留上一轮有效值，避免未换 IP 时界面反复跳「获取中」。
 
-GUI 主程序使用 Windows 命名 Mutex 保持单例；`zhvpn.exe start/stop/login/import/logout` 也在同一 `ZHVPN_HOME` 下使用操作级命名 Mutex，避免并发操作启动多套同一本地实例。
+GUI 主程序使用 Windows 命名 Mutex 保持单例；`zhvpn.exe start/stop/login/import/logout` 也在同一 `ZHVPN_HOME` 下使用跨进程、跨会话的文件操作锁，避免并发操作启动多套同一本地实例。
+
+## 2026-10-07 开发与发行限制
+
+默认 release 需要干净源码、受控 Windows 签名证书/SignTool、统一合同/行为/安全门禁，侧载 CLI 和安装器的 Authenticode 均须有效；缺条件即停止。`-Development` 显式生成 unsigned 开发包，记录完整源提交、dirty/clean、源文件 hash、工具链和产物 SHA，不能作为正式发布。包装脚本同样透传开发与签名参数，只从本次 manifest 选择产物，不取目录里“最新”的旧包。设置全新绝对 `CARGO_TARGET_DIR` 或明确归档旧输出，构建不会自动清空目录。
+
+安装器当前仅允许全新目标目录，早于旧卸载器执行检查注册与目标；完整 GUI/CLI 在受保护 staging 中核验后一次无覆盖目录发布。已有安装的升级和自动卸载均明确拒绝，暂不具备完整升级协议；用户配置/恢复 WAL 保留，不能通过按进程名称杀引擎绕过拒绝。具体源码、合成并发检查和平台限制见 [运行时集成](../../docs/30-implementation/steelman-runtime-integration.md)。
+
+登录授权码仅进入 sidecar stdin，不保存浏览器 localStorage；秘密输出脱敏。无配置的 typed degraded 状态可进入登录页，不能授予系统代理 ready。GUI 新租约只调用 CLI，退出释放本 GUI 实际新建的 lease，保留共享引擎；旧 v1 journal 只保留受控恢复。正常关窗仍进入托盘；恢复失败须保留 GUI、引擎和恢复记录。macOS 系统代理和真实 WinINET/双登录会话尚待实机验收。

@@ -13,6 +13,9 @@ docs/ops/TOKENS_*.md
 __pycache__/
 *.py[cod]
 *.egg-info/
+# Local SDK build receipts are artifacts, not source inputs.
+sdk/python/src/zongheng_vpn/bin/build-manifest.json
+sdk/python/src/zongheng_vpn/bin/source-manifest.json
 .venv/
 build/
 

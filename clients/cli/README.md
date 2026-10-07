@@ -1,24 +1,28 @@
 # zhvpn CLI
 
-Windows / macOS 客户端 CLI MVP。Windows 发布物名为 `zhvpn.exe`，macOS 发布物名为 `zhvpn`。
+Windows / macOS 客户端 CLI。正式 CLI 签名、公证和发行验证尚未完成，构建入口默认拒绝 release；当前只生成显式未签名的开发产物。
 
 ## 构建
 
 ```powershell
-# Windows
-.\build.ps1 -Version X.Y.Z
+# Windows：必须使用不存在的输出目录
+.\build.ps1 -Development -Version dev -OutputDirectory C:\artifacts\zhvpn-cli-dev-unique
 ```
 
 ```bash
-# macOS
-VERSION=X.Y.Z ./build-macos.sh
+# macOS：需要 PowerShell 7；门禁与 Windows 使用同一入口
+./build-macos.sh -Development -Version dev -OutputDirectory /tmp/zhvpn-cli-dev-unique
 ```
 
-也可手动构建当前平台：
+两个旧入口均委托 `scripts/build-cli.ps1`。它先执行 `check-steelman.ps1`，固定完整 Git SHA、干净/dirty 状态、源码 hash 清册与工具链，编译两种 CPU 架构，并恢复调用前的 Go 环境变量。输出目录中保留门禁证据、源码清册、每个产物的 SHA-256 和 `build-manifest.json`；源码在检查或编译期间变化、旧目录存在、任一门禁失败都会拒绝成功清单。开发产物始终标记 `signed=false`、`release_ready=false`、`compile_only`，交叉编译不代表对应 OS 实测。
+
+针对构建拒绝路径的合成回归：
 
 ```bash
-go build -tags with_gvisor -o ../../dist/macos-arm64/zhvpn .
+pwsh -NoProfile -File ../../scripts/test-cli-build.ps1
 ```
+
+手动 `go build` 仅供本地开发，不能作为正式发布结果。实际 macOS 代理、权限、签名/公证与 Windows CLI 签名仍需要独立完成和验收。
 
 ## 使用
 

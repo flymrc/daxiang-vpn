@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -12,9 +13,22 @@ import (
 
 	adminpanel "zongheng-vpn/hub/admin"
 	"zongheng-vpn/hub/internal/auth"
+	"zongheng-vpn/hub/internal/deviceapi"
 )
 
 func main() {
+	deviceConfig, deviceEnabled, err := deviceConfigFromEnv()
+	if err != nil {
+		log.Fatalf("设备授权 opt-in 配置无效")
+	}
+	var deviceService *deviceapi.Service
+	if deviceEnabled {
+		deviceService, err = deviceapi.Open(context.Background(), deviceConfig)
+		if err != nil {
+			log.Fatalf("设备授权 opt-in 初始化失败")
+		}
+		defer deviceService.Close()
+	}
 	configPath := env("ZHHUB_TOKENS", "./config/tokens.yaml")
 	compatListenAddr := env("ZHHUB_LISTEN", "0.0.0.0:18080")
 	trustedProxyListenAddr := env("ZHHUB_TRUSTED_PROXY_LISTEN", "127.0.0.1:18079")
@@ -47,7 +61,13 @@ func main() {
 		}()
 	}
 
-	errCh := make(chan error, 2)
+	errCh := make(chan error, 3)
+	if deviceService != nil {
+		go func() {
+			log.Printf("zhhub 设备授权隔离入口已启动：%s", deviceConfig.ListenAddr)
+			errCh <- deviceService.Run(context.Background())
+		}()
+	}
 	go func() {
 		log.Printf("zhhub 兼容入口已启动：%s", compatListenAddr)
 		errCh <- http.ListenAndServe(compatListenAddr, compatMux)
@@ -57,6 +77,27 @@ func main() {
 		errCh <- http.ListenAndServe(trustedProxyListenAddr, trustedProxyMux)
 	}()
 	log.Fatalf("客户端服务退出：%v", <-errCh)
+}
+
+func deviceConfigFromEnv() (deviceapi.Config, bool, error) {
+	flag := env("ZHHUB_DEVICE_AUTH_ENABLED", "0")
+	if flag == "0" {
+		return deviceapi.Config{}, false, nil
+	}
+	if flag != "1" {
+		return deviceapi.Config{}, false, errors.New("invalid opt-in flag")
+	}
+	c := deviceapi.Config{ListenAddr: env("ZHHUB_DEVICE_LISTEN", "127.0.0.1:18443"), DBPath: os.Getenv("ZHHUB_DEVICE_DB"), PolicyPath: os.Getenv("ZHHUB_DEVICE_POLICY"), WGExecutable: os.Getenv("ZHHUB_DEVICE_WG_BIN"), SupervisorExecutable: os.Getenv("ZHHUB_DEVICE_SUPERVISOR_BIN"), WGInterface: os.Getenv("ZHHUB_DEVICE_WG_INTERFACE"), TLSCert: os.Getenv("ZHHUB_DEVICE_TLS_CERT"), TLSKey: os.Getenv("ZHHUB_DEVICE_TLS_KEY")}
+	// Legacy APIs still mutate their configured interface. Until cutover installs
+	// a sole-writer boundary, the v2 listener is isolated on a different interface.
+	legacyInterface := strings.TrimSpace(env("ZHHUB_WG_INTERFACE", "wg0"))
+	if legacyInterface == "" {
+		legacyInterface = "wg0"
+	}
+	if c.WGInterface == "" || c.WGInterface == legacyInterface {
+		return c, false, errors.New("v2 requires an isolated interface before authority cutover")
+	}
+	return c, true, nil
 }
 
 func clientMux(server *auth.Server, ingress auth.ClientIngress) *http.ServeMux {

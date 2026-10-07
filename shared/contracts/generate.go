@@ -88,8 +88,8 @@ func GeneratedFiles() (map[string][]byte, error) {
 }
 
 func publicFieldTypes(field fieldSpec) (string, string) {
-	pyType := map[string]string{"string": "str", "int": "int", "bool": "bool"}[field.GoType]
-	tsType := map[string]string{"string": "string", "int": "number", "bool": "boolean"}[field.GoType]
+	pyType := map[string]string{"string": "str", "int": "int", "bool": "bool"}[strings.TrimPrefix(field.GoType, "*")]
+	tsType := map[string]string{"string": "string", "int": "number", "bool": "boolean"}[strings.TrimPrefix(field.GoType, "*")]
 	if constant, ok := field.Constraints["const"]; ok {
 		encoded, _ := json.Marshal(constant)
 		pyType = "Literal[" + string(encoded) + "]"

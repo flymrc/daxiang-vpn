@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -8,10 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -19,7 +22,10 @@ import (
 	"golang.org/x/crypto/curve25519"
 	"zongheng-vpn/clients/cli/internal/bootstrap"
 	"zongheng-vpn/clients/cli/internal/buildinfo"
+	"zongheng-vpn/clients/cli/internal/deviceclient"
 	"zongheng-vpn/clients/cli/internal/netcheck"
+	"zongheng-vpn/clients/cli/internal/runtime/leasecontrol"
+	lease "zongheng-vpn/clients/cli/internal/runtime/systemproxy"
 	"zongheng-vpn/shared/config"
 	"zongheng-vpn/shared/contracts"
 	"zongheng-vpn/shared/paths"
@@ -39,7 +45,8 @@ func Run(args []string) error {
 
 	switch args[0] {
 	case proxy.EngineCommand:
-		return proxy.RunDedicatedEngine(engineContext(ctx, args[1:]))
+		home := engineContext(ctx, args[1:])
+		return proxy.RunDedicatedEngineWithHooks(home, leasecontrol.New(home))
 	case proxy.KillCommand:
 		if len(args) < 2 {
 			return errors.New("缺少 pid")
@@ -62,6 +69,14 @@ func Run(args []string) error {
 		return withOperationLock(ctx, func() error { return stop(ctx, args[1:]) })
 	case "status":
 		return status(ctx, args[1:])
+	case "system-proxy":
+		return withOperationLock(ctx, func() error { return systemProxy(ctx, args[1:]) })
+	case "device":
+		err := deviceclient.Run(context.Background(), ctx, args[1:], os.Stdin, os.Stdout, os.Stderr)
+		if errors.Is(err, deviceclient.ErrReported) {
+			return ErrSilent
+		}
+		return err
 	case "rotate-ip":
 		return rotateIP(ctx, args[1:])
 	case "logout":
@@ -82,10 +97,13 @@ func printUsage() {
 
 用法：
   %[1]s login <授权码>
+  %[1]s login --token-stdin [--json]
   %[1]s start [--port <端口>] [--fast]
   %[1]s status
   %[1]s rotate-ip [--down-seconds <秒>] [--wait-seconds <秒>]
   %[1]s stop
+  %[1]s system-proxy acquire|release|inspect|recover [--lease-id <ID>] [--json]
+  %[1]s device activate|apply|disable|revoke|status|rotate-credential|recover|cancel-pending [参数]
   %[1]s logout
   %[1]s version
   %[1]s help
@@ -136,7 +154,13 @@ func reportErr(jsonOut bool, err error) error {
 		if errors.As(err, &runtimeErr) {
 			code = runtimeErr.Code
 		}
-		_ = printJSON(jsonResult{Error: err.Error(), ErrorCode: code})
+		var leaseErr *lease.Error
+		journalPath := ""
+		if errors.As(err, &leaseErr) {
+			code = leaseErr.Code
+			journalPath = leaseErr.JournalPath
+		}
+		_ = printJSON(jsonResult{Error: err.Error(), ErrorCode: code, JournalPath: journalPath})
 		return ErrSilent
 	}
 	return err
@@ -240,19 +264,49 @@ func engineContext(def paths.Context, args []string) paths.Context {
 }
 
 func loginCmd(ctx paths.Context, args []string) error {
-	jsonOut := false
+	jsonOut := hasFlag(args, "--json")
+	stdinToken := false
 	var positional []string
 	for _, arg := range args {
 		if arg == "--json" {
 			jsonOut = true
 			continue
 		}
+		if arg == "--token-stdin" {
+			stdinToken = true
+			continue
+		}
+		if strings.HasPrefix(arg, "--") {
+			return reportErr(jsonOut, errors.New("未知登录参数"))
+		}
 		positional = append(positional, arg)
+	}
+	if stdinToken {
+		if len(positional) != 0 {
+			return reportErr(jsonOut, errors.New("stdin 登录不能同时提供授权码参数"))
+		}
+		token, err := readLoginToken(os.Stdin)
+		if err != nil {
+			return reportErr(jsonOut, err)
+		}
+		return login(ctx, token, jsonOut)
 	}
 	if len(positional) != 1 {
 		return fmt.Errorf("用法：%s login <授权码> [--json]", commandName())
 	}
 	return login(ctx, positional[0], jsonOut)
+}
+
+func readLoginToken(input io.Reader) (string, error) {
+	data, err := io.ReadAll(io.LimitReader(input, 4097))
+	if err != nil || len(data) > 4096 {
+		return "", errors.New("读取授权码失败或长度超限")
+	}
+	token := strings.TrimSpace(string(data))
+	if token == "" || strings.ContainsAny(token, "\r\n\x00") {
+		return "", errors.New("授权码须为非空单行")
+	}
+	return token, nil
 }
 
 func login(ctx paths.Context, token string, jsonOut bool) error {
@@ -322,6 +376,9 @@ func version(args []string) error {
 			Product:         buildinfo.Product,
 			Version:         buildinfo.Version,
 			ProtocolVersion: buildinfo.ProtocolVersion,
+			SourceCommit:    buildinfo.SourceCommit,
+			SourceState:     buildinfo.SourceState,
+			GoVersion:       runtime.Version(),
 		})
 	}
 	fmt.Println(buildinfo.Version)
@@ -339,7 +396,7 @@ func importConfig(ctx paths.Context, source string) error {
 	if err := ctx.EnsureDirs(); err != nil {
 		return err
 	}
-	if err := config.Save(ctx.ConfigPath, cfg); err != nil {
+	if err := savePrivateConfig(ctx, cfg); err != nil {
 		return err
 	}
 
@@ -351,7 +408,7 @@ func importConfig(ctx paths.Context, source string) error {
 }
 
 func loadLocalInstalledConfig(ctx paths.Context) (config.Config, error) {
-	cfg, err := config.Load(ctx.ConfigPath)
+	cfg, err := loadPrivateConfig(ctx)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return config.Config{}, fmt.Errorf("未找到配置，请先执行 %s login <授权码>", commandName())
@@ -413,7 +470,7 @@ func saveClientConfigCache(ctx paths.Context, cfg config.Config) error {
 	// The local status cache only needs routing metadata. Keep the WireGuard
 	// private key in memory for the current start/login command, not on disk.
 	cache.WireGuard.PrivateKey = ""
-	return config.Save(ctx.ConfigPath, cache)
+	return savePrivateConfig(ctx, cache)
 }
 
 func fetchBootstrapWithLocalKey(ctx paths.Context, token string) (config.Config, error) {
@@ -436,7 +493,11 @@ func fetchBootstrapWithLocalKey(ctx paths.Context, token string) (config.Config,
 }
 
 func ensureLocalWireGuardKey(ctx paths.Context) (string, string, error) {
-	if data, err := os.ReadFile(ctx.WireGuardKeyPath); err == nil {
+	state, err := proxy.NewPrivateState(ctx, "wireguard/client.key")
+	if err != nil {
+		return "", "", err
+	}
+	if data, err := state.Read(); err == nil {
 		privateKey := strings.TrimSpace(string(data))
 		publicKey, err := wireGuardPublicKey(privateKey)
 		if err != nil {
@@ -454,7 +515,7 @@ func ensureLocalWireGuardKey(ctx paths.Context) (string, string, error) {
 	if err := os.MkdirAll(filepath.Dir(ctx.WireGuardKeyPath), 0700); err != nil {
 		return "", "", err
 	}
-	if err := os.WriteFile(ctx.WireGuardKeyPath, []byte(privateKey+"\n"), 0600); err != nil {
+	if err := state.Write([]byte(privateKey + "\n")); err != nil {
 		return "", "", err
 	}
 	return privateKey, publicKey, nil

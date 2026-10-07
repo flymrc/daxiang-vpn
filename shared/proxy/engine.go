@@ -35,17 +35,24 @@ import (
 // dozens of protocols (vmess/vless/trojan/shadowsocks/tor/...) that the full
 // sing-box ships with, which is what keeps the binary small.
 func RunEngine(ctx paths.Context) error {
-	return runEngine(ctx, nil)
+	return runEngineWithHooks(ctx, nil, nil)
 }
 
 // RunDedicatedEngine is only for the hidden CLI child-process entrypoint.
 // A stuck start/close can self-exit after authenticated cancellation or lease
 // expiry. General library/GUI callers of RunEngine are never terminated.
 func RunDedicatedEngine(ctx paths.Context) error {
-	return runEngine(ctx, func() { os.Exit(1) })
+	return RunDedicatedEngineWithHooks(ctx, nil)
+}
+
+func RunDedicatedEngineWithHooks(ctx paths.Context, hooks RuntimeHooks) error {
+	return runEngineWithHooks(ctx, func() { os.Exit(1) }, hooks)
 }
 
 func runEngine(ctx paths.Context, exitDedicated func()) error {
+	return runEngineWithHooks(ctx, exitDedicated, nil)
+}
+func runEngineWithHooks(ctx paths.Context, exitDedicated func(), hooks RuntimeHooks) error {
 	finished := make(chan struct{})
 	defer close(finished)
 	ctx, err := canonicalContext(ctx)
@@ -56,7 +63,7 @@ func runEngine(ctx paths.Context, exitDedicated func()) error {
 	if err != nil {
 		return err
 	}
-	control, err := beginEngineControl(ctx, content)
+	control, err := beginEngineControlWithHooks(ctx, content, hooks)
 	if err != nil {
 		return err
 	}
@@ -108,11 +115,16 @@ func runEngine(ctx paths.Context, exitDedicated func()) error {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(signals)
-	select {
-	case <-signals:
-	case <-control.done:
+	for {
+		select {
+		case <-signals:
+			if err := control.requestStop(); err != nil {
+				continue
+			}
+		case <-control.done:
+		}
+		return nil
 	}
-	return nil
 }
 
 func inboundRegistry() *inbound.Registry {

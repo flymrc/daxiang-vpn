@@ -1,13 +1,13 @@
 # P1 设备授权与撤销合同
 
-> 状态：IN_PROGRESS，2026-10-06 JST。`hub/internal/deviceauth` 已开始实现离线持久模型与 fake executor；目标合同中其余部分仍待实施，不表示 SQLite 已接管、campaign 已就绪或生产迁移获准。
+> 状态：IN_PROGRESS，2026-10-07 JST。开发分支已有持久设备授权、TLS v2 API、后台调度和受监督 WG adapter，证据与当前接线见 [运行时集成](steelman-runtime-integration.md)。未接管生产 TokenStore，campaign/导入和真实隧道撤销仍待验收。
 > 对应 [Steelman 计划](./zhvpn-steelman-refactor-plan.md) P1/P4/P5/P8；事实基线见 [10-06 只读资产记录](../90-history/worklogs/2026-10-06-zhvpn-asset-baseline.md)。legacy 客户端生产迁移仍以[现有安全迁移计划](../40-security/client-security-migration-plan.md)的 campaign、观察窗口和 Go/No-Go 为执行依据。
 
 ## 1. 当前状态与目标的分界
 
 当前授权事实源是生产 `tokens.yaml` 与启动时加载的 `auth.TokenStore`。SQLite 当前保存 Admin 会话、审计、migration observations 和界面投影，不保存设备授权、credential、peer ownership、outbox 或正式 campaign。WG 公钥提交目前直接触发 `wg set`，API 到期/禁用判断不会自行撤销旧 peer。
 
-目标是以持久设备/凭证/授权关系表达 desired state，由单一可信执行边界驱动客户 WG peer。沿用已有 SQLite 能力，不增加数据库服务或 hosted CI。本地 foundation 使用独立前缀表实现 customer device、binding 历史、tombstone、operation、outbox 与 action intent；未接入现有 TokenStore、API 或服务入口。激活/credential/nonce、导入/campaign、到期后台调度、真实 privileged executor 和 API 合同仍待实施。fake executor 的测试成功不代表实际 WG 权限被撤销。
+目标是以持久设备/凭证/授权关系表达 desired state，由单一可信执行边界驱动客户 WG peer。沿用已有 SQLite 能力，不增加数据库服务或 hosted CI。开发分支使用独立前缀表实现 customer device、credential、nonce、binding 历史、tombstone、operation、outbox 与 action intent，并有默认关闭的 TLS API/到期调度及显式 Linux supervisor。未接入现有 TokenStore，也未导入当前客户或接管 wg0；独立客户 interface 保护 legacy writer。导入/campaign、备份恢复撤销合并及真实隧道验收仍待实施；fake WG + 真实进程测试不代表实际 WG 权限已撤销。
 
 范围包括客户 CLI/GUI/SDK 及受登记出口的身份边界；客户 Android App 仍限于既有 Slice 0，不能按本合同宣称可分发、正式上线或内部 Alpha。新 API 必须记录对该 Slice 的兼容性和测试缺口；出口 Android 基础设施与客户 Android 是不同角色。
 

@@ -159,8 +159,12 @@ func requestControl(record controlRecord, command string) (EngineStatus, error) 
 	request := controlRequest{Command: command, Nonce: nonce, Identity: record.Identity}
 	request.MAC = sign(record.Secret, request)
 	body, _ := json.Marshal(request)
+	timeout := time.Second
+	if command == "stop" {
+		timeout = 15 * time.Second
+	}
 	client := &http.Client{
-		Timeout:       time.Second,
+		Timeout:       timeout,
 		Transport:     &http.Transport{Proxy: nil, DisableKeepAlives: true},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
@@ -173,6 +177,9 @@ func requestControl(record controlRecord, command string) (EngineStatus, error) 
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
+		if command == "stop" && response.StatusCode == http.StatusConflict {
+			return EngineStatus{}, &RuntimeError{Code: "engine_stop_refused", Message: "代理租约恢复未完成；引擎继续运行，请检查并处理恢复记录后重试"}
+		}
 		return EngineStatus{}, ErrControlIdentity
 	}
 	var result controlResponse
@@ -419,20 +426,25 @@ func removeLaunch(ctx paths.Context, id string) {
 }
 
 type engineControl struct {
-	ctx         paths.Context
-	record      controlRecord
-	lock        *os.File
-	server      *http.Server
-	listener    net.Listener
-	mu          sync.RWMutex
-	phase       string
-	dataStarted bool
-	leaseTimer  *time.Timer
-	stopOnce    sync.Once
-	done        chan struct{}
+	hooks        RuntimeHooks
+	actionNonces map[string]int64
+	ctx          paths.Context
+	record       controlRecord
+	lock         *os.File
+	server       *http.Server
+	listener     net.Listener
+	mu           sync.RWMutex
+	phase        string
+	dataStarted  bool
+	leaseTimer   *time.Timer
+	stopOnce     sync.Once
+	done         chan struct{}
 }
 
 func beginEngineControl(ctx paths.Context, content []byte) (*engineControl, error) {
+	return beginEngineControlWithHooks(ctx, content, nil)
+}
+func beginEngineControlWithHooks(ctx paths.Context, content []byte, hooks RuntimeHooks) (*engineControl, error) {
 	ctx, err := canonicalContext(ctx)
 	if err != nil {
 		return nil, err
@@ -472,8 +484,8 @@ func beginEngineControl(ctx paths.Context, content []byte) (*engineControl, erro
 		listener.Close()
 		return nil, ErrControlIdentity
 	}
-	control := &engineControl{ctx: ctx, record: record, lock: lock, listener: listener, phase: "starting", done: make(chan struct{})}
-	control.server = &http.Server{Handler: http.HandlerFunc(control.handle), ReadHeaderTimeout: time.Second, ReadTimeout: 2 * time.Second, WriteTimeout: 2 * time.Second, IdleTimeout: 2 * time.Second}
+	control := &engineControl{hooks: hooks, ctx: ctx, record: record, lock: lock, listener: listener, phase: "starting", done: make(chan struct{})}
+	control.server = &http.Server{Handler: http.HandlerFunc(control.handle), ReadHeaderTimeout: time.Second, ReadTimeout: 2 * time.Second, WriteTimeout: 20 * time.Second, IdleTimeout: 2 * time.Second}
 	encoded, _ := json.Marshal(record)
 	if err := writePrivateFile(ctx, statePath(ctx), encoded); err != nil {
 		listener.Close()
@@ -499,11 +511,23 @@ func (c *engineControl) ready() {
 	c.dataStarted = true
 }
 
-func (c *engineControl) requestStop() {
+func (c *engineControl) requestStop() error {
 	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.phase == "stopping" {
+		return nil
+	}
+	if c.hooks != nil {
+		guard := c.guard()
+		err := c.hooks.BeforeStop(context.Background(), guard)
+		guard.finish()
+		if err != nil {
+			return err
+		}
+	}
 	c.phase = "stopping"
-	c.mu.Unlock()
 	c.stopOnce.Do(func() { close(c.done) })
+	return nil
 }
 
 func (c *engineControl) expireLease() {
@@ -518,6 +542,10 @@ func (c *engineControl) expireLease() {
 }
 
 func (c *engineControl) handle(writer http.ResponseWriter, req *http.Request) {
+	if req.URL.Path == "/v1/runtime-action" {
+		c.handleRuntimeAction(writer, req)
+		return
+	}
 	if req.Method != http.MethodPost || req.URL.Path != "/v1/control" {
 		http.NotFound(writer, req)
 		return
@@ -533,10 +561,13 @@ func (c *engineControl) handle(writer http.ResponseWriter, req *http.Request) {
 		http.Error(writer, "unauthorized", http.StatusForbidden)
 		return
 	}
-	c.mu.Lock()
 	if request.Command == "stop" {
-		c.phase = "stopping"
+		if err := c.requestStop(); err != nil {
+			http.Error(writer, "proxy restoration incomplete", http.StatusConflict)
+			return
+		}
 	}
+	c.mu.Lock()
 	if request.Command == "activate" && c.phase == "starting" && c.dataStarted && time.Now().UnixNano() < c.record.StartDeadlineUnixNano {
 		c.phase = "ready"
 		c.leaseTimer.Stop()

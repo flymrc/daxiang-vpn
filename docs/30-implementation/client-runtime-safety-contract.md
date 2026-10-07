@@ -46,9 +46,9 @@ Windows 显式设置并读回运行文件的 ACL，限 home 所有者及已有�
 
 恢复 journal schema v1 保存允许字段的原始存在性、registry type/bytes 和本次写入值，区分不存在与空值。更改 OS 配置前先持久化 journal。
 
-启用系统代理前必须取得成功的 CLI status 命令结果，并确认 `running=true`、`engine_state=ready`、`proxy_reachable=true`、没有 error/error_code 且地址有效。配置地址存在或此前 start 曾成功都不能替代这次核验；拒绝时不进入系统代理 adapter，诊断持续可见。状态核验与随后进程崩溃之间仍有窗口，尚未实现与 CLI 生命周期共享的原子租约。
+2026-10-07 开发分支的新代理启用由 CLI 的认证 runtime-action 在真实 phase/lifetime gate 内执行；仅 ready、当前实例代理可达且原用户 scope 一致时进入 adapter。失败停止仍保留引擎和 WAL。GUI 不再以 status 快照授权新 OS 写入；完整命令、归属和恢复语义见 [运行时接线](steelman-runtime-integration.md)。
 
-GUI 代理事务在同一用户共享的 app config 目录持有持久 `proxy-operation.lock` 文件句柄锁，覆盖 journal 加载、registry 读写、通知和 journal 删除；竞争者先返回错误，不进入这些副作用。打开时禁止删除共享，释放只 unlock/close，不删除锁文件，避免跨 Windows 登录会话把锁拆成多个文件。验证采用独立文件句柄的实际内核锁，尚未演练真实双登录会话；这不代替 P3.1 的 CLI 用户级代理租约。
+GUI 代理事务在同一用户共享的 app config 目录持有持久 `proxy-operation.lock` 文件句柄锁，覆盖 journal 加载、registry 读写、通知和 journal 删除；竞争者先返回错误，不进入这些副作用。打开时禁止删除共享，释放只 unlock/close，不删除锁文件，避免跨 Windows 登录会话把锁拆成多个文件。验证采用独立文件句柄的实际内核锁，尚未演练真实双登录会话；该 v1 路径只保留历史恢复，新启用统一走 CLI v2 用户级租约；Windows 双会话和真实 Internet Settings 仍需实机验收。
 
 - 无 journal：restore 不查询、不写用户代理，不默认关闭代理。
 - 有效 journal：只恢复仍属于本次写入的字段；已是原值的字段可幂等跳过。
@@ -67,6 +67,6 @@ GUI 代理事务在同一用户共享的 app config 目录持有持久 `proxy-op
 
 Rust library 验证临时禁用 sidecar 打包输入，只对合成注册表键运行 adapter，不广播真实 WinINET 设置变更。这不是正式安装包、签名、真实用户系统代理或 macOS GUI 验收。
 
-全阶段的请求/operation ID、rotate 幂等与查询、完整合同消费者、OS 用户代理租约集成、跨版本完整迁移、Mac 实机、签名/安装升级和生产观察仍按总计划保持未完成。局部实现不将这些阶段声明为已完成。
+OS 用户代理租约集成已进入 10-07 开发分支并有真实认证 child + 合成 OS 回归。全阶段的远端 rotate 幂等与查询、跨版本完整迁移、Mac 实机、签名/安装升级和生产观察仍按总计划保持未完成。局部实现不将这些阶段声明为已完成。
 
 平台 API 依据：[Microsoft LockFileEx](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-lockfileex)、[UnlockFileEx](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-unlockfileex)。锁范围与句柄释放规则须保持一致；不能借此承诺 Windows registry 的全局 CAS。

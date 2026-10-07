@@ -18,11 +18,22 @@ function Invoke-Gate {
 Push-Location $repoRoot
 try {
     Invoke-Gate 'Generated CLI contracts' 'go' @('run', './shared/contracts/cmd/contractgen', '-check')
+    & (Join-Path $PSScriptRoot 'check-device-contract.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'Device OpenAPI contract gate failed.' }
     Invoke-Gate 'Go tests (product build tags)' 'go' @('test', '-tags', 'with_gvisor', './...')
     Invoke-Gate 'Go vet' 'go' @('vet', '-tags', 'with_gvisor', './...')
     Invoke-Gate 'Client and reverse race tests' 'go' @('test', '-race', '-tags', 'with_gvisor', './clients/cli/...', './shared/...', './egress/reverse')
-    Invoke-Gate 'Offline authorization race tests' 'go' @('test', '-race', './hub/internal/deviceauth')
+    Invoke-Gate 'Device authority/API race tests' 'go' @('test', '-race', './hub/internal/deviceauth', './hub/internal/deviceapi')
+    Invoke-Gate 'Actual CLI and Hub TLS interoperability' 'go' @('test', '-race', '-tags', 'integration', './hub/internal/deviceapi', '-run', 'TestRealCLIAndHubTLSRecoverLostMutationResponses', '-count=1')
     Invoke-Gate 'Python SDK consumers' 'python' @('-m', 'unittest', 'discover', '-s', 'sdk/python/tests', '-v')
+    Invoke-Gate 'Security evidence parser' 'python' @('-m', 'unittest', 'discover', '-s', 'scripts/tests', '-v')
+    Invoke-Gate 'CLI builders refuse unsafe release and source changes' 'pwsh' @('-NoProfile', '-File', 'scripts/test-cli-build.ps1')
+    Invoke-Gate 'Inner desktop builder refuses security failure' 'pwsh' @('-NoProfile', '-File', 'clients/desktop-gui/scripts/check-build-failure.ps1')
+    if ($IsWindows) {
+        Invoke-Gate 'SDK builder identity/install failures preserve refusal' 'pwsh' @('-NoProfile', '-File', 'scripts/test-sdk-build.ps1')
+        Invoke-Gate 'Owned fresh-install guard and full template syntax' 'pwsh' @('-NoProfile', '-File', 'clients/desktop-gui/scripts/check-upgrade-guard.ps1')
+    }
+    else { Write-Host 'Native NSIS fixture checks require Windows; installer release acceptance is unavailable on this host.' }
 
     Push-Location 'clients/desktop-gui'
     try {
@@ -38,6 +49,7 @@ try {
         try {
             $env:TAURI_CONFIG = '{"bundle":{"externalBin":[]}}'
             Invoke-Gate 'GUI Rust behavior (library only)' 'cargo' @('test', '--locked', '--manifest-path', 'src-tauri/Cargo.toml', '--lib')
+            Invoke-Gate 'GUI Rust static checks' 'cargo' @('clippy', '--locked', '--manifest-path', 'src-tauri/Cargo.toml', '--lib', '--', '-D', 'warnings')
         }
         finally {
             if ($hadTauriConfig) { $env:TAURI_CONFIG = $previousTauriConfig }

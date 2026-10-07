@@ -3,7 +3,9 @@
 
 use crate::proxy_journal::{self, JournalStore, RegistryAdapter, RegistryValue};
 use std::fs::{self, File, OpenOptions};
-use std::io::{ErrorKind, Write};
+use std::io::ErrorKind;
+#[cfg(test)]
+use std::io::Write;
 use std::os::windows::fs::OpenOptionsExt;
 use std::os::windows::io::AsRawHandle;
 use std::path::{Path, PathBuf};
@@ -18,7 +20,6 @@ use winapi::um::wininet::{
 use winapi::um::winnt::{FILE_SHARE_READ, FILE_SHARE_WRITE, HANDLE};
 use winreg::{enums, RegKey, RegValue};
 
-const BYPASS: &str = "localhost;*.localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;192.168.*;<local>";
 const INTERNET_SETTINGS: &str = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
 // Serializes this GUI's registry/journal operations, including startup recovery
 // and tray actions. It does not coordinate third-party proxy applications.
@@ -122,6 +123,7 @@ impl JournalStore for FileJournalStore {
         }
     }
 
+    #[cfg(test)]
     fn create(&mut self, data: &[u8]) -> Result<(), String> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("无法创建恢复记录目录: {e}"))?;
@@ -228,43 +230,40 @@ impl RegistryAdapter for WindowsRegistry {
     }
 }
 
+#[cfg(test)]
 fn desired(host: &str, port: u16) -> [Option<RegistryValue>; 4] {
     [
         Some(RegistryValue::dword(1)),
         Some(RegistryValue::string(&format!(
             "http={host}:{port};https={host}:{port};socks={host}:{port}"
         ))),
-        Some(RegistryValue::string(BYPASS)),
+        Some(RegistryValue::string("localhost;<local>")),
         None,
     ]
 }
 
-pub fn enable(app: &tauri::AppHandle, host: &str, port: u16) -> Result<(), String> {
+pub fn restore_legacy(app: &tauri::AppHandle) -> Result<(), String> {
     let _guard = OPERATION_LOCK
         .lock()
         .map_err(|_| "系统代理操作锁已失效，请重新打开客户端".to_string())?;
     let path = backup_path(app)?;
     with_journal_lock(&path, |store| {
-        proxy_journal::enable(&mut WindowsRegistry::system(), store, desired(host, port))
-    })
-    .map_err(|e| format!("{e}\n恢复记录：{}", path.display()))
-}
-
-pub fn restore(app: &tauri::AppHandle) -> Result<(), String> {
-    let _guard = OPERATION_LOCK
-        .lock()
-        .map_err(|_| "系统代理操作锁已失效，请重新打开客户端".to_string())?;
-    let path = backup_path(app)?;
-    with_journal_lock(&path, |store| {
+        match store.load()? {
+            None => return Ok(()),
+            Some(data) if proxy_journal::backup_kind(&data)? == proxy_journal::BackupKind::CliLease => return Ok(()),
+            Some(_) => {}
+        }
+        // The only remaining GUI OS mutation is safe recovery of a valid v1
+        // journal. New v2 leases are exclusively acquired/released by CLI.
         proxy_journal::restore(&mut WindowsRegistry::system(), store)
     })
         .map_err(|e| format!("{e}\n请保留恢复记录：{}；在 Windows 设置 > 网络和 Internet > 代理中核对设置，再重试断开或退出", path.display()))
 }
 
-pub fn has_backup(app: &tauri::AppHandle) -> Result<bool, String> {
-    match fs::metadata(backup_path(app)?) {
-        Ok(_) => Ok(true),
-        Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
+pub fn backup_kind(app: &tauri::AppHandle) -> Result<Option<proxy_journal::BackupKind>, String> {
+    match fs::read(backup_path(app)?) {
+        Ok(data) => proxy_journal::backup_kind(&data).map(Some),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
         Err(e) => Err(format!("检查系统代理恢复记录失败: {e}")),
     }
 }

@@ -2,6 +2,8 @@
 // then regenerate its Go DTOs, JSON Schema and Python validation data together.
 package contracts
 
+import "strings"
+
 //go:generate go run ./cmd/contractgen -root ../..
 
 const (
@@ -113,15 +115,27 @@ func definitions() []definitionSpec {
 		field("Product", "product", "string", "Binary product identifier.", true, false, nil),
 		field("Version", "version", "string", "Binary build version, separate from the JSON contract version.", true, false, nil),
 		field("ProtocolVersion", "protocol_version", "int", "Existing binary/sidecar identity protocol; separate from local control and public JSON contract versions.", true, false, map[string]any{"minimum": 1}),
+		field("SourceCommit", "source_commit", "string", "Explicit repository commit, independent of embedded parent repository VCS metadata. Unknown for unlabelled developer builds.", true, false, map[string]any{"pattern":"^([0-9a-f]{40}|unknown)$"}),
+		field("SourceState", "source_state", "string", "Clean/dirty source state at build time; clean does not imply a signed release.", true, false, map[string]any{"enum":[]string{"clean","dirty","unknown"}}),
+		field("GoVersion", "go_version", "string", "Actual Go toolchain embedded in this binary.", true, false, nil),
 		field("Error", "error", "string", "Human-readable diagnostic; no credentials may be included.", true, false, nil),
 		field("ErrorCode", "error_code", "string", "Stable diagnostic category; new codes are compatible additions.", true, false, map[string]any{"pattern": "^[a-z][a-z0-9_]*$"}),
 	}
 	resultFields = append(resultFields, commonFields()...)
+	resultFields = append(resultFields,
+		field("SystemProxyState", "system_proxy_state", "string", "Proxy lease outcome. Recorded is durable intent only, not live OS or engine health.", true, false, map[string]any{"enum": []string{"absent", "recorded", "foreign", "acquired", "released", "recovered"}}),
+		field("LeaseID", "lease_id", "string", "Opaque non-secret lease identity; explicit release must name this lease.", true, false, map[string]any{"pattern": "^[0-9a-f]{32}$"}),
+		field("Owned", "owned", "*bool", "This command operated on its exact instance's lease; absent is unknown.", true, false, nil),
+		field("Noop", "noop", "*bool", "Acquire reused a lease, or release/recover found none. Reused intent may still require OS repair; not evidence of OS proxy health.", true, false, nil),
+		field("JournalPath", "journal_path", "string", "Private recovery file location, without its contents.", true, false, nil),
+	)
 	return []definitionSpec{
 		{Name: "Status", Description: "status --json. Compatible extra fields carry no additional evidence. Missing legacy lifecycle fields and all absent observations are unknown.", Fields: statusFields, Rules: statusRules},
 		{Name: "Result", Description: "Existing login/start/stop/logout/rotate-ip/version JSON result. This contract does not introduce operation IDs, retries or terminal-operation guarantees.", Fields: resultFields, Rules: []map[string]any{
 			when(equals("ok", true), map[string]any{"not": property("error", map[string]any{"minLength": 1})}),
 			when(present("error_code"), property("error", map[string]any{"minLength": 1})),
+			when(present("system_proxy_state"), present("owned", "noop")),
+			when(equals("system_proxy_state", "acquired"), map[string]any{"allOf": []any{present("lease_id"), equals("owned", true)}}),
 			noFields(privateFieldNames...),
 		}},
 		{Name: "EngineIdentity", Description: "Public instance identity shared by the local authenticated control protocol. PID is diagnostic only; identity contains no control secret.", Fields: []fieldSpec{
@@ -151,7 +165,7 @@ func schemaDefinitions() map[string]any {
 		properties := make(map[string]any)
 		required := []string{}
 		for _, field := range definition.Fields {
-			kind := map[string]string{"string": "string", "bool": "boolean", "int": "integer"}[field.GoType]
+			kind := map[string]string{"string": "string", "bool": "boolean", "int": "integer"}[strings.TrimPrefix(field.GoType, "*")]
 			property := map[string]any{"type": kind, "description": field.Description}
 			for key, value := range field.Constraints {
 				property[key] = value
@@ -165,6 +179,9 @@ func schemaDefinitions() map[string]any {
 	}
 	return result
 }
+
+// Bool preserves an explicit false for optional result evidence.
+func Bool(value bool) *bool { return &value }
 
 // Schema returns the current public schema as detached JSON-compatible data.
 // The generated on-disk artifact and SDK validation data come from this source.

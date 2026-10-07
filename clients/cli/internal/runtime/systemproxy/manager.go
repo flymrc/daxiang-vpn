@@ -247,6 +247,7 @@ func (m *Manager) Acquire(ctx context.Context, claim Claim) (Receipt, error) {
 			if err != nil {
 				return err
 			}
+			reused := record != nil
 			if record != nil {
 				if record.LeaseOwner != owner {
 					return failure("system_proxy_lease_busy", "系统代理已有其他 home 或引擎的租约，未认领或恢复", nil)
@@ -278,14 +279,17 @@ func (m *Manager) Acquire(ctx context.Context, claim Claim) (Receipt, error) {
 				if err != nil || len(data) > maxJournalBytes {
 					return failure("system_proxy_journal_write_failed", "无法编码有界恢复记录", err)
 				}
+				// Preserve ownership even when Create leaves a partial durable
+				// record. The controller then retains its restoration obligation.
+				receipt = Receipt{LeaseID: record.LeaseID, Owner: &record.LeaseOwner, Owned: true}
 				if err := store.Create(data); err != nil {
 					return failure("system_proxy_journal_write_failed", "恢复记录未成功持久化，未写代理；保留可能的部分记录", err)
 				}
 			}
+			receipt = Receipt{LeaseID: record.LeaseID, Owner: &record.LeaseOwner, Owned: true, Noop: reused}
 			if err := apply(adapter, record, false); err != nil {
 				return err
 			}
-			receipt = Receipt{LeaseID: record.LeaseID, Owner: &record.LeaseOwner, Owned: true}
 			return nil
 		})
 	})

@@ -1,5 +1,7 @@
 # 设备授权离线持久模型
 
+> 2026-10-07 后续实现：本文记录 10-06 基础切片；API、真实控制器接线与执行监督的当前开发状态见 [运行时接线](steelman-runtime-integration.md)。生产启用与实机验收仍单独登记。
+
 > 2026-10-06 JST。源码位于 `hub/internal/deviceauth`，未接入生产授权 API、TokenStore 或服务启动入口。完整目标见[授权与撤销合同](device-auth-revocation-contract.md)。
 
 ## 当前实现

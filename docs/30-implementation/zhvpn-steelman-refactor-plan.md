@@ -1,6 +1,6 @@
 # zhvpn Steelman 重构计划
 
-> 创建：2026-10-06 JST。状态：IN_PROGRESS；隔离首切片和后续合同/离线基础切片已实现，阶段门禁与生产实施分别登记。
+> 创建：2026-10-06 JST。状态：IN_PROGRESS；隔离首切片、运行时接线、设备 API/CLI 消费者及双端 TLS 已实现，正在完成独立审计收口，阶段门禁与生产实施分别登记。
 > 基线：[2026-10-05 多维审计](../90-history/worklogs/2026-10-05-zhvpn-project-audit.md)。49/100 是该日的工程成熟度评估，不能作为本日运行状态或后续验收结果。
 
 ## 1. Steelman 的完成定义
@@ -78,7 +78,7 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 
 ### P1 — 先固定协议与状态
 
-- [ ] **P1.1** 定义引擎身份：随机 instance ID、规范化 home、配置 generation、协议版本及可信控制通道。PID 仅为诊断字段；CLI JSON、IPC、错误码及 schema 版本有明确兼容规则。
+- [x] **P1.1** 定义引擎身份：随机 instance ID、规范化 home、配置 generation、协议版本及可信控制通道。PID 仅为诊断字段；CLI JSON、IPC、错误码及 schema 版本有明确兼容规则。维护源、生成漂移、真实 Windows child/HMAC 与消费者负例已通过；见 10-06/10-07 worklog。跨平台运行验收仍在 P2.G。
 - [ ] **P1.2** 定义 `starting/ready/degraded/stopping/stopped` 状态机；分别返回进程、代理协议、WG/隧道、IPv4/IPv6 出口健康与验证时间，明确缓存有效期和 `unknown`。
 - [ ] **P1.3** 定义操作 `accepted/running/succeeded/failed/unknown`、request ID/operation ID、幂等作用域、保留期限、查询、等待与取消；明确“换 IP 已触发、网络已恢复、IP 已变化”三种结果。
 - [ ] **P1.4** 固定配置/state/journal 的 schema、原子提交、generation、凭据迁移和跨版本读取；定义原始旧配置损坏、迁移中断、回退时的行为。
@@ -108,9 +108,9 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 
 ### P4 — Hub 身份、持久授权与撤销
 
-- [ ] **P4.1** 建立一次性激活→设备登记→设备 credential 的模型；挑战具有 nonce、用途、期限与请求绑定，设备证明私钥持有。并发消费、重放、跨用途重放、过期激活及幂等重试均受事务约束。
+- [x] **P4.1** 建立一次性激活→设备登记→设备 credential 的模型；挑战具有 nonce、用途、期限与请求绑定，设备证明私钥持有。并发消费、重放、跨用途重放、过期激活及幂等重试均受事务约束。实际 CLI/Hub/SQLite TLS、Windows race及Linux普通回归已通过；这是隔离v2入口，当前生产迁移仍在P4.2/P8。
 - [ ] **P4.2** 将可变授权关系迁入现有 SQLite 能力：device/public key/address/generation/state/expiry、唯一约束、撤销记录和操作结果；完成受控导入、校验、备份和恢复，不保持 YAML/DB 双权威。保留 token→安装实例→device 的历史关联、campaign 分母、处置与观测记录，同步其对账合同；切换事实源不重设 T0 或缩短窗口，也不自动把旧 token 观测视为新设备的合规证明。
-- [ ] **P4.3** API 事务提交 desired state 与 durable outbox；单一受控 peer 执行者按 generation 应用/撤销，跨进程互斥并防止旧任务覆盖新撤销。响应区分已提交与已生效。
+- [x] **P4.3** API 事务提交 desired state 与 durable outbox；单一受控 peer 执行者按 generation 应用/撤销，跨进程互斥并防止旧任务覆盖新撤销。响应区分已提交与已生效。Windows Job/Linux helper真实进程崩溃、跨Store竞争、fake WG与迟到取消负例通过；真实隧道与切换仍在P4.G/P8。
 - [ ] **P4.4** 授权状态变化产生可重试 apply/revoke：禁用、到期、删除必须 revoke；换钥撤销旧公钥；重新启用是显式重新授权，保留历史撤销记录。A 不能认领 B 或管理 peer 的地址/公钥。reconciler 只处理已登记资产，Hub/API/WG 重启后不从旧 conf 复活撤销权限。
 - [ ] **P4.5** 租约基于明确设备/会话身份，IP 作为审计信号；XFF 只由可信入口和明确代理赋值。所有入口设置请求体/字段、header/read/write/idle、并发、速率及子进程总截止时间。
 - [ ] **P4.6** 演练同时换钥/禁用、重复/乱序任务、提交/执行中崩溃、同 NAT、多网络切换与备份恢复；初始撤销目标为健康 Hub p99≤5s、最长≤30s，异常明确 `revoke_pending/degraded` 并告警，不能伪报生效。
@@ -129,7 +129,7 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 ### P6 — 模块整理、依赖与可观测性
 
 - [ ] **P6.1** 按已验证的责任边界拆分 app/reverse 编排、协议、状态、调度与平台适配；每次机械迁移与行为变化分开核验，不为了行数重写全部实现。
-- [ ] **P6.2** 按实际支持平台/build tags 更新工具链及受影响依赖；分别核查 module/package/symbol 报告的可达性，保留有期限与依据的例外，不盲目全量升级 major 或 `audit fix --force`。
+- [x] **P6.2** 按实际支持平台/build tags 更新工具链及受影响依赖；分别核查 module/package/symbol 报告的可达性，保留有期限与依据的例外，不盲目全量升级 major 或 `audit fix --force`。10-07 fresh统一gate：6个Go OS/arch扫描、全树npm、4个Rust target tree通过，有效例外截止2026-11-06；见当日worklog。
 - [ ] **P6.3** 凭据经 Windows/macOS 受保护存储与访问控制适配；引擎优先通过可信本地通道取得秘密，配置迁移失败可恢复，提权/不同用户不静默扩大访问。
 - [ ] **P6.4** 初始化不删除现用日志；统一轮转、容量、脱敏和受控诊断包，记录 operation ID、状态 generation、出口身份与构建标识；不输出 token、私钥或完整敏感配置。
 - [ ] **P6.5** 指标区分建立、转发、异常结束、出口验证与撤销延迟；提供明确告警及恢复命令。在受控条件比较 CPU/内存、连接建立 p95、吞吐和恢复时间，安全切换不能以关闭认证换取性能。
@@ -137,7 +137,7 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 
 ### P7 — 本地自动门禁与可追踪发行
 
-- [ ] **P7.1** 建立一个本地自动门禁入口，失败立即中止发行：合同/生成漂移、Go test/vet、可用环境的 race、GUI check、Rust test/check、SDK 测试与安全扫描；各失败保持原始输出和证据。
+- [x] **P7.1** 建立一个本地自动门禁入口，失败立即中止发行：合同/生成漂移、Go test/vet、可用环境的 race、GUI check、Rust test/check、SDK 测试与安全扫描；各失败保持原始输出和证据。10-07冻结v2 `check-steelman.ps1` exit0；SDK33/Rust41、真实CLI-HubTLS、CLI/SDK builder 9/16及NSIS13行为+完整模板编译。Linux race不可用，正式签名/发行仍在P7.G。
 - [ ] **P7.2** Windows/macOS 与 Hub/Android 目标组合均有编译检查；需要行为证据的 OS 用实机/受控 VM 运行，交叉编译不勾平台验收。用可控时钟/同步条件修复计时敏感测试，不能放宽断言掩盖失败。
 - [ ] **P7.3** 干净 worktree 使用锁定依赖、显式产品/版本/协议/完整 SHA/工具链和空产物目录构建；本地 dev 可标 dev，release 不接受不可追踪的 `local` 或错误父仓库 VCS 标记。
 - [ ] **P7.4** 发布清单记录构建与源码关系、hash、依赖清单/SBOM、安全扫描及有期限的例外、兼容矩阵和批准产物；明确可复现/可追溯边界，不以不同 OS/工具链必须字节相同作为未经证明的承诺。
@@ -188,12 +188,24 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 - [x] CLI JSON 五份同源投影与生成漂移门禁、CLI/GUI 类型消费者及 SDK v1 校验/legacy unknown/安全异常回归，见后续基础 worklog；不代替完整 HTTP/Admin 合同。
 - [x] 离线设备授权/历史撤销/outbox/intent/fence；独立旧 DB 替换、过期 apply 与 policy alias 反例修复；不代替真实 API/WG 撤权。
 - [x] CLI 代理 v2 租约核心与合成 Windows adapter；Notify 后变更、journal 别名 panic、跨进程锁回归；不代替真实 phase gate/命令接线。
-- [ ] CLI 用户级代理租约、Mac 实机/真实安装升级、设备授权执行与手机 TLS 后续按阶段验收。
+- [x] CLI 用户级代理租约接入真实 phase/lifetime gate；认证 child + 合成 OS 验证停止恢复失败保留引擎与 WAL、跨用户/错误lease拒绝及原owner崩溃恢复。
+- [x] 默认关闭的 Hub v2 API、独立客户 WG executor/scheduler；Windows Job 与 Linux helper/Hub SIGKILL 真实进程负例通过，仍不代替真实 tunnel。
+- [x] reverse 本地真实 mTLS/CONNECT/yamux/target 回环，阻塞写入撤销、登记 exact fields 与 Unix namespace 负例通过，保留正常调度和限额。
+- [x] 新设备 CLI→Hub 真实 TLS 互通、响应丢失 receipt/cancel 和发行/扫描统一门禁完成最终源冻结复核；Chrome mock IPC补现旧ready残留，修复后的冻结v2统一gate exit0。
+- [ ] Mac 实机/真实 WinINET/已安装升级、生产授权导入/campaign、备份恢复撤销合并、手机迁移及签名/更新链按阶段继续验收。
 
 | 里程碑 | 当前状态 |
 | --- | --- |
 | 计划 | 已编写，按切片执行中 |
-| 实现 | 隔离首切片、CLI 同源合同、授权/代理离线基础；真实接线与发行按未完成清单推进 |
+| 实现 | CLI/GUI/SDK 真实代理接线、Hub v2 authority及监督、设备消费者、reverse mTLS与本地门禁；生产迁移与跨平台余项仍推进 |
 | 新验证 | 后续统一门禁与独立反例修复通过；GUI 浏览器仍是首切片 mock IPC；授权用文件 fake 数据面，代理用合成 HKCU；跨平台仅编译；10-06 资产只读复核已记录 |
 | 生产切换 | 未开始，既有安全迁移仍遵循自己的 NO-GO 状态 |
 | Steelman 终验 | 未完成 |
+
+## 8. 2026-10-07 接线与发行边界
+
+本轮已把之前的离线模型接到产品调用路径，不能再把“只有基础模块”当作完整进度。详细源码/负例/证据见 [运行时集成](steelman-runtime-integration.md) 与 [10-07 worklog](../90-history/worklogs/2026-10-07-zhvpn-runtime-integration.md)。安装器尚只支持可验证的全新目标：不调用旧卸载器、整包 staging 后无覆盖发布；已有安装升级/自动卸载明确拒绝，不能勾 P3.5/P7 的完整升级验收。Mac OS adapter仍unsupported，真实Roaming ACL拒绝不以改profile放行。
+
+后续依赖按实际顺序：完成本轮源冻结门禁/开发产物 → 受控凭据/平台适配与迁移清册 → 干净可信发布/签名及更新协议 → 逐实例 canary与手机迁移 → 当前授权事实源切换和完整观察 → P9多维独立评分。生产切换、30天连续窗口、Mac/手机物理证据不能由本地测试或代码量勾选；全部 G01–G05 仍未达终验。
+
+剩余不仅是硬件验收：Mac OS adapter、v2 credential到实际代理bootstrap、campaign固定分母/installation lineage与完整阻断投影、备份恢复的最新撤销合并、可信更新元数据及维护协议仍有源码缺口。legacy F7/F13不由新v2入口自动修好；后续按独立负例收敛兼容入口，不能提前宣称旧入口已安全或生产已切换。

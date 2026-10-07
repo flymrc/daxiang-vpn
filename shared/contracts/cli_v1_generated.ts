@@ -31,9 +31,17 @@ export interface ResultDTO {
   product?: string;
   version?: string;
   protocol_version?: number;
+  source_commit?: string;
+  source_state?: "clean" | "dirty" | "unknown";
+  go_version?: string;
   error?: string;
   error_code?: string;
   contract_version?: 1;
+  system_proxy_state?: "absent" | "recorded" | "foreign" | "acquired" | "released" | "recovered";
+  lease_id?: string;
+  owned?: boolean;
+  noop?: boolean;
+  journal_path?: string;
 }
 
 export interface EngineIdentityDTO {
