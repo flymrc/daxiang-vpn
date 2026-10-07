@@ -1,6 +1,6 @@
 # zhvpn Steelman 重构计划
 
-> 创建：2026-10-06 JST。状态：IN_PROGRESS；前四波已本地提交；第五波 v2 凭据到真实 CLI/WireGuard 代理启动与撤销通过，冻结 v6 统一门禁 exit0。阶段门禁与生产实施分别登记。
+> 创建：2026-10-06 JST。状态：IN_PROGRESS；前五波已本地提交；第六波固定 provisional 清册/持久观察缺口/管理台消费者已通过冻结v8统一门禁，源码提交与clean构建收据分开登记。阶段门禁与生产实施分别记录。
 > 基线：[2026-10-05 多维审计](../90-history/worklogs/2026-10-05-zhvpn-project-audit.md)。49/100 是该日的工程成熟度评估，不能作为本日运行状态或后续验收结果。
 
 ## 1. Steelman 的完成定义
@@ -203,13 +203,14 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 - [x] update CLI明确批准Policy、protected registration anchor+单一Policy/Previous/floors状态、同home跨进程锁与水位提交接线；实际CLI八进程/重开、31独立check、NTFS unknown与Linux FIFO负例通过，schema同源门禁已接入。同owner旧快照回滚、安装/签名和生产仍未完成。
 - [x] device Ed25519 输入共享 canonical/small-order 拒绝；离线 authority 恢复比较、保护文件读取及极端时间/非法 UTF-8/超大 TEXT 独立反例通过。`ready_to_restore=false`，实际恢复/最新事实保管链未完成。
 - [x] device bind/start 经正常 TLS 取得短期配置投影；本地独立 WG 密钥、generation/profile/精确路由绑定实际 engine，错误 bytes/迟到取消拒绝；真实 CLI→WG→目标 marker、实际撤销与 protected peer 保留通过。Service TLS initial Tick 不是完整外部数据面屏障，P4.G/G01 仍未完成。
+- [x] provisional清册显式批准raw SHA、immutable baseline/extra、失效source保留、单调历史及observer预落run/sticky gap；旧坏secure metadata后来合法观测洗白反例修复。canonical Admin contract2/只读迁移页、实际21条分页与迟到权限/秘密负例、Windows race/Linux普通及冻结v8统一门禁通过。真实lineage、逐负类别时间、T0连续窗口及正式campaign仍未闭合。
 - [ ] Mac 实机/真实 WinINET/已安装升级、生产授权导入/campaign、备份恢复撤销合并、手机迁移及签名/更新链按阶段继续验收。
 
 | 里程碑 | 当前状态 |
 | --- | --- |
 | 计划 | 已编写，按切片执行中 |
-| 实现 | CLI/GUI/SDK 真实代理接线、Hub v2 authority及监督、设备消费者、reverse mTLS与本地门禁；生产迁移与跨平台余项仍推进 |
-| 新验证 | 冻结v6统一gate通过；前四波九目标clean开发构建；第五波实际 Windows CLI/WG 目标流量及撤销、WSL实际WG/TLS和独立启动负例通过；10-07线上只读证明仍为旧binary。所有 owned fixture 和合成 HKCU 不替代生产/真实用户代理/平台实机证据 |
+| 实现 | CLI/GUI/SDK代理接线、Hub v2 authority及监督、设备消费者、reverse mTLS、本地门禁；第六波provisional清册/单调事实/持久observer及只读页面；生产迁移与跨平台余项仍推进 |
+| 新验证 | 第六波冻结v8统一gate通过；前五波九目标clean开发构建；Windows实际CLI/WG及撤销、WSL WG/TLS；第六actual SQLite/HTTP/原生进程与编译Chrome消费者通过，十目标clean构建待登记。10-07线上只读仍为旧binary。owned fixture和合成HKCU不替代生产/真实用户代理/实机证据 |
 | 生产切换 | 未开始，既有安全迁移仍遵循自己的 NO-GO 状态 |
 | Steelman 终验 | 未完成 |
 
@@ -219,4 +220,4 @@ P1 后可以并行推进 P2/P3、P4、P5 的离线实现；每个切片仍按自
 
 后续依赖按实际顺序：完成本轮源冻结门禁/开发产物 → 受控凭据/平台适配与迁移清册 → 干净可信发布/签名及更新协议 → 逐实例 canary与手机迁移 → 当前授权事实源切换和完整观察 → P9多维独立评分。生产切换、30天连续窗口、Mac/手机物理证据不能由本地测试或代码量勾选；全部 G01–G05 仍未达终验。
 
-剩余不仅是硬件验收：Mac OS adapter、campaign固定分母/installation lineage与完整阻断投影、外部 WG/proxy 启动失败屏障、持续设备/会话授权、受控导入、最新撤销事实保管链与实际恢复、安装维护协议/外部更新防回滚、远端结果确认、日志容量与性能指标仍有源码缺口。第五波已补 v2 credential 到真实代理 bootstrap，但启动 TTL 不等于连续租约。初始对账部分失败的实际反例证明，仅拒绝 TLS 监听不能关闭旧 WG 数据面。不能把局部完成勾作整个阶段或生产安全迁移。见[第二波worklog](../90-history/worklogs/2026-10-07-zhvpn-security-boundaries.md)、[执行预算worklog](../90-history/worklogs/2026-10-07-legacy-control-process-budget.md)、[更新worklog](../90-history/worklogs/2026-10-07-zhvpn-trusted-update-state.md)及[第五波worklog](../90-history/worklogs/2026-10-07-v2-proxy-bootstrap.md)。
+剩余不仅是硬件验收：Mac OS adapter、真实campaign/installation lineage、逐负类别时间与持续窗口、外部 WG/proxy 启动失败屏障、持续设备/会话授权、受控导入、最新撤销事实保管链与实际恢复、安装维护协议/外部更新防回滚、远端结果确认、日志容量与性能指标仍有源码缺口。第六波已补provisional固定分母/完整source与历史阻断，但不能代称正式campaign。第五波已补v2 credential到真实proxy bootstrap，但启动TTL不等于连续租约；初始对账部分失败的实际反例证明，仅拒绝TLS监听不能关闭旧WG数据面。不能把局部完成勾作整个阶段或生产安全迁移。见[第六波worklog](../90-history/worklogs/2026-10-07-migration-inventory.md)及[下一proxy屏障清单](device-proxy-startup-barrier-plan.md)。

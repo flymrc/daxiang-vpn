@@ -12,7 +12,7 @@
 
 ## 管理台真实状态
 
-`hub/admin/web/src/lib/validation.ts` 校验实际运行响应；生成的 TypeScript 类型不代替运行校验。完整五项 snapshot 全部通过才提交新状态；0、空列表和未知分别显示，不用 demo 补真实空数据、默认 RTT 或统计值。读取或 shape 失败清除旧数据、秘密和 modal，显示状态未知并禁用依赖当前数据的操作。页面的“管理 API 已响应”只表示该管理快照已读取，不表示所有代理数据面或业务请求健康。
+`hub/admin/web/src/lib/validation.ts` 校验实际运行响应；生成的 TypeScript 类型不代替运行校验。第二波为五项 snapshot，第六波加入 migration readiness contract2 后为完整六项，全部通过才提交新状态；0、空列表和未知分别显示，不用 demo 补真实空数据、默认 RTT 或统计值。读取或 shape 失败清除旧数据、秘密和 modal，显示状态未知并禁用依赖当前数据的操作。页面的“管理 API 已响应”只表示该管理快照已读取，不表示所有代理数据面或业务请求健康。尚未升级的生产 contract1 不能给新版完整读取制造健康。
 
 每次刷新推进数据 generation，独立 owner 只释放自己的刷新占用；较早的成功 snapshot 不能覆盖后来发生的 401/403 权限失效。secret/exit-IP 结果绑定请求目标与 generation，刷新后迟到结果不能重新展示，清理也不能误清后来的同类请求。401/403 会清除旧授权状态及秘密，401 返回登录。
 

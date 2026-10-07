@@ -528,6 +528,14 @@ Admin `rotate_state=unknown` 表示可能已经派发；普通冷却过去、页
 
 verify只使用已批准状态，全量重验签名/期限/key和产物后提交staging水位。`commit_unknown`或输出丢失先inspect，再对同一包核验；不能补偿回旧state、执行候选或降低floor。整组旧快照恢复可能回滚本地水位，实际恢复仍须外部最新事实核验。路径/命令示例、平台与断电/内核IO限制见[状态合同](../../30-implementation/trusted-update-state.md)。
 
+## 4.6 Provisional 清册与 observer（开发源码，尚未部署）
+
+新版 `GET /admin/api/migration/readiness` 为 contract2。先核对实际二进制/合同版本；生产旧 contract1 不能冒充新固定分母。baseline 是批准快照，enabled 数量只是 source 状态；missing/disabled/expired/invalid 或 extra 必须显式处置，不能从分母抹除。
+
+离线 `zhhub-campaign-register-linux-amd64` 只接受 `--db <操作者控制的绝对本地DB路径>`、`--inventory-file <已审阅普通本地文件>`、`--approve-inventory-sha256 <人工批准的原始SHA256>` 三个唯一 flag/value 对。登记是实际 SQLite 写入，本批只在合成 fixture 执行；未经单独授权不可指向生产。相同摘要幂等恢复；receipt 输出失败或 commit_unknown 时不能用更换清册/删除库重试，先确认原库，再以同一批准摘要恢复。没有 force/reset/T0 入口。
+
+observer gap 和旧负事实不因 clean restart、后来 secure、普通 audit retention 或页面刷新消失。容量上限4096和计数溢出会拒绝报告；不可删 runs/facts 解除 NO-GO。当前没有归档协议、完整连续窗口或整库旧快照回放防护，详见[清册合同](../../30-implementation/migration-inventory.md)。
+
 ## 5. 历史基线（2026-06-03 实测,Mac 出口已弃用）
 
 留作对照，知道「正常」长什么样：

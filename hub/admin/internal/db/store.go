@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,7 +60,18 @@ func OpenStore(path string) (*Store, error) {
 			return nil, err
 		}
 	}
-	db, err := sql.Open("sqlite", path)
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	uriPath := filepath.ToSlash(absolute)
+	if filepath.VolumeName(absolute) != "" {
+		uriPath = "/" + uriPath
+	}
+	uri := url.URL{Scheme: "file", Path: uriPath, RawQuery: "_txlock=immediate"}
+	// Acquire the SQLite writer lock at transaction entry, rather than upgrading
+	// a stale read snapshot. This also serializes independent native registrars.
+	db, err := sql.Open("sqlite", uri.String())
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +89,12 @@ func OpenStore(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	return &Store{db: db, q: generated.New(db)}, nil
+	store := &Store{db: db, q: generated.New(db)}
+	if err := store.initializeCampaignHistory(context.Background()); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return store, nil
 }
 
 func (s *Store) Close() error {
@@ -107,7 +124,29 @@ func (s *Store) EnsureAdminUser(ctx context.Context, username string, passwordHa
 }
 
 func (s *Store) InsertAudit(ctx context.Context, event auth.AuditEvent) error {
+	return s.insertAudit(ctx, "", event)
+}
+
+func (s *Store) InsertObservedAudit(ctx context.Context, runID string, event auth.AuditEvent) error {
+	if !id32.MatchString(runID) {
+		return ErrProjectionUnavailable
+	}
+	return s.insertAudit(ctx, runID, event)
+}
+
+func (s *Store) insertAudit(ctx context.Context, runID string, event auth.AuditEvent) error {
+	if event.MigrationObservation != nil {
+		copy := *event.MigrationObservation
+		copy.ClientProduct, copy.ClientVersion, copy.ProtocolVersion = auth.NormalizeClientMetadata(copy.ClientProduct, copy.ClientVersion, copy.ProtocolVersion)
+		if copy.MigrationClass == "secure_bootstrap" && (copy.ClientVersion == "" || copy.Ingress != "trusted_proxy" || copy.KeyMode != "client_generated" || copy.PrivateKeyReturned) {
+			copy.MigrationClass = "unknown"
+		}
+		event.MigrationObservation = &copy
+	}
 	occurredAt := defaultTime(event.OccurredAt)
+	if !validObservationTime(occurredAt, time.Now()) {
+		return ErrProjectionUnavailable
+	}
 	auditParams := generated.InsertAuditEventParams{
 		OccurredAt: formatTime(occurredAt),
 		Actor:      nonempty(truncateText(event.Actor, maxAuditActorBytes), "unknown"),
@@ -118,12 +157,13 @@ func (s *Store) InsertAudit(ctx context.Context, event auth.AuditEvent) error {
 		Result:     nonempty(truncateText(event.Result, maxAuditResultBytes), "unknown"),
 		ErrorCode:  truncateText(event.ErrorCode, maxAuditErrorCodeBytes),
 	}
-	if event.MigrationObservation == nil {
-		return s.q.InsertAuditEvent(ctx, auditParams)
-	}
-	observationParams, err := migrationObservationParams(event, occurredAt)
-	if err != nil {
-		return err
+	var observationParams generated.UpsertClientMigrationObservationParams
+	var err error
+	if event.MigrationObservation != nil {
+		observationParams, err = migrationObservationParams(event, occurredAt)
+		if err != nil {
+			return err
+		}
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -131,11 +171,29 @@ func (s *Store) InsertAudit(ctx context.Context, event auth.AuditEvent) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	qtx := s.q.WithTx(tx)
+	if runID != "" {
+		var state string
+		if err := tx.QueryRowContext(ctx, `SELECT state FROM migration_observer_runs WHERE run_id=?`, runID).Scan(&state); err != nil || state != "open" {
+			return ErrProjectionUnavailable
+		}
+	}
 	if err := qtx.InsertAuditEvent(ctx, auditParams); err != nil {
 		return err
 	}
-	if err := qtx.UpsertClientMigrationObservation(ctx, observationParams); err != nil {
-		return err
+	if event.MigrationObservation != nil {
+		if event.Result == "ok" {
+			if err := qtx.UpsertClientMigrationObservation(ctx, observationParams); err != nil {
+				return err
+			}
+		}
+		if err := recordMigrationFact(ctx, tx, event, observationParams.OccurredAtUnixNs); err != nil {
+			return err
+		}
+	}
+	if runID != "" {
+		if _, err := tx.ExecContext(ctx, `UPDATE migration_observer_runs SET last_success_at=? WHERE run_id=? AND state='open'`, formatTime(time.Now()), runID); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -146,10 +204,10 @@ func (s *Store) ListClientMigrationObservations(ctx context.Context) ([]generate
 
 func migrationObservationParams(event auth.AuditEvent, auditTime time.Time) (generated.UpsertClientMigrationObservationParams, error) {
 	observation := event.MigrationObservation
-	if event.EventType != "client.bootstrap" || event.Result != "ok" {
-		return generated.UpsertClientMigrationObservationParams{}, errors.New("migration observation requires successful client.bootstrap audit")
+	if event.EventType != "client.bootstrap" || (event.Result != "ok" && event.Result != "denied" && event.Result != "error") {
+		return generated.UpsertClientMigrationObservationParams{}, ErrProjectionUnavailable
 	}
-	if observation.TokenID == "" {
+	if !id12.MatchString(observation.TokenID) {
 		return generated.UpsertClientMigrationObservationParams{}, errors.New("migration observation token id is required")
 	}
 	switch observation.Ingress {
@@ -170,6 +228,9 @@ func migrationObservationParams(event auth.AuditEvent, auditTime time.Time) (gen
 	occurredAt := observation.OccurredAt
 	if occurredAt.IsZero() {
 		occurredAt = auditTime
+	}
+	if !validObservationTime(occurredAt, time.Now()) {
+		return generated.UpsertClientMigrationObservationParams{}, ErrProjectionUnavailable
 	}
 	privateKeyReturned := int64(0)
 	if observation.PrivateKeyReturned {

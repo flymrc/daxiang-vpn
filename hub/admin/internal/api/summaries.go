@@ -216,16 +216,16 @@ func (s *Server) rotateCountToday(ctx context.Context) int {
 
 func tokenStatus(record auth.TokenRecord, now time.Time) generated.TokenSummaryStatus {
 	if !record.Enabled {
-		return generated.Disabled
+		return generated.TokenSummaryStatusDisabled
 	}
 	if record.ExpiresAt != "" {
 		expires, err := time.Parse("2006-01-02", record.ExpiresAt)
 		if err != nil || now.After(expires.Add(24*time.Hour)) {
-			return generated.Expired
+			return generated.TokenSummaryStatusExpired
 		}
 		if expires.Sub(now) <= 3*24*time.Hour {
-			return generated.Expiring
+			return generated.TokenSummaryStatusExpiring
 		}
 	}
-	return generated.Enabled
+	return generated.TokenSummaryStatusEnabled
 }

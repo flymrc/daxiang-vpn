@@ -194,6 +194,23 @@ func (q *Queries) GetAdminUser(ctx context.Context, username string) (AdminUser,
 	return i, err
 }
 
+const getMigrationInventory = `-- name: GetMigrationInventory :one
+SELECT singleton, registry_id, approved_sha256, baseline_count, registered_at FROM migration_inventory WHERE singleton = 1
+`
+
+func (q *Queries) GetMigrationInventory(ctx context.Context) (MigrationInventory, error) {
+	row := q.db.QueryRowContext(ctx, getMigrationInventory)
+	var i MigrationInventory
+	err := row.Scan(
+		&i.Singleton,
+		&i.RegistryID,
+		&i.ApprovedSha256,
+		&i.BaselineCount,
+		&i.RegisteredAt,
+	)
+	return i, err
+}
+
 const insertAuditEvent = `-- name: InsertAuditEvent :exec
 INSERT INTO audit_events (
   occurred_at, actor, source_ip, event_type, target, detail_json, result, error_code
@@ -297,7 +314,7 @@ SELECT token_id, first_seen_unix_ns, last_seen_unix_ns, last_seen_at,
        last_secure_bootstrap_unix_ns, last_legacy_unix_ns, last_unknown_unix_ns,
        secure_bootstrap_count, legacy_count, unknown_count, compat_ingress_count
 FROM client_migration_observations
-ORDER BY token_id
+ORDER BY token_id LIMIT 4097
 `
 
 func (q *Queries) ListClientMigrationObservations(ctx context.Context) ([]ClientMigrationObservation, error) {
@@ -328,6 +345,111 @@ func (q *Queries) ListClientMigrationObservations(ctx context.Context) ([]Client
 			&i.LegacyCount,
 			&i.UnknownCount,
 			&i.CompatIngressCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMigrationFacts = `-- name: ListMigrationFacts :many
+SELECT token_id, first_seen_unix_ns, last_seen_unix_ns, secure_bootstrap_count, legacy_count, unknown_count, compat_ingress_count, denied_count, error_count FROM migration_observation_facts ORDER BY token_id LIMIT 4097
+`
+
+func (q *Queries) ListMigrationFacts(ctx context.Context) ([]MigrationObservationFact, error) {
+	rows, err := q.db.QueryContext(ctx, listMigrationFacts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MigrationObservationFact
+	for rows.Next() {
+		var i MigrationObservationFact
+		if err := rows.Scan(
+			&i.TokenID,
+			&i.FirstSeenUnixNs,
+			&i.LastSeenUnixNs,
+			&i.SecureBootstrapCount,
+			&i.LegacyCount,
+			&i.UnknownCount,
+			&i.CompatIngressCount,
+			&i.DeniedCount,
+			&i.ErrorCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMigrationMembers = `-- name: ListMigrationMembers :many
+SELECT token_id, membership, owner_ref, shared, installation_refs_json, registered_at FROM migration_members ORDER BY token_id LIMIT 4097
+`
+
+func (q *Queries) ListMigrationMembers(ctx context.Context) ([]MigrationMember, error) {
+	rows, err := q.db.QueryContext(ctx, listMigrationMembers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MigrationMember
+	for rows.Next() {
+		var i MigrationMember
+		if err := rows.Scan(
+			&i.TokenID,
+			&i.Membership,
+			&i.OwnerRef,
+			&i.Shared,
+			&i.InstallationRefsJson,
+			&i.RegisteredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMigrationObserverRuns = `-- name: ListMigrationObserverRuns :many
+SELECT run_id, started_at, ended_at, state, reason, last_success_at FROM migration_observer_runs ORDER BY started_at, run_id LIMIT 4097
+`
+
+func (q *Queries) ListMigrationObserverRuns(ctx context.Context) ([]MigrationObserverRun, error) {
+	rows, err := q.db.QueryContext(ctx, listMigrationObserverRuns)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MigrationObserverRun
+	for rows.Next() {
+		var i MigrationObserverRun
+		if err := rows.Scan(
+			&i.RunID,
+			&i.StartedAt,
+			&i.EndedAt,
+			&i.State,
+			&i.Reason,
+			&i.LastSuccessAt,
 		); err != nil {
 			return nil, err
 		}

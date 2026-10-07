@@ -4,7 +4,7 @@
 
 Hub 控制面板用于运维查看和少量安全操作,不是终端用户客户端。v1 覆盖:
 
-- 总览、授权码、在线租约、出口节点、操作日志。
+- 总览、授权码、在线租约、出口节点、操作日志；隔离开发分支另有只读迁移页，尚未部署。
 - Android `jp-android-01` 换 IP。
 - Caddy 负责 HTTPS 和反代;应用内管理员登录负责控制台门禁。
 - OpenAPI 合同、SQLite model、Go/TypeScript codegen。
@@ -68,10 +68,16 @@ SQLite 默认路径:`/opt/zongheng/zhhub/admin.db`。表:
 - `egress_nodes`
 - `rotate_locks`
 - `audit_events`
+- `client_migration_observations`：最近成功 bootstrap 投影（已有 v1 观察合同）。
+- `migration_inventory`、`migration_members`：第六波固定批准清册和追加 extra。
+- `migration_observation_facts`、`migration_import_flags`：单调历史与旧异常 metadata 的幂等负事实。
+- `migration_observer_runs`：第六波持久运行/缺口记录。
+
+后五张 migration 表属于尚未部署的第六波实现；清册登记不创建正式 campaign，详见[清册合同](migration-inventory.md)。
 
 ## SQLite 容量防护
 
-admin SQLite 中只有两类表会持续追加:
+一般审计有两类持续追加表:
 
 - `audit_events`:客户端 bootstrap/rotate 与管理员操作审计,最可能失控。
 - `admin_login_attempts`:管理员登录尝试,公网登录口被扫时可能快速增长。
@@ -83,6 +89,8 @@ admin SQLite 中只有两类表会持续追加:
 - `admin_login_attempts` 默认保留 7 天,同时最多保留 10000 行。
 - 执行 `PRAGMA wal_checkpoint(TRUNCATE)`,避免 `admin.db-wal` 长期膨胀。
 - 对 audit detail、actor、source IP、User-Agent、登录 username 等自由文本做长度上限,避免单行异常膨胀。
+
+第六波 migration 成员、facts、runs/import flags 各有4096条硬上限，报告查询用4097条探测溢出；计数受 JS safe integer 上限约束。它们不沿用普通 audit 的删除策略，保留旧负事实与不干净运行。满容量拒绝继续并报告 NO-GO；保管归档协议尚未实现，不能通过删记录伪造健康。不是整库字节配额或完整运维日志容量证明。
 
 可调环境变量:
 
@@ -128,7 +136,9 @@ UI 先按 `design/Hub 控制台.dc.html` 做原型对齐:顶栏、侧栏、总�
 
 出口节点页点击「换 IP」前会先检查 `rotate_lock_until`:若锁仍未释放,前端只显示 toast 提示剩余等待时间并刷新状态,不再打开二次确认弹窗;锁空闲时才进入确认弹窗。
 
-前端不引入路由库,使用 hash 路由保持页签状态:`#/overview`、`#/tokens`、`#/egress`、`#/clients`、`#/logs`。切换左侧菜单会同步更新 URL hash,刷新页面或复制链接时能回到同一页。
+前端不引入路由库,使用 hash 路由保持页签状态:`#/overview`、`#/tokens`、`#/egress`、`#/clients`、`#/logs`；第六波新增 `#/migration`。切换左侧菜单会同步更新 URL hash,刷新页面或复制链接时能回到同一页。
+
+迁移页消费 canonical Admin readiness contract2，显示固定基线、追加对象、失效/缺失 source、声明 lineage、单调历史、observer 缺口与全部 blockers；最近成功字段与历史事实分开，secure_bootstrap 不能当作 compliant。页面没有批准/T0按钮，所有页面的六路读取共同提交完整快照；任何拒绝/格式错误清空旧数据，迟到403不能恢复旧会话。迁移 GET 可在 SQLite 一致事务内被动追加 extra，不更改授权，但不能称为零数据库写入的读取。当前生产的旧 contract1 报告不能作为新版完整快照。
 
 ## 生成命令
 

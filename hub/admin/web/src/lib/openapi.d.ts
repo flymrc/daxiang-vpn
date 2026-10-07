@@ -254,11 +254,25 @@ export interface components {
             egress_online_count: number;
             rotate_today_count: number;
         };
+        /** @description Provisional fixed inventory and durable historical observations. No campaign activation, T0, approved release, or compliance is created. Report may passively append unknown extras; a failed batch returns projection_unavailable rather than partial healthy data. Latest classification counts span all durable members, while valid_token_count only counts currently enabled sources. */
         MigrationReadinessResponse: {
-            ready: boolean;
+            /** @enum {integer} */
+            contract_version: 2;
+            inventory_registered: boolean;
+            registry_id: string;
+            approved_inventory_sha256: string;
+            baseline_member_count: number;
+            member_count: number;
+            extra_member_count: number;
+            /** Format: date-time */
+            t0: string | null;
+            observer: components["schemas"]["MigrationObserver"];
+            /** @enum {boolean} */
+            ready: false;
             /** @enum {string} */
             mode: "observation_only";
-            campaign_configured: boolean;
+            /** @enum {boolean} */
+            campaign_configured: false;
             observation_write_healthy: boolean;
             valid_token_count: number;
             observed_token_count: number;
@@ -271,12 +285,24 @@ export interface components {
             observer_started_at: string;
             /** Format: date-time */
             last_observation_at: string | null;
-            blockers: string[];
+            blockers: components["schemas"]["MigrationBlocker"][];
             clients: components["schemas"]["MigrationClientStatus"][];
             /** Format: date-time */
             generated_at: string;
         };
+        /** @description Product/version/protocol/ingress/key mode/class describe the most recent successful bootstrap; last_seen_at and history.last_seen_at also include later denied/error attempts. Installation and owner references are declarations only and never confirmed lineage. */
         MigrationClientStatus: {
+            /** @enum {string} */
+            membership: "baseline" | "extra" | "unregistered";
+            /** @enum {string} */
+            source_state: "enabled" | "disabled" | "expired" | "missing" | "invalid";
+            owner_ref: string;
+            shared: boolean;
+            installation_refs: string[];
+            /** @enum {string} */
+            lineage_state: "unknown" | "declared_unverified" | "shared_unverified";
+            history: components["schemas"]["MigrationHistory"];
+            blockers: components["schemas"]["MigrationBlocker"][];
             token_id: string;
             observed: boolean;
             client_product: string;
@@ -289,6 +315,47 @@ export interface components {
             migration_class: "secure_bootstrap" | "legacy" | "unknown";
             /** Format: date-time */
             last_seen_at: string | null;
+        };
+        /** @enum {string} */
+        MigrationBlocker: "campaign_not_configured" | "inventory_not_registered" | "e2e_evidence_unavailable" | "approved_release_unavailable" | "revocation_evidence_unavailable" | "session_cleanup_unavailable" | "recovery_evidence_unavailable" | "quiet_window_unavailable" | "observer_continuity_unavailable" | "dataplane_startup_unverified" | "observation_write_failed" | "observer_gap" | "unobserved_tokens" | "non_secure_bootstrap_tokens" | "extra_unregistered" | "source_missing" | "source_disabled" | "source_expired" | "source_invalid" | "disposition_required" | "lineage_unknown" | "lineage_unverified" | "shared_lineage_unverified" | "historical_legacy" | "historical_unknown" | "historical_compat" | "historical_denied" | "historical_error";
+        MigrationHistory: {
+            /** Format: int64 */
+            secure_bootstrap_count: number;
+            /** Format: int64 */
+            legacy_count: number;
+            /** Format: int64 */
+            unknown_count: number;
+            /** Format: int64 */
+            compat_ingress_count: number;
+            /** Format: int64 */
+            denied_count: number;
+            /** Format: int64 */
+            error_count: number;
+            /** Format: date-time */
+            first_seen_at: string | null;
+            /** Format: date-time */
+            last_seen_at: string | null;
+        };
+        MigrationObserverRun: {
+            run_id: string;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            ended_at: string | null;
+            /** @enum {string} */
+            state: "open" | "closed" | "failed";
+            /** @enum {string} */
+            reason: "none" | "write_failed" | "unclean_shutdown" | "sink_replaced" | "observer_closed";
+            /** Format: date-time */
+            last_success_at: string | null;
+        };
+        MigrationObserver: {
+            current_run_id: string;
+            healthy: boolean;
+            gap_count: number;
+            runs: components["schemas"]["MigrationObserverRun"][];
+            /** Format: date-time */
+            last_success_at: string | null;
         };
         TokensResponse: {
             tokens: components["schemas"]["TokenSummary"][];

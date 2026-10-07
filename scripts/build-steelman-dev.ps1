@@ -16,6 +16,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Generated contract gate failed.' }
     & (Join-Path $PSScriptRoot 'check-device-contract.ps1')
     if ($LASTEXITCODE -ne 0) { throw 'Device OpenAPI gate failed.' }
+    & (Join-Path $PSScriptRoot 'check-admin-contract.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'Admin OpenAPI/sqlc gate failed.' }
     New-Item -ItemType Directory -Path $taskOutput | Out-Null
     $sourceHashes = @(Get-ZhSourceManifest $repoRoot)
     $sourceHashes | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $taskOutput 'source-hashes.json') -Encoding utf8
@@ -26,6 +28,7 @@ try {
         @{name='zhvpn-darwin-arm64';os='darwin';arch='arm64';package='./clients/cli'},
         @{name='zhhub-linux-amd64';os='linux';arch='amd64';package='./hub'},
         @{name='zhhub-device-executor-linux-amd64';os='linux';arch='amd64';package='./hub/cmd/zhhub-device-executor'},
+        @{name='zhhub-campaign-register-linux-amd64';os='linux';arch='amd64';package='./hub/admin/cmd/campaign-register'},
         @{name='zhreverse-linux-amd64';os='linux';arch='amd64';package='./egress/reverse'},
         @{name='zhreverse-linux-arm64';os='linux';arch='arm64';package='./egress/reverse'},
         @{name='zhandroid-control-linux-arm64';os='linux';arch='arm64';package='./egress/android-control'}

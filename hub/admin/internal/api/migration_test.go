@@ -10,7 +10,7 @@ import (
 	"zongheng-vpn/hub/internal/auth"
 )
 
-func TestBuildMigrationReadinessUsesCurrentValidTokens(t *testing.T) {
+func TestBuildMigrationReadinessRetainsDisabledAndUnregisteredTokens(t *testing.T) {
 	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 	server := &Server{
 		tokens: &auth.TokenStore{Tokens: map[string]auth.TokenRecord{
@@ -42,10 +42,10 @@ func TestBuildMigrationReadinessUsesCurrentValidTokens(t *testing.T) {
 	if report.Ready || report.CampaignConfigured {
 		t.Fatalf("observation-only report became ready: %+v", report)
 	}
-	if report.ValidTokenCount != 2 || report.ObservedTokenCount != 1 || report.UnobservedTokenCount != 1 {
+	if report.ValidTokenCount != 2 || report.ObservedTokenCount != 2 || report.UnobservedTokenCount != 1 || report.MemberCount != 3 {
 		t.Fatalf("token counts = valid:%d observed:%d unobserved:%d", report.ValidTokenCount, report.ObservedTokenCount, report.UnobservedTokenCount)
 	}
-	if report.SecureBootstrapTokenCount != 1 || report.UnknownTokenCount != 1 || len(report.Clients) != 2 {
+	if report.SecureBootstrapTokenCount != 1 || report.LegacyTokenCount != 1 || report.UnknownTokenCount != 1 || len(report.Clients) != 3 {
 		t.Fatalf("classification counts = secure:%d unknown:%d clients:%d", report.SecureBootstrapTokenCount, report.UnknownTokenCount, len(report.Clients))
 	}
 }
@@ -90,9 +90,9 @@ func TestBuildMigrationReadinessNeverReady(t *testing.T) {
 	}
 }
 
-func containsString(values []string, want string) bool {
+func containsString[T ~string](values []T, want string) bool {
 	for _, value := range values {
-		if value == want {
+		if string(value) == want {
 			return true
 		}
 	}

@@ -94,3 +94,9 @@ GUI 的状态查询失败会清除旧就绪快照/IP并显示待确认，禁用�
 显式 `device bind` 保存本地独立 WG 密钥，`device start` 经正常 TLS 取得与当前 credential/generation/applied/profile 绑定的最多 30 秒启动投影。完整投影和 canonical 路由 bytes 纳入本地 engine 身份，不读取 legacy 私钥、不沿用旧管理网路由。start 使用独立 contract2 DTO/schema；取消在 ready 答复途中发生也撤回本次 owned child，不返回成功。
 
 正式 fixture 已打通实际 Windows CLI→TLS/SQLite→sing-box→用户态 WireGuard→owned HTTP proxy→target marker，验证 key 的 handshake/transfer、撤销后新请求失败及 protected peer 正对照；WSL 验证实际 WG/TLS，产品后台启动明确未验收。启动投影不构成持续会话租约。独立实际反例证明，初始 reconciliation 部分失败虽然阻止 TLS 监听，外部旧 WG peer 仍可能可达；完整部署数据面屏障仍是 NO-GO。详见[设备启动合同](v2-proxy-bootstrap.md)及[第五波 worklog](../90-history/worklogs/2026-10-07-v2-proxy-bootstrap.md)。
+
+## 第六波：固定清册与持久观察缺口
+
+独立离线 campaign-register 只接受显式批准的有限 raw JSON/SHA256，在 SQLite 同事务封存 baseline；更换摘要拒绝，相同摘要幂等。readiness 的 source 全快照不会删除失效成员，未知 source/history 被动追加 extra；近期成功与单调历史分开。observer 挂 sink 前落 open run，写失败、sink 替换或进程崩溃后重开保留 gap。旧异常 secure metadata 导入为一次持久 unknown 负事实，之后合法 secure 和重复重开都不能洗白。
+
+canonical Admin contract2 和只读迁移页共享相同 DTO，全局/逐成员 blockers 显示未完成证据。T0/ready、批准发行、真实安装 lineage、连续静默窗口与生产授权不由该页面改变。Windows race/Linux native 的实际 SQLite/HTTP 和跨进程故障验证只证明这个 provisional 模型，不能补齐 campaign 或外部数据面屏障；见[清册合同](migration-inventory.md)和[第六波 worklog](../90-history/worklogs/2026-10-07-migration-inventory.md)。

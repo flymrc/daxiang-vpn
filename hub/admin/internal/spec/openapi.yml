@@ -350,15 +350,47 @@ components:
           type: integer
     MigrationReadinessResponse:
       type: object
-      required: [ready, mode, campaign_configured, observation_write_healthy, valid_token_count, observed_token_count, unobserved_token_count, secure_bootstrap_token_count, legacy_token_count, unknown_token_count, compat_ingress_token_count, observer_started_at, last_observation_at, blockers, clients, generated_at]
+      description: Provisional fixed inventory and durable historical observations. No campaign activation, T0, approved release, or compliance is created. Report may passively append unknown extras; a failed batch returns projection_unavailable rather than partial healthy data. Latest classification counts span all durable members, while valid_token_count only counts currently enabled sources.
+      required: [contract_version, inventory_registered, registry_id, approved_inventory_sha256, baseline_member_count, member_count, extra_member_count, t0, observer, ready, mode, campaign_configured, observation_write_healthy, valid_token_count, observed_token_count, unobserved_token_count, secure_bootstrap_token_count, legacy_token_count, unknown_token_count, compat_ingress_token_count, observer_started_at, last_observation_at, blockers, clients, generated_at]
       properties:
+        contract_version:
+          type: integer
+          enum: [2]
+        inventory_registered:
+          type: boolean
+        registry_id:
+          type: string
+        approved_inventory_sha256:
+          type: string
+        baseline_member_count:
+          type: integer
+          minimum: 0
+          maximum: 4096
+        member_count:
+          type: integer
+          minimum: 0
+          maximum: 4096
+        extra_member_count:
+          type: integer
+          minimum: 0
+          maximum: 4096
+        t0:
+          type: string
+          format: date-time
+          nullable: true
+        observer:
+          $ref: '#/components/schemas/MigrationObserver'
         ready:
           type: boolean
+          enum: [false]
+          x-go-type: bool
         mode:
           type: string
           enum: [observation_only]
         campaign_configured:
           type: boolean
+          enum: [false]
+          x-go-type: bool
         observation_write_healthy:
           type: boolean
         valid_token_count:
@@ -385,9 +417,10 @@ components:
         blockers:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/MigrationBlocker'
         clients:
           type: array
+          maxItems: 4096
           items:
             $ref: '#/components/schemas/MigrationClientStatus'
         generated_at:
@@ -395,8 +428,34 @@ components:
           format: date-time
     MigrationClientStatus:
       type: object
-      required: [token_id, observed, client_product, client_version, protocol_version, ingress, key_mode, private_key_returned, migration_class, last_seen_at]
+      description: Product/version/protocol/ingress/key mode/class describe the most recent successful bootstrap; last_seen_at and history.last_seen_at also include later denied/error attempts. Installation and owner references are declarations only and never confirmed lineage.
+      required: [membership, source_state, owner_ref, shared, installation_refs, lineage_state, history, blockers, token_id, observed, client_product, client_version, protocol_version, ingress, key_mode, private_key_returned, migration_class, last_seen_at]
       properties:
+        membership:
+          type: string
+          enum: [baseline, extra, unregistered]
+        source_state:
+          type: string
+          enum: [enabled, disabled, expired, missing, invalid]
+        owner_ref:
+          type: string
+        shared:
+          type: boolean
+        installation_refs:
+          type: array
+          maxItems: 16
+          items:
+            type: string
+            pattern: '^[a-f0-9]{32}$'
+        lineage_state:
+          type: string
+          enum: [unknown, declared_unverified, shared_unverified]
+        history:
+          $ref: '#/components/schemas/MigrationHistory'
+        blockers:
+          type: array
+          items:
+            $ref: '#/components/schemas/MigrationBlocker'
         token_id:
           type: string
         observed:
@@ -417,6 +476,96 @@ components:
           type: string
           enum: [secure_bootstrap, legacy, unknown]
         last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+    MigrationBlocker:
+      type: string
+      enum: [campaign_not_configured, inventory_not_registered, e2e_evidence_unavailable, approved_release_unavailable, revocation_evidence_unavailable, session_cleanup_unavailable, recovery_evidence_unavailable, quiet_window_unavailable, observer_continuity_unavailable, dataplane_startup_unverified, observation_write_failed, observer_gap, unobserved_tokens, non_secure_bootstrap_tokens, extra_unregistered, source_missing, source_disabled, source_expired, source_invalid, disposition_required, lineage_unknown, lineage_unverified, shared_lineage_unverified, historical_legacy, historical_unknown, historical_compat, historical_denied, historical_error]
+    MigrationHistory:
+      type: object
+      required: [secure_bootstrap_count, legacy_count, unknown_count, compat_ingress_count, denied_count, error_count, first_seen_at, last_seen_at]
+      properties:
+        secure_bootstrap_count:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        legacy_count:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        unknown_count:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        compat_ingress_count:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        denied_count:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        error_count:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        first_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+    MigrationObserverRun:
+      type: object
+      required: [run_id, started_at, ended_at, state, reason, last_success_at]
+      properties:
+        run_id:
+          type: string
+          pattern: '^[a-f0-9]{32}$'
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+        state:
+          type: string
+          enum: [open, closed, failed]
+        reason:
+          type: string
+          enum: [none, write_failed, unclean_shutdown, sink_replaced, observer_closed]
+        last_success_at:
+          type: string
+          format: date-time
+          nullable: true
+    MigrationObserver:
+      type: object
+      required: [current_run_id, healthy, gap_count, runs, last_success_at]
+      properties:
+        current_run_id:
+          type: string
+        healthy:
+          type: boolean
+        gap_count:
+          type: integer
+          minimum: 0
+          maximum: 4096
+        runs:
+          type: array
+          maxItems: 4096
+          items:
+            $ref: '#/components/schemas/MigrationObserverRun'
+        last_success_at:
           type: string
           format: date-time
           nullable: true

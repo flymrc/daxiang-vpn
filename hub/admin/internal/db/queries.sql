@@ -201,4 +201,16 @@ SELECT token_id, first_seen_unix_ns, last_seen_unix_ns, last_seen_at,
        last_secure_bootstrap_unix_ns, last_legacy_unix_ns, last_unknown_unix_ns,
        secure_bootstrap_count, legacy_count, unknown_count, compat_ingress_count
 FROM client_migration_observations
-ORDER BY token_id;
+ORDER BY token_id LIMIT 4097;
+
+-- name: GetMigrationInventory :one
+SELECT * FROM migration_inventory WHERE singleton = 1;
+
+-- name: ListMigrationMembers :many
+SELECT * FROM migration_members ORDER BY token_id LIMIT 4097;
+
+-- name: ListMigrationFacts :many
+SELECT * FROM migration_observation_facts ORDER BY token_id LIMIT 4097;
+
+-- name: ListMigrationObserverRuns :many
+SELECT * FROM migration_observer_runs ORDER BY started_at, run_id LIMIT 4097;

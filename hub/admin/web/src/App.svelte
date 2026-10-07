@@ -2,9 +2,9 @@
   import { onMount } from "svelte";
   import { AdminApi, ApiError } from "$lib/api";
   import * as validate from "$lib/validation";
-  import type { AuditEvent, AuthMe, EgressExitIPResponse, EgressSummary, LeaseSummary, Overview, TokenSummary } from "$lib/api";
+  import type { AuditEvent, AuthMe, EgressExitIPResponse, EgressSummary, LeaseSummary, MigrationReadiness, Overview, TokenSummary } from "$lib/api";
 
-  type View = "overview" | "tokens" | "egress" | "clients" | "logs";
+  type View = "overview" | "tokens" | "egress" | "clients" | "migration" | "logs";
   type ThemeName = "深空蓝" | "石墨灰" | "午夜紫" | "浅色";
   type ExitIPRow = { label?: string; value: string; muted?: boolean };
   type TokenSortKey = "masked_token" | "client_name" | "status" | "egress_id" | "wg_address" | "expires_at" | "last_active";
@@ -88,12 +88,14 @@
 
   const themeStorageKey = "zhhub-admin-theme";
   const tokenPageSize = 10;
+  const migrationPageSize = 20;
   const themeOrder: ThemeName[] = ["深空蓝", "浅色", "石墨灰", "午夜紫"];
   const viewRoutes: Record<View, string> = {
     overview: "overview",
     tokens: "tokens",
     egress: "egress",
     clients: "clients",
+    migration: "migration",
     logs: "logs",
   };
   const routeViews: Record<string, View> = {
@@ -102,6 +104,7 @@
     egress: "egress",
     clients: "clients",
     leases: "clients",
+    migration: "migration",
     logs: "logs",
     events: "logs",
   };
@@ -215,6 +218,9 @@
   let leases: LeaseSummary[] = [];
   let egress: EgressSummary[] = [];
   let events: AuditEvent[] = [];
+  let migrationReadiness: MigrationReadiness | null = null;
+  let migrationPage = 1;
+  let observerPage = 1;
   let tokenSecrets: Record<string, string> = {};
   let exitIPSecrets: Record<string, EgressExitIPResponse> = {};
   let revealingTokenID = "";
@@ -266,6 +272,15 @@
   $: displayLeases = dataReady ? leases : [];
   $: displayEgress = dataReady ? egress : [];
   $: displayEvents = dataReady ? events : [];
+  $: displayMigration = dataReady && !previewEnabled ? migrationReadiness : null;
+  $: migrationMembers = displayMigration?.clients ?? [];
+  $: migrationPageCount = Math.max(1, Math.ceil(migrationMembers.length / migrationPageSize));
+  $: if (migrationPage > migrationPageCount) migrationPage = migrationPageCount;
+  $: pagedMigrationMembers = migrationMembers.slice((migrationPage - 1) * migrationPageSize, migrationPage * migrationPageSize);
+  $: observerRuns = [...(displayMigration?.observer.runs ?? [])].sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at));
+  $: observerPageCount = Math.max(1, Math.ceil(observerRuns.length / migrationPageSize));
+  $: if (observerPage > observerPageCount) observerPage = observerPageCount;
+  $: pagedObserverRuns = observerRuns.slice((observerPage - 1) * migrationPageSize, observerPage * migrationPageSize);
   $: canOperate = dataReady && !previewEnabled && !loading && !mutationPending;
   $: canRotate = canOperate && !mutationUnknown;
   $: enabledTokens = displayTokens.filter((token) => token.enabled).length;
@@ -308,6 +323,7 @@
     const generation = ++dataGeneration;
     loading = true;
     dataReady = false;
+    migrationReadiness = null;
     dataError = "";
     modal = null;
     tokenSecrets = {};
@@ -315,12 +331,13 @@
     revealingTokenID = "";
     revealingExitIPID = "";
     try {
-      const [nextOverview, nextTokens, nextLeases, nextEgress, nextEvents] = await Promise.all([
+      const [nextOverview, nextTokens, nextLeases, nextEgress, nextEvents, nextMigration] = await Promise.all([
         api.overview(),
         api.tokens(),
         api.leases(),
         api.egress(),
         api.events(),
+        api.migrationReadiness(),
       ]);
       validate.snapshot(nextOverview, nextTokens, nextLeases, nextEgress, nextEvents);
       if (generation !== dataGeneration || activeRefresh !== refreshOwner) return;
@@ -329,6 +346,9 @@
       leases = nextLeases.leases;
       egress = nextEgress.egress;
       events = nextEvents.events;
+      migrationReadiness = nextMigration;
+      migrationPage = 1;
+      observerPage = 1;
       updatedAt = new Date().toLocaleTimeString();
       dataReady = true;
     } catch (err) {
@@ -339,6 +359,7 @@
       if (generation !== dataGeneration || activeRefresh !== refreshOwner) return;
       overview = null;
       tokens = []; leases = []; egress = []; events = [];
+      migrationReadiness = null;
       dataError = "数据读取失败，当前状态未知；请重新刷新";
     } finally {
       if (activeRefresh === refreshOwner) {
@@ -355,6 +376,7 @@
     leases = demoLeases;
     egress = demoEgress;
     events = demoEvents;
+    migrationReadiness = null;
     updatedAt = new Date().toLocaleTimeString();
     dataReady = true;
     dataError = "";
@@ -409,6 +431,7 @@
     dataReady = false;
     overview = null;
     tokens = []; leases = []; egress = []; events = [];
+    migrationReadiness = null;
     tokenSecrets = {}; exitIPSecrets = {};
     revealingTokenID = ""; revealingExitIPID = "";
     modal = null;
@@ -893,31 +916,35 @@
     <div class="body fx f1">
       <aside class="side col">
         <div class="navlbl">运营</div>
-        <button class={`navitem fx ac gap10 ${navClass("overview", view)}`} on:click={() => go("overview")}>
+        <button aria-label="总览" aria-current={view === "overview" ? "page" : undefined} title="总览" class={`navitem fx ac gap10 ${navClass("overview", view)}`} on:click={() => go("overview")}>
           <svg class="nico" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
             <rect x="1.6" y="1.6" width="5" height="5" rx="1.2" /><rect x="9.4" y="1.6" width="5" height="5" rx="1.2" /><rect x="1.6" y="9.4" width="5" height="5" rx="1.2" /><rect x="9.4" y="9.4" width="5" height="5" rx="1.2" />
           </svg>
           <span class="f1">总览</span>
         </button>
-        <button class={`navitem fx ac gap10 ${navClass("tokens", view)}`} on:click={() => go("tokens")}>
+        <button aria-label="授权码" aria-current={view === "tokens" ? "page" : undefined} title="授权码" class={`navitem fx ac gap10 ${navClass("tokens", view)}`} on:click={() => go("tokens")}>
           <svg class="nico" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
             <circle cx="5" cy="5" r="3.2" /><path d="M7.3 7.3 13 13" /><path d="M11 11l1.6-1.6" />
           </svg>
           <span class="f1">授权码</span><span class="badge mono fx ac jc">{displayTokens.length}</span>
         </button>
-        <button class={`navitem fx ac gap10 ${navClass("egress", view)}`} on:click={() => go("egress")}>
+        <button aria-label="出口节点" aria-current={view === "egress" ? "page" : undefined} title="出口节点" class={`navitem fx ac gap10 ${navClass("egress", view)}`} on:click={() => go("egress")}>
           <svg class="nico" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
             <rect x="2" y="2.2" width="12" height="5" rx="1.4" /><rect x="2" y="8.8" width="12" height="5" rx="1.4" /><circle cx="4.6" cy="4.7" r=".8" fill="currentColor" stroke="none" /><circle cx="4.6" cy="11.3" r=".8" fill="currentColor" stroke="none" />
           </svg>
           <span class="f1">出口节点</span><span class="badge mono fx ac jc">{displayEgress.length}</span>
         </button>
-        <button class={`navitem fx ac gap10 ${navClass("clients", view)}`} on:click={() => go("clients")}>
+        <button aria-label="在线客户端" aria-current={view === "clients" ? "page" : undefined} title="在线客户端" class={`navitem fx ac gap10 ${navClass("clients", view)}`} on:click={() => go("clients")}>
           <svg class="nico" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
             <circle cx="6" cy="5.4" r="2.4" /><path d="M2 13.2c0-2.3 1.8-3.6 4-3.6s4 1.3 4 3.6" /><circle cx="12" cy="4.8" r="1.8" /><path d="M11.4 9.8c1.7.1 2.9 1.2 2.9 3" />
           </svg>
           <span class="f1">在线客户端</span><span class="badge mono fx ac jc">{displayLeases.length}</span>
         </button>
-        <button class={`navitem fx ac gap10 ${navClass("logs", view)}`} on:click={() => go("logs")}>
+        <button aria-label="迁移观测" aria-current={view === "migration" ? "page" : undefined} title="迁移观测" class={`navitem fx ac gap10 ${navClass("migration", view)}`} on:click={() => go("migration")}>
+          <svg class="nico" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="m8 1.5 5.5 2v4c0 3-2.3 5.3-5.5 7-3.2-1.7-5.5-4-5.5-7v-4Z"/><path d="M5 8h6M8 5v6"/></svg>
+          <span class="f1">迁移观测</span><span class="badge mono fx ac jc">{displayMigration?.member_count ?? "—"}</span>
+        </button>
+        <button aria-label="操作日志" aria-current={view === "logs" ? "page" : undefined} title="操作日志" class={`navitem fx ac gap10 ${navClass("logs", view)}`} on:click={() => go("logs")}>
           <svg class="nico" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
             <path d="M3 4h10M3 8h10M3 12h7" />
           </svg>
@@ -1210,6 +1237,68 @@
               </tbody>
             </table>
           </div>
+        {:else if view === "migration"}
+          <div class="fx ac jb migration-heading">
+            <div><div class="h1">迁移观测</div><div class="sub">observation-only · provisional 固定清册 · 只读报告</div></div>
+            <span class="pill err">NO-GO</span>
+          </div>
+          <div class="warnbox" role="status">T0 未设置 · campaign 尚未启动。清册登记与安装引用都是声明；安全 bootstrap 观测不等于合规、批准发行或真实安装保管链。</div>
+          {#if !displayMigration}
+            <div class="card col gap10" role="status"><span class="sechd">迁移观测状态未知</span><span class="dim">{previewEnabled ? "本地预览未连接迁移观测 API，未使用演示数据填补报告。" : loading ? "正在读取并校验完整报告；旧快照已隐藏。" : "未取得可验证的 v2 完整报告。请刷新；旧响应、读取失败和权限失效均不能表示迁移已就绪。"}</span></div>
+          {:else}
+            <div class="stats migration-stats">
+              <div class="card col gap10"><span class="statlbl">批准清册固定分母</span><span class="statbig mono">{displayMigration.inventory_registered ? displayMigration.baseline_member_count : "未登记"}</span><span class="statsub">停用、到期及源缺失不会移出清册</span></div>
+              <div class="card col gap10"><span class="statlbl">全部持久成员</span><span class="statbig mono">{displayMigration.member_count}</span><span class="statsub">当前启用来源 {displayMigration.valid_token_count} · 额外未登记 {displayMigration.extra_member_count}</span></div>
+              <div class="card col gap10"><span class="statlbl">有观察 / 未观察</span><span class="statbig mono">{displayMigration.observed_token_count} / {displayMigration.unobserved_token_count}</span><span class="statsub">观测覆盖不能替代迁移放行证据</span></div>
+              <div class="card col gap10"><span class="statlbl">持久 observer 缺口</span><span class="statbig mono">{displayMigration.observer.gap_count}</span><span class="statsub">{displayMigration.observer.healthy ? "本次写入无已知缺口，连续观察仍未核验" : "写入健康未确认，历史缺口仍保留"}</span></div>
+            </div>
+            <div class="card col gap10 migration-identifiers">
+              <div class="fx ac jb"><span class="sechd">清册登记</span><span class="pill warn">{displayMigration.inventory_registered ? "已登记 provisional 清册" : "清册未登记"}</span></div>
+              <span class="note">固定分母不是生产 campaign；单一声明和共享声明都未经保管链核验。</span>
+              {#if displayMigration.inventory_registered}
+                <div class="note">registry <span class="mono dim">{displayMigration.registry_id}</span></div>
+                <div class="note">批准原始清册 SHA256 <span class="mono dim">{displayMigration.approved_inventory_sha256}</span></div>
+              {/if}
+              <div class="note">报告生成于 {new Date(displayMigration.generated_at).toLocaleString()} · 最近观察 {displayMigration.last_observation_at ? new Date(displayMigration.last_observation_at).toLocaleString() : "尚无"}</div>
+            </div>
+            <div class="card col gap10">
+              <span class="sechd">全局阻断 · {displayMigration.blockers.length} 项</span>
+              <ul class="migration-blocks">
+                {#each displayMigration.blockers as code}<li><span>{validate.migrationBlockerLabels[code]}</span><span class="mono note">{code}</span></li>{/each}
+              </ul>
+            </div>
+            <div class="card col gap10"><span class="note">历史字段可能重叠，旧记录导入也会保留负事实；不能相加作为独立请求总量或合规比例。</span></div>
+            <div class="card flush">
+              <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard focus enables arrow-key scrolling of this bounded region.) -->
+              <div class="migration-table-scroll" tabindex="0" role="region" aria-label="持久迁移成员，横向滚动表格">
+                <table class="tbl migration-table">
+                  <thead><tr><th>持久成员 / 清册来源</th><th>当前来源 / 最近成功 bootstrap</th><th>安装声明 · 未核验</th><th>单调观察历史</th><th>逐成员阻断</th></tr></thead>
+                  <tbody>
+                    {#each pagedMigrationMembers as row (row.token_id)}
+                      <tr>
+                        <td><div class="mono strong">{row.token_id}</div><div class="note">{validate.migrationMembershipLabels[row.membership]}</div></td>
+                        <td><div class="pill warn">{validate.migrationSourceLabels[row.source_state]}</div><div class="note">{validate.migrationClassLabels[row.migration_class]}</div><div class="note">客户端自报 {row.client_product || "未知"} {row.client_version || "未知"}</div><div class="note">协议 {row.protocol_version === 0 ? "未知" : row.protocol_version} · {row.ingress || "未知入口"} · {row.key_mode || "未知密钥模式"}</div><div class="note">{row.private_key_returned ? "最近成功响应返回过私钥" : "最近成功响应未标记返回私钥"}</div></td>
+                        <td><div class="pill warn">{validate.migrationLineageLabels[row.lineage_state]}</div><div class="note">owner 声明 <span class="mono">{row.owner_ref || "未知"}</span></div><div class="note">{row.shared ? "共享声明" : "未声明共享；不等于独占已核验"}</div>{#each row.installation_refs as ref}<div class="mono note">{ref}</div>{:else}<div class="note">无安装引用声明</div>{/each}</td>
+                        <td><div class="note">安全 bootstrap {row.history.secure_bootstrap_count} · legacy {row.history.legacy_count} · 未知 {row.history.unknown_count}</div><div class="note">兼容入口 {row.history.compat_ingress_count} · 拒绝 {row.history.denied_count} · 错误 {row.history.error_count}</div><div class="note">首次观察 {row.history.first_seen_at ? new Date(row.history.first_seen_at).toLocaleString() : "尚无"}</div><div class="note">最近观察 {row.history.last_seen_at ? new Date(row.history.last_seen_at).toLocaleString() : "尚无"}</div><div class="note">后来成功不会删除早期负事实</div></td>
+                        <td><details><summary>查看全部 {row.blockers.length} 项阻断</summary><ul class="migration-member-blocks">{#each row.blockers as code}<li><span>{validate.migrationBlockerLabels[code]}</span><span class="mono note">{code}</span></li>{/each}</ul></details></td>
+                      </tr>
+                    {:else}<tr><td colspan="5" class="muted">尚无持久成员；零分母不表示可以启动迁移。</td></tr>{/each}
+                  </tbody>
+                </table>
+              </div>
+              <div class="pager fx ac jb"><span class="note">{migrationMembers.length === 0 ? 0 : (migrationPage - 1) * migrationPageSize + 1}–{Math.min(migrationPage * migrationPageSize, migrationMembers.length)} / {migrationMembers.length} 个成员</span><div class="fx ac gap8"><button class="pagebtn" aria-label="成员上一页" disabled={migrationPage <= 1} on:click={() => migrationPage--}>上一页</button><span class="note">{migrationPage}/{migrationPageCount}</span><button class="pagebtn" aria-label="成员下一页" disabled={migrationPage >= migrationPageCount} on:click={() => migrationPage++}>下一页</button></div></div>
+            </div>
+            <div class="card col gap10 migration-identifiers"><span class="sechd">持久 observer 运行历史</span><span class="note">本次 run <span class="mono dim">{displayMigration.observer.current_run_id}</span> · 缺口 {displayMigration.observer.gap_count}</span><span class="note">正常关闭或当前写入健康不能证明已完成连续观察窗口；历史缺口不会因重启洗掉。</span></div>
+            <div class="card flush">
+              <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard focus enables arrow-key scrolling of this bounded region.) -->
+              <div class="migration-table-scroll" tabindex="0" role="region" aria-label="持久 observer 历史，横向滚动表格">
+                <table class="tbl migration-observer-table"><thead><tr><th>run ID</th><th>状态 / 原因</th><th>开始</th><th>结束</th><th>最近成功写入</th></tr></thead><tbody>
+                  {#each pagedObserverRuns as run (run.run_id)}<tr><td class="mono">{run.run_id}</td><td><div class="pill warn">{validate.migrationRunLabels[run.state]}</div><div class="note">{validate.migrationReasonLabels[run.reason]}</div></td><td class="note">{new Date(run.started_at).toLocaleString()}</td><td class="note">{run.ended_at ? new Date(run.ended_at).toLocaleString() : "未关闭"}</td><td class="note">{run.last_success_at ? new Date(run.last_success_at).toLocaleString() : "尚无"}</td></tr>{/each}
+                </tbody></table>
+              </div>
+              <div class="pager fx ac jb"><span class="note">{observerRuns.length} 个持久 run · 分页不会删除历史缺口</span><div class="fx ac gap8"><button class="pagebtn" aria-label="observer 上一页" disabled={observerPage <= 1} on:click={() => observerPage--}>上一页</button><span class="note">{observerPage}/{observerPageCount}</span><button class="pagebtn" aria-label="observer 下一页" disabled={observerPage >= observerPageCount} on:click={() => observerPage++}>下一页</button></div></div>
+            </div>
+          {/if}
         {:else}
           <div class="fx ac jb">
             <div><div class="h1">操作日志</div><div class="sub">bootstrap 与 rotate-ip 事件 · token 已脱敏</div></div>
@@ -2304,5 +2393,53 @@
       min-width: 178px;
       gap: 10px;
     }
+  }
+
+  .migration-identifiers { overflow-wrap: anywhere; }
+  .migration-blocks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; margin: 0; padding-left: 18px; }
+  .migration-blocks li > span, .migration-member-blocks li > span { display: block; overflow-wrap: anywhere; }
+  .migration-table-scroll { max-width: 100%; overflow-x: auto; }
+  .migration-table { min-width: 1060px; table-layout: fixed; }
+  .migration-table td { vertical-align: top; white-space: normal; overflow-wrap: anywhere; }
+  .migration-table th:first-child { width: 150px; }
+  .migration-table th:nth-child(2) { width: 225px; }
+  .migration-table th:nth-child(3) { width: 240px; }
+  .migration-table th:nth-child(4) { width: 225px; }
+  .migration-table td .note { margin-top: 5px; }
+  .migration-member-blocks { padding-left: 18px; margin: 10px 0 0; }
+  .migration-member-blocks li { margin-top: 8px; }
+  .migration-observer-table { min-width: 870px; }
+  .migration-table-scroll:focus-visible, summary:focus-visible, .navitem:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+  @media (max-width: 1080px) {
+    :global(body) { min-width: 0; }
+    .app { min-width: 0; }
+    .hubpill { display: none; }
+  }
+  @media (max-width: 760px) {
+    .topbar { padding: 0 10px; gap: 8px; }
+    .brand { font-size: 13px; white-space: nowrap; }
+    .vchip, .who { display: none; }
+    .body { flex-direction: column; }
+    .side { width: auto; flex-direction: row; gap: 4px; padding: 8px; border-right: 0; border-bottom: 1px solid var(--bd); }
+    .side > .navlbl, .side > .sidefoot, .side > .f1 { display: none; }
+    .navitem { width: auto; flex: 1; justify-content: center; padding: 0 6px; }
+    .navitem .f1, .navitem .badge { display: none; }
+    .content { padding: 14px; }
+    .content > .fx { flex-wrap: wrap; gap: 10px; }
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .two { grid-template-columns: minmax(0, 1fr); }
+    .card.flush { flex-shrink: 0; min-width: 0; max-width: 100%; overflow-x: auto; }
+    .tbl { min-width: 760px; }
+    .migration-table { min-width: 1060px; }
+    .migration-observer-table { min-width: 870px; }
+    .migration-blocks { grid-template-columns: minmax(0, 1fr); }
+    .healthrow, .nodehd { flex-wrap: wrap; gap: 12px; }
+    .healthmetrics { min-width: 0; justify-content: flex-start; }
+    .kv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .kvv { overflow-wrap: anywhere; }
+    .pager { flex-wrap: wrap; gap: 8px; }
+    .login { width: min(360px, 100%); }
+    .modal { width: min(440px, calc(100vw - 24px)); }
   }
 </style>

@@ -608,3 +608,5 @@ last_reconciled_at
 第三波补齐指定昂贵 HTTP 入口的来源准入与本地 WG/SSH 子进程预算，明确未启动的失败才补偿 lease，未知派发结果不自动重试。Admin 显示服务端 unknown 并跨页面重载阻断；该标记尚无跨 Hub 重启持久性，来源 IP 也没有升级为设备身份。此切片不关闭 campaign、受控导入或生产授权切换门禁，见[执行边界](../30-implementation/legacy-control-process-budget.md)。
 
 第四波本地离线update CLI已保存明确批准Policy/Previous和累计floor；缺失登记/提交未知拒绝继续，旧候选不能重放覆盖较新水位。它尚未接入实际安装或外部防回滚锚，同存储owner恢复旧快照仍可回滚。本片不替代现有campaign分母/窗口、现场授权撤销或生产迁移。[更新状态边界](../30-implementation/trusted-update-state.md)。
+
+第六波[provisional 清册](../30-implementation/migration-inventory.md)在隔离开发分支补齐人工批准 raw SHA 的固定 baseline、source 全生命周期、追加 unknown、单调负事实及持久 observer run/gap。它不等于正式 campaign：owner/installation 引用仅是声明，跨历史短ID/真实安装保管链未完成；逐负类别时间、rotate 全入口、T0 后连续30天窗口仍未闭合。旧异常 metadata 回填补一次 unknown 负事实、保留原 secure 记账，不能合计为去重请求总数，也无法恢复此前被覆盖的 provenance。T0、readiness、生产事实源和本计划的生产勾选保持原定义。

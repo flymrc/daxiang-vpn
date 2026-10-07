@@ -77,7 +77,7 @@ Hub 不能作为最终公网出口或兜底出口。Hub 的职责是中转中国
 
 ### 当前 Android 出口数据面
 
-2026-10-06 09:40–09:45 JST 只读复核：`10.66.0.101` 当前是 Pixel 7a/Android 16，实际运行 `/data/adb/zhreverse/bin/zhreverse` 与 `/data/adb/zhandroid/bin/zhandroid-control`。手机配置为 TCP、双会话，现有二进制未提供 TCP TLS/mTLS 参数；QUIC pin 全零不能当作可用回滚凭据。见[本日资产基线](../90-history/worklogs/2026-10-06-zhvpn-asset-baseline.md)。
+2026-10-06 09:40–09:45 JST 的只读记录：当时 `10.66.0.101` 观察到 Pixel 7a/Android 16，运行 `/data/adb/zhreverse/bin/zhreverse` 与 `/data/adb/zhandroid/bin/zhandroid-control`。当时手机配置为 TCP、双会话，二进制未提供 TCP TLS/mTLS 参数；QUIC pin 全零不能当作可用回滚凭据。见[该日资产基线](../90-history/worklogs/2026-10-06-zhvpn-asset-baseline.md)。2026-10-07 用户提供的 AGENTS.md 标明生产 Motorola 使用 `dxreverse/dxandroid-control` 兼容实现；这需要新一轮实机只读对账，不以旧记录推定当前手机型号或 supervisor 路径。
 
 Hub 服务端保留 2026-10-05 上线的 `proxy_preempt_idle=10s`：达到全局 96 或每客户端 48 条 CONNECT 上限时，把已进入转发且最久无流量、空闲至少 10 秒的隧道让位给新 CONNECT；每客户端上限只抢占该客户端，拨号中会话不参与。原 2 分钟空闲回收仍保留；本次基线检查未改变服务、端口或出口策略。部署记录见[工作日志](../90-history/worklogs/2026-10-05-zhreverse-idle-preempt.md)。
 
@@ -507,6 +507,8 @@ NAT 来源：10.66.0.0/24
 第四波由CLI消费纯更新verifier：明确批准Policy与最近staging receipt保存在同一protected state，固定registration anchor和home操作锁约束初次登记/跨进程提交。没有在线更新服务、安装副作用或新的生产进程；同OS账户恢复旧状态仍在本地信任边界之外。[更新状态合同](../30-implementation/trusted-update-state.md)。
 
 第五波在隔离 v2 authority 增加默认关闭的 proxy.bootstrap：固定受保护 profile 绑定 epoch/customer interface/精确 proxy `/32`，PoP 请求取得短期 TLS 配置投影。device bind 本地保存独立 X25519 私钥；device start 在同 home 锁下消费当前 binding/generation，generation 将完整 projection 和 sing-box 配置同时绑定到引擎 identity。实际 Windows CLI 经真实用户态 WG 访问 owned target、撤销后新请求失效和受保护 peer 正对照已贯通。它没有建立持续 session lease，没有更改生产端口、授权权威、wg0 或手机服务；Linux 产品后台启动仍未实现。见[设备启动合同](../30-implementation/v2-proxy-bootstrap.md)。
+
+第六波在 Admin SQLite 增加显式人工批准的 provisional 固定清册、只追加 extra、单调历史、旧异常 metadata 负事实和持久 observer runs。auth bootstrap 已识别有效 token 的失败也落观察事务，sink 在挂载前先持久 prearm；关闭/换代期间请求直接拒绝，写失败或崩溃后重开保留缺口。Admin canonical readiness 升为 contract2，并新增只读迁移页面。TokenStore 仍是 legacy 授权事实源，声明 owner/installation 不是已验证 lineage，T0=null/ready=false 不变；生产旧 observer 与新源码分别记录，见[清册合同](../30-implementation/migration-inventory.md)。
 
 1. 保持 Android `zhreverse` 作为默认数据面。
 2. 确认新 token / bootstrap 配置默认指向 `10.66.0.1:18081`。

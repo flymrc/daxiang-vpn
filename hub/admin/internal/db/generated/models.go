@@ -80,6 +80,49 @@ type EgressNode struct {
 	UpdatedAt      string `json:"updated_at"`
 }
 
+type MigrationImportFlag struct {
+	TokenID string `json:"token_id"`
+	Reason  string `json:"reason"`
+}
+
+type MigrationInventory struct {
+	Singleton      int64  `json:"singleton"`
+	RegistryID     string `json:"registry_id"`
+	ApprovedSha256 string `json:"approved_sha256"`
+	BaselineCount  int64  `json:"baseline_count"`
+	RegisteredAt   string `json:"registered_at"`
+}
+
+type MigrationMember struct {
+	TokenID              string `json:"token_id"`
+	Membership           string `json:"membership"`
+	OwnerRef             string `json:"owner_ref"`
+	Shared               int64  `json:"shared"`
+	InstallationRefsJson string `json:"installation_refs_json"`
+	RegisteredAt         string `json:"registered_at"`
+}
+
+type MigrationObservationFact struct {
+	TokenID              string `json:"token_id"`
+	FirstSeenUnixNs      int64  `json:"first_seen_unix_ns"`
+	LastSeenUnixNs       int64  `json:"last_seen_unix_ns"`
+	SecureBootstrapCount int64  `json:"secure_bootstrap_count"`
+	LegacyCount          int64  `json:"legacy_count"`
+	UnknownCount         int64  `json:"unknown_count"`
+	CompatIngressCount   int64  `json:"compat_ingress_count"`
+	DeniedCount          int64  `json:"denied_count"`
+	ErrorCount           int64  `json:"error_count"`
+}
+
+type MigrationObserverRun struct {
+	RunID         string         `json:"run_id"`
+	StartedAt     string         `json:"started_at"`
+	EndedAt       sql.NullString `json:"ended_at"`
+	State         string         `json:"state"`
+	Reason        string         `json:"reason"`
+	LastSuccessAt sql.NullString `json:"last_success_at"`
+}
+
 type RotateLock struct {
 	EgressID  string `json:"egress_id"`
 	StartedAt string `json:"started_at"`

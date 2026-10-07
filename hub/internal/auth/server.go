@@ -34,6 +34,11 @@ type Server struct {
 	carrierCacheTTL   time.Duration
 	carrierProbe      func(context.Context, string) string
 	auditSink         func(AuditEvent)
+	auditMu           sync.Mutex
+	auditGate         sync.RWMutex
+	auditOwner        uint64
+	auditStopped      bool
+	auditOnDetach     func(string)
 	applyClientPeer   func(context.Context, string, string) error
 	httpAdmission     *httpboundary.Admission
 	resourcesOnce     sync.Once
@@ -215,7 +220,53 @@ func (s *Server) Health(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) SetAuditSink(sink func(AuditEvent)) {
-	s.auditSink = sink
+	s.RegisterAuditSink(sink, nil)
+}
+
+// RegisterAuditSink swaps generations only after all owned HTTP operations and
+// callbacks drain. A stale owner cannot detach its successor. Closing capture
+// gates future client mutations until a new prearmed observer is registered.
+func (s *Server) RegisterAuditSink(sink func(AuditEvent), detached func(string)) func() bool {
+	s.auditGate.Lock()
+	s.auditMu.Lock()
+	if s.auditOnDetach != nil {
+		s.auditOnDetach("sink_replaced")
+	}
+	s.auditOwner++
+	owner := s.auditOwner
+	s.auditSink, s.auditOnDetach, s.auditStopped = sink, detached, false
+	s.auditMu.Unlock()
+	s.auditGate.Unlock()
+	return func() bool {
+		s.auditGate.Lock()
+		defer s.auditGate.Unlock()
+		s.auditMu.Lock()
+		defer s.auditMu.Unlock()
+		if s.auditOwner != owner {
+			return false
+		}
+		s.auditStopped = true
+		if s.auditOnDetach != nil {
+			s.auditOnDetach("observer_closed")
+		}
+		s.auditSink, s.auditOnDetach = nil, nil
+		return true
+	}
+}
+
+func (s *Server) observedHandler(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.auditGate.TryRLock() {
+			writeJSON(w, 503, map[string]string{"error": "observer_unavailable"})
+			return
+		}
+		defer s.auditGate.RUnlock()
+		if s.auditStopped {
+			writeJSON(w, 503, map[string]string{"error": "observer_unavailable"})
+			return
+		}
+		handler.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) SetRotateTrigger(trigger func(context.Context, string, int) error) {
@@ -233,7 +284,7 @@ func (s *Server) BootstrapHandler(ingress ClientIngress) http.HandlerFunc {
 	if ingress == ClientIngressTrustedProxy {
 		policy = httpboundary.LoopbackProxy
 	}
-	return s.HTTPAdmission().Middleware(handler, policy).ServeHTTP
+	return s.HTTPAdmission().Middleware(s.observedHandler(handler), policy).ServeHTTP
 }
 
 func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request, ingress ClientIngress) {
@@ -279,7 +330,20 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request, ingress Clien
 		return
 	}
 	clientPublicKey := strings.TrimSpace(req.WireGuardPublicKey)
+	failureResult := "error"
+	defer func() {
+		if failureResult == "" {
+			return
+		}
+		occurred := time.Now()
+		keyMode := "server_legacy"
+		if clientPublicKey != "" {
+			keyMode = "client_generated"
+		}
+		s.audit(AuditEvent{OccurredAt: occurred, Actor: record.ClientName, SourceIP: src, EventType: "client.bootstrap", Result: failureResult, ErrorCode: "bootstrap_attempt_failed", MigrationObservation: &MigrationObservation{TokenID: TokenID(req.Token), OccurredAt: occurred, ClientProduct: strings.TrimSpace(req.ClientProduct), ClientVersion: strings.TrimSpace(req.ClientVersion), ProtocolVersion: req.ProtocolVersion, Ingress: string(ingress), KeyMode: keyMode, MigrationClass: "unknown"}})
+	}()
 	if clientPublicKey != "" && validateWireGuardPublicKey(clientPublicKey) != nil {
+		failureResult = "denied"
 		s.audit(AuditEvent{OccurredAt: time.Now(), Actor: record.ClientName, SourceIP: src, EventType: "client.bootstrap", Target: "token:" + maskToken(req.Token), DetailJSON: `{"reason":"invalid_wireguard_public_key"}`, Result: "denied", ErrorCode: "invalid_wireguard_public_key"})
 		writeJSON(w, 400, map[string]string{"error": "invalid_wireguard_public_key"})
 		return
@@ -290,6 +354,7 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request, ingress Clien
 	}
 	claimed, claim := s.claimTokenReceipt(req.Token, src, time.Now())
 	if !claimed {
+		failureResult = "denied"
 		log.Printf("bootstrap 拒绝 src=%s token=%q client=%s reason=token_in_use", src, maskToken(req.Token), record.ClientName)
 		s.audit(AuditEvent{
 			OccurredAt: time.Now(),
@@ -356,6 +421,7 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request, ingress Clien
 		MigrationClass:     classification.MigrationClass,
 	}
 	log.Printf("bootstrap 通过 src=%s token=%q client=%s egress=%s", src, maskToken(req.Token), record.ClientName, record.Egress.Name)
+	failureResult = ""
 	s.audit(AuditEvent{
 		OccurredAt:           occurredAt,
 		Actor:                record.ClientName,
@@ -410,8 +476,7 @@ func validClientMetadata(product string, version string, protocolVersion int) bo
 	default:
 		return false
 	}
-	version = strings.TrimSpace(version)
-	return protocolVersion == 2 && version != "" && version != "dev" && len(version) <= 64
+	return protocolVersion == 2 && validReleaseVersion(version)
 }
 
 func bootstrapAuditDetailJSON(egress string, observation *MigrationObservation) string {
@@ -784,7 +849,7 @@ func (s *Server) RotateIPHandler(ingress ClientIngress) http.HandlerFunc {
 	if ingress == ClientIngressTrustedProxy {
 		policy = httpboundary.LoopbackProxy
 	}
-	return s.HTTPAdmission().Middleware(handler, policy).ServeHTTP
+	return s.HTTPAdmission().Middleware(s.observedHandler(handler), policy).ServeHTTP
 }
 
 func (s *Server) rotateIP(w http.ResponseWriter, r *http.Request, ingress ClientIngress) {
@@ -1126,7 +1191,12 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 }
 
 func (s *Server) audit(event AuditEvent) {
-	if s == nil || s.auditSink == nil {
+	if s == nil {
+		return
+	}
+	s.auditMu.Lock()
+	defer s.auditMu.Unlock()
+	if s.auditSink == nil {
 		return
 	}
 	if event.OccurredAt.IsZero() {

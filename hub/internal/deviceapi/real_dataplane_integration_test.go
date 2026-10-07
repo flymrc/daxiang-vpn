@@ -269,6 +269,35 @@ func TestRealCLIProxyBootstrapToWireGuardOwnedTargetAndRevoke(t *testing.T) {
 	if status.Operation == nil || !status.Operation.Effective || status.Operation.Generation != 1 {
 		t.Fatal("real CLI did not observe actual runtime convergence")
 	}
+	// A foreign listener must survive an otherwise valid authorized start. The
+	// real CLI must refuse before writing a cache or private launch config.
+	occupied, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal("open owned foreign listener")
+	}
+	occupiedPort := occupied.Addr().(*net.TCPAddr).Port
+	busy := call("", false, "start", "--expected-generation", "1", "--port", strconv.Itoa(occupiedPort))
+	if busy.Code != "local_port_occupied" || busy.Outcome != "rejected" || busy.InstanceID != "" || busy.ConfigGeneration != "" {
+		occupied.Close()
+		t.Fatal("occupied port was mistaken for an authorized engine")
+	}
+	for _, path := range []string{homeContext.ConfigPath, homeContext.SingBoxConfig} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			occupied.Close()
+			t.Fatal("occupied port refusal wrote a cache or launch configuration")
+		}
+	}
+	if live, err := proxy.Inspect(homeContext); err != nil || live.State != "stopped" {
+		occupied.Close()
+		t.Fatal("occupied port refusal launched or claimed an engine")
+	}
+	probe, err := net.DialTimeout("tcp", occupied.Addr().String(), time.Second)
+	if err != nil {
+		occupied.Close()
+		t.Fatal("occupied port refusal stopped the foreign listener")
+	}
+	probe.Close()
+	occupied.Close()
 	started := call("", true, startArgs...)
 	if started.Outcome != "engine_ready" || started.EngineState != "ready" || started.InstanceID == "" || started.ConfigGeneration == "" || started.Generation != 1 || started.Proxy != net.JoinHostPort("127.0.0.1", strconv.Itoa(port)) {
 		t.Fatal("real v2 engine receipt lacks authenticated local readiness")

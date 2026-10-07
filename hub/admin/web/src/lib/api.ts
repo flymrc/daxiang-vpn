@@ -10,6 +10,9 @@ export type AuditEvent = components["schemas"]["AuditEvent"];
 export type RotateIPResponse = components["schemas"]["RotateIPResponse"];
 export type TokenSecretResponse = components["schemas"]["TokenSecretResponse"];
 export type EgressExitIPResponse = components["schemas"]["EgressExitIPResponse"];
+export type MigrationReadiness = components["schemas"]["MigrationReadinessResponse"];
+export type MigrationClient = components["schemas"]["MigrationClientStatus"];
+export type MigrationObserverRun = components["schemas"]["MigrationObserverRun"];
 
 export class ApiError extends Error {
   status: number;
@@ -77,6 +80,10 @@ export class AdminApi {
 
   overview() {
     return this.request<Overview>("/overview");
+  }
+
+  async migrationReadiness(): Promise<MigrationReadiness> {
+    return validate.migration(await this.request<MigrationReadiness>("/migration/readiness"));
   }
 
   tokens() {

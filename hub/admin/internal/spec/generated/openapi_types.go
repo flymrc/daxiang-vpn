@@ -27,11 +27,87 @@ const (
 	Ok HealthResponseStatus = "ok"
 )
 
+// Defines values for MigrationBlocker.
+const (
+	ApprovedReleaseUnavailable    MigrationBlocker = "approved_release_unavailable"
+	CampaignNotConfigured         MigrationBlocker = "campaign_not_configured"
+	DataplaneStartupUnverified    MigrationBlocker = "dataplane_startup_unverified"
+	DispositionRequired           MigrationBlocker = "disposition_required"
+	E2eEvidenceUnavailable        MigrationBlocker = "e2e_evidence_unavailable"
+	ExtraUnregistered             MigrationBlocker = "extra_unregistered"
+	HistoricalCompat              MigrationBlocker = "historical_compat"
+	HistoricalDenied              MigrationBlocker = "historical_denied"
+	HistoricalError               MigrationBlocker = "historical_error"
+	HistoricalLegacy              MigrationBlocker = "historical_legacy"
+	HistoricalUnknown             MigrationBlocker = "historical_unknown"
+	InventoryNotRegistered        MigrationBlocker = "inventory_not_registered"
+	LineageUnknown                MigrationBlocker = "lineage_unknown"
+	LineageUnverified             MigrationBlocker = "lineage_unverified"
+	NonSecureBootstrapTokens      MigrationBlocker = "non_secure_bootstrap_tokens"
+	ObservationWriteFailed        MigrationBlocker = "observation_write_failed"
+	ObserverContinuityUnavailable MigrationBlocker = "observer_continuity_unavailable"
+	ObserverGap                   MigrationBlocker = "observer_gap"
+	QuietWindowUnavailable        MigrationBlocker = "quiet_window_unavailable"
+	RecoveryEvidenceUnavailable   MigrationBlocker = "recovery_evidence_unavailable"
+	RevocationEvidenceUnavailable MigrationBlocker = "revocation_evidence_unavailable"
+	SessionCleanupUnavailable     MigrationBlocker = "session_cleanup_unavailable"
+	SharedLineageUnverified       MigrationBlocker = "shared_lineage_unverified"
+	SourceDisabled                MigrationBlocker = "source_disabled"
+	SourceExpired                 MigrationBlocker = "source_expired"
+	SourceInvalid                 MigrationBlocker = "source_invalid"
+	SourceMissing                 MigrationBlocker = "source_missing"
+	UnobservedTokens              MigrationBlocker = "unobserved_tokens"
+)
+
+// Defines values for MigrationClientStatusLineageState.
+const (
+	MigrationClientStatusLineageStateDeclaredUnverified MigrationClientStatusLineageState = "declared_unverified"
+	MigrationClientStatusLineageStateSharedUnverified   MigrationClientStatusLineageState = "shared_unverified"
+	MigrationClientStatusLineageStateUnknown            MigrationClientStatusLineageState = "unknown"
+)
+
+// Defines values for MigrationClientStatusMembership.
+const (
+	Baseline     MigrationClientStatusMembership = "baseline"
+	Extra        MigrationClientStatusMembership = "extra"
+	Unregistered MigrationClientStatusMembership = "unregistered"
+)
+
 // Defines values for MigrationClientStatusMigrationClass.
 const (
-	MigrationClientStatusMigrationClassLegacy          MigrationClientStatusMigrationClass = "legacy"
-	MigrationClientStatusMigrationClassSecureBootstrap MigrationClientStatusMigrationClass = "secure_bootstrap"
-	MigrationClientStatusMigrationClassUnknown         MigrationClientStatusMigrationClass = "unknown"
+	Legacy          MigrationClientStatusMigrationClass = "legacy"
+	SecureBootstrap MigrationClientStatusMigrationClass = "secure_bootstrap"
+	Unknown         MigrationClientStatusMigrationClass = "unknown"
+)
+
+// Defines values for MigrationClientStatusSourceState.
+const (
+	MigrationClientStatusSourceStateDisabled MigrationClientStatusSourceState = "disabled"
+	MigrationClientStatusSourceStateEnabled  MigrationClientStatusSourceState = "enabled"
+	MigrationClientStatusSourceStateExpired  MigrationClientStatusSourceState = "expired"
+	MigrationClientStatusSourceStateInvalid  MigrationClientStatusSourceState = "invalid"
+	MigrationClientStatusSourceStateMissing  MigrationClientStatusSourceState = "missing"
+)
+
+// Defines values for MigrationObserverRunReason.
+const (
+	None            MigrationObserverRunReason = "none"
+	ObserverClosed  MigrationObserverRunReason = "observer_closed"
+	SinkReplaced    MigrationObserverRunReason = "sink_replaced"
+	UncleanShutdown MigrationObserverRunReason = "unclean_shutdown"
+	WriteFailed     MigrationObserverRunReason = "write_failed"
+)
+
+// Defines values for MigrationObserverRunState.
+const (
+	Closed MigrationObserverRunState = "closed"
+	Failed MigrationObserverRunState = "failed"
+	Open   MigrationObserverRunState = "open"
+)
+
+// Defines values for MigrationReadinessResponseContractVersion.
+const (
+	N2 MigrationReadinessResponseContractVersion = 2
 )
 
 // Defines values for MigrationReadinessResponseMode.
@@ -47,10 +123,10 @@ const (
 
 // Defines values for TokenSummaryStatus.
 const (
-	Disabled TokenSummaryStatus = "disabled"
-	Enabled  TokenSummaryStatus = "enabled"
-	Expired  TokenSummaryStatus = "expired"
-	Expiring TokenSummaryStatus = "expiring"
+	TokenSummaryStatusDisabled TokenSummaryStatus = "disabled"
+	TokenSummaryStatusEnabled  TokenSummaryStatus = "enabled"
+	TokenSummaryStatusExpired  TokenSummaryStatus = "expired"
+	TokenSummaryStatusExpiring TokenSummaryStatus = "expiring"
 )
 
 // AuditEvent defines model for AuditEvent.
@@ -160,42 +236,111 @@ type LoginRequest struct {
 	Username string `json:"username"`
 }
 
-// MigrationClientStatus defines model for MigrationClientStatus.
+// MigrationBlocker defines model for MigrationBlocker.
+type MigrationBlocker string
+
+// MigrationClientStatus Product/version/protocol/ingress/key mode/class describe the most recent successful bootstrap; last_seen_at and history.last_seen_at also include later denied/error attempts. Installation and owner references are declarations only and never confirmed lineage.
 type MigrationClientStatus struct {
+	Blockers           []MigrationBlocker                  `json:"blockers"`
 	ClientProduct      string                              `json:"client_product"`
 	ClientVersion      string                              `json:"client_version"`
+	History            MigrationHistory                    `json:"history"`
 	Ingress            string                              `json:"ingress"`
+	InstallationRefs   []string                            `json:"installation_refs"`
 	KeyMode            string                              `json:"key_mode"`
 	LastSeenAt         *time.Time                          `json:"last_seen_at"`
+	LineageState       MigrationClientStatusLineageState   `json:"lineage_state"`
+	Membership         MigrationClientStatusMembership     `json:"membership"`
 	MigrationClass     MigrationClientStatusMigrationClass `json:"migration_class"`
 	Observed           bool                                `json:"observed"`
+	OwnerRef           string                              `json:"owner_ref"`
 	PrivateKeyReturned bool                                `json:"private_key_returned"`
 	ProtocolVersion    int                                 `json:"protocol_version"`
+	Shared             bool                                `json:"shared"`
+	SourceState        MigrationClientStatusSourceState    `json:"source_state"`
 	TokenId            string                              `json:"token_id"`
 }
+
+// MigrationClientStatusLineageState defines model for MigrationClientStatus.LineageState.
+type MigrationClientStatusLineageState string
+
+// MigrationClientStatusMembership defines model for MigrationClientStatus.Membership.
+type MigrationClientStatusMembership string
 
 // MigrationClientStatusMigrationClass defines model for MigrationClientStatus.MigrationClass.
 type MigrationClientStatusMigrationClass string
 
-// MigrationReadinessResponse defines model for MigrationReadinessResponse.
-type MigrationReadinessResponse struct {
-	Blockers                  []string                       `json:"blockers"`
-	CampaignConfigured        bool                           `json:"campaign_configured"`
-	Clients                   []MigrationClientStatus        `json:"clients"`
-	CompatIngressTokenCount   int                            `json:"compat_ingress_token_count"`
-	GeneratedAt               time.Time                      `json:"generated_at"`
-	LastObservationAt         *time.Time                     `json:"last_observation_at"`
-	LegacyTokenCount          int                            `json:"legacy_token_count"`
-	Mode                      MigrationReadinessResponseMode `json:"mode"`
-	ObservationWriteHealthy   bool                           `json:"observation_write_healthy"`
-	ObservedTokenCount        int                            `json:"observed_token_count"`
-	ObserverStartedAt         time.Time                      `json:"observer_started_at"`
-	Ready                     bool                           `json:"ready"`
-	SecureBootstrapTokenCount int                            `json:"secure_bootstrap_token_count"`
-	UnknownTokenCount         int                            `json:"unknown_token_count"`
-	UnobservedTokenCount      int                            `json:"unobserved_token_count"`
-	ValidTokenCount           int                            `json:"valid_token_count"`
+// MigrationClientStatusSourceState defines model for MigrationClientStatus.SourceState.
+type MigrationClientStatusSourceState string
+
+// MigrationHistory defines model for MigrationHistory.
+type MigrationHistory struct {
+	CompatIngressCount   int64      `json:"compat_ingress_count"`
+	DeniedCount          int64      `json:"denied_count"`
+	ErrorCount           int64      `json:"error_count"`
+	FirstSeenAt          *time.Time `json:"first_seen_at"`
+	LastSeenAt           *time.Time `json:"last_seen_at"`
+	LegacyCount          int64      `json:"legacy_count"`
+	SecureBootstrapCount int64      `json:"secure_bootstrap_count"`
+	UnknownCount         int64      `json:"unknown_count"`
 }
+
+// MigrationObserver defines model for MigrationObserver.
+type MigrationObserver struct {
+	CurrentRunId  string                 `json:"current_run_id"`
+	GapCount      int                    `json:"gap_count"`
+	Healthy       bool                   `json:"healthy"`
+	LastSuccessAt *time.Time             `json:"last_success_at"`
+	Runs          []MigrationObserverRun `json:"runs"`
+}
+
+// MigrationObserverRun defines model for MigrationObserverRun.
+type MigrationObserverRun struct {
+	EndedAt       *time.Time                 `json:"ended_at"`
+	LastSuccessAt *time.Time                 `json:"last_success_at"`
+	Reason        MigrationObserverRunReason `json:"reason"`
+	RunId         string                     `json:"run_id"`
+	StartedAt     time.Time                  `json:"started_at"`
+	State         MigrationObserverRunState  `json:"state"`
+}
+
+// MigrationObserverRunReason defines model for MigrationObserverRun.Reason.
+type MigrationObserverRunReason string
+
+// MigrationObserverRunState defines model for MigrationObserverRun.State.
+type MigrationObserverRunState string
+
+// MigrationReadinessResponse Provisional fixed inventory and durable historical observations. No campaign activation, T0, approved release, or compliance is created. Report may passively append unknown extras; a failed batch returns projection_unavailable rather than partial healthy data. Latest classification counts span all durable members, while valid_token_count only counts currently enabled sources.
+type MigrationReadinessResponse struct {
+	ApprovedInventorySha256   string                                    `json:"approved_inventory_sha256"`
+	BaselineMemberCount       int                                       `json:"baseline_member_count"`
+	Blockers                  []MigrationBlocker                        `json:"blockers"`
+	CampaignConfigured        bool                                      `json:"campaign_configured"`
+	Clients                   []MigrationClientStatus                   `json:"clients"`
+	CompatIngressTokenCount   int                                       `json:"compat_ingress_token_count"`
+	ContractVersion           MigrationReadinessResponseContractVersion `json:"contract_version"`
+	ExtraMemberCount          int                                       `json:"extra_member_count"`
+	GeneratedAt               time.Time                                 `json:"generated_at"`
+	InventoryRegistered       bool                                      `json:"inventory_registered"`
+	LastObservationAt         *time.Time                                `json:"last_observation_at"`
+	LegacyTokenCount          int                                       `json:"legacy_token_count"`
+	MemberCount               int                                       `json:"member_count"`
+	Mode                      MigrationReadinessResponseMode            `json:"mode"`
+	ObservationWriteHealthy   bool                                      `json:"observation_write_healthy"`
+	ObservedTokenCount        int                                       `json:"observed_token_count"`
+	Observer                  MigrationObserver                         `json:"observer"`
+	ObserverStartedAt         time.Time                                 `json:"observer_started_at"`
+	Ready                     bool                                      `json:"ready"`
+	RegistryId                string                                    `json:"registry_id"`
+	SecureBootstrapTokenCount int                                       `json:"secure_bootstrap_token_count"`
+	T0                        *time.Time                                `json:"t0"`
+	UnknownTokenCount         int                                       `json:"unknown_token_count"`
+	UnobservedTokenCount      int                                       `json:"unobserved_token_count"`
+	ValidTokenCount           int                                       `json:"valid_token_count"`
+}
+
+// MigrationReadinessResponseContractVersion defines model for MigrationReadinessResponse.ContractVersion.
+type MigrationReadinessResponseContractVersion int
 
 // MigrationReadinessResponseMode defines model for MigrationReadinessResponse.Mode.
 type MigrationReadinessResponseMode string

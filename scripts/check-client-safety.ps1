@@ -32,6 +32,7 @@ try {
     Invoke-Gate 'Hub compatibility and admin race tests' 'go' @('test', '-race', './hub/internal/auth', './hub/admin/...', './hub/internal/httpboundary', './hub/internal/processbudget')
     Invoke-Gate 'Actual CLI and Hub TLS interoperability' 'go' @('test', '-race', '-tags', 'integration', './hub/internal/deviceapi', '-run', 'TestRealCLIAndHubTLSRecoverLostMutationResponses', '-count=1')
     Invoke-Gate 'Actual WireGuard traffic, startup TLS gate, protected peer and CLI revocation' 'go' @('test', '-race', '-tags', 'integration,with_gvisor', './hub/internal/deviceapi', '-run', '^Test(Real(WireGuard|CLIProxy)|.*Service.*)', '-count=1')
+    Invoke-Gate 'Actual provisional inventory, SQLite faults and observer restarts' 'go' @('test', '-race', '-tags', 'integration', './hub/admin/internal/api', '-run', '^TestCampaignIndependent', '-count=1')
     Invoke-Gate 'Actual offline update CLI and cross-process watermarks' 'go' @('test', '-race', '-tags', 'integration', './clients/cli/internal/updateclient', '-run', '^TestCLIUpdate', '-count=1')
     Invoke-Gate 'Python SDK consumers' 'python' @('-m', 'unittest', 'discover', '-s', 'sdk/python/tests', '-v')
     Invoke-Gate 'Security evidence parser' 'python' @('-m', 'unittest', 'discover', '-s', 'scripts/tests', '-v')

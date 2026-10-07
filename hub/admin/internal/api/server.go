@@ -26,6 +26,12 @@ type Server struct {
 	startedAt              time.Time
 	httpClient             *http.Client
 	observationWriteFailed atomic.Bool
+	observerRunID          string
+	observerDetach         func() bool
+	closeOnce              sync.Once
+	closeErr               error
+	requestGate            sync.RWMutex
+	closed                 bool
 
 	maintenanceCancel context.CancelFunc
 	maintenanceDone   chan struct{}
@@ -62,13 +68,29 @@ func NewServer(cfg Config, tokenStore *auth.TokenStore, clientAuth *auth.Server)
 	if cfg.AdminPasswordPHC == "" {
 		log.Printf("ZHHUB_ADMIN_PASSWORD_HASH 未设置：admin 登录将不可用")
 	}
+	runID, err := store.StartObserverRun(context.Background(), time.Now())
+	if err != nil {
+		_ = store.Close()
+		return nil, dbstore.ErrProjectionUnavailable
+	}
+	s.observerRunID = runID
 	if clientAuth != nil {
-		clientAuth.SetAuditSink(func(event auth.AuditEvent) {
-			if err := store.InsertAudit(context.Background(), event); err != nil {
-				s.observationWriteFailed.Store(true)
-				log.Printf("admin audit 写入失败: %v", err)
+		s.observerDetach = clientAuth.RegisterAuditSink(func(event auth.AuditEvent) {
+			if err := store.InsertObservedAudit(context.Background(), runID, event); err != nil {
+				s.failObserver("write_failed")
+			}
+		}, func(reason string) {
+			if reason == "observer_closed" && !s.observationWriteFailed.Load() {
+				if err := store.CloseObserverRun(context.Background(), runID); err != nil {
+					s.failObserver("write_failed")
+				}
+			} else {
+				s.failObserver(reason)
 			}
 		})
+	} else {
+		// No client callback source is attached: readiness cannot certify capture.
+		s.failObserver("observer_closed")
 	}
 	s.routes()
 	s.startMaintenance()
@@ -79,14 +101,40 @@ func (s *Server) Close() error {
 	if s == nil {
 		return nil
 	}
-	s.stopMaintenance()
-	if s.store == nil {
-		return nil
+	s.closeOnce.Do(func() {
+		s.requestGate.Lock()
+		defer s.requestGate.Unlock()
+		s.closed = true
+		s.stopMaintenance()
+		if s.observerDetach != nil {
+			s.observerDetach()
+		}
+		if s.store != nil {
+			s.closeErr = s.store.Close()
+		}
+	})
+	return s.closeErr
+}
+
+func (s *Server) failObserver(reason string) {
+	first := s.observationWriteFailed.CompareAndSwap(false, true)
+	if first {
+		log.Printf("admin observer unavailable code=%s", reason)
 	}
-	return s.store.Close()
+	// Failure of this write still leaves the prearmed run open on disk.
+	_ = s.store.FailObserverRun(context.Background(), s.observerRunID, reason)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !s.requestGate.TryRLock() {
+		writeError(w, http.StatusServiceUnavailable, "observer_unavailable", "")
+		return
+	}
+	defer s.requestGate.RUnlock()
+	if s.closed {
+		writeError(w, http.StatusServiceUnavailable, "observer_unavailable", "")
+		return
+	}
 	// This server is the explicitly registered Caddy/admin listener. Its policy
 	// does not derive listener identity from request headers or private source IPs.
 	verified, err := httpboundary.RequestWithSource(r, httpboundary.LoopbackProxy)
