@@ -7,11 +7,11 @@
   "required": ["contract_version", "command", "ok", "outcome", "pending"],
   "properties": {
     "contract_version": {"const": 2},
-    "command": {"enum": ["activate", "status", "apply", "disable", "revoke", "rotate-credential", "recover", "cancel-pending", "unknown"]},
+    "command": {"enum": ["activate", "status", "apply", "bind", "disable", "revoke", "rotate-credential", "recover", "cancel-pending", "start", "unknown"]},
     "ok": {"type": "boolean"},
     "outcome": {"enum": ["credential_created", "credential_rotated", "credential_recovered", "accepted", "status", "operation_recovered", "cancelled", "rejected", "result_unknown", "local_error"]},
     "pending": {"type": "boolean"},
-    "code": {"enum": ["invalid_request", "unauthorized", "conflict", "not_found", "unavailable", "rate_limited", "invalid_server", "connection_failure", "invalid_response", "local_storage_failure", "invalid_arguments", "invalid_ca_file", "command_timeout", "server_mismatch", "pending_resolution_required", "already_activated", "invalid_activation_input", "not_activated", "result_unknown", "no_pending_intent"]},
+    "code": {"enum": ["invalid_request", "unauthorized", "conflict", "not_found", "unavailable", "rate_limited", "invalid_server", "connection_failure", "invalid_response", "local_storage_failure", "invalid_arguments", "invalid_ca_file", "command_timeout", "server_mismatch", "pending_resolution_required", "already_activated", "invalid_activation_input", "not_activated", "result_unknown", "no_pending_intent", "stale_generation", "binding_required", "credential_expired", "projection_expired", "authority_epoch_mismatch", "profile_rollback"]},
     "request_id": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
     "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128},
     "credential": {"$ref": "#/$defs/credential"},
@@ -28,6 +28,7 @@
           {"properties": {"command": {"const": "rotate-credential"}, "outcome": {"const": "credential_rotated"}}, "required": ["credential"], "not": {"required": ["operation"]}},
           {"properties": {"command": {"enum": ["recover", "cancel-pending"]}, "outcome": {"const": "credential_recovered"}}, "required": ["credential"], "not": {"required": ["operation"]}},
           {"properties": {"command": {"enum": ["apply", "disable", "revoke"]}, "outcome": {"const": "accepted"}, "operation": {"properties": {"effective": {"const": false}}}}, "required": ["operation"], "not": {"required": ["credential"]}},
+          {"properties": {"command": {"const": "bind"}, "outcome": {"const": "accepted"}, "operation": {"properties": {"action": {"const": "apply"}, "effective": {"const": false}}}}, "required": ["operation"], "not": {"required": ["credential"]}},
           {"properties": {"command": {"const": "status"}, "outcome": {"const": "status"}}, "required": ["operation"], "not": {"required": ["credential"]}},
           {"properties": {"command": {"enum": ["recover", "cancel-pending"]}, "outcome": {"const": "operation_recovered"}}, "required": ["operation"], "not": {"required": ["credential"]}},
           {"properties": {"command": {"const": "cancel-pending"}, "outcome": {"const": "cancelled"}}, "required": ["request_id"], "not": {"anyOf": [{"required": ["credential"]}, {"required": ["operation"]}]}}

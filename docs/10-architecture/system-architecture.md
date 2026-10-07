@@ -506,6 +506,8 @@ NAT 来源：10.66.0.0/24
 
 第四波由CLI消费纯更新verifier：明确批准Policy与最近staging receipt保存在同一protected state，固定registration anchor和home操作锁约束初次登记/跨进程提交。没有在线更新服务、安装副作用或新的生产进程；同OS账户恢复旧状态仍在本地信任边界之外。[更新状态合同](../30-implementation/trusted-update-state.md)。
 
+第五波在隔离 v2 authority 增加默认关闭的 proxy.bootstrap：固定受保护 profile 绑定 epoch/customer interface/精确 proxy `/32`，PoP 请求取得短期 TLS 配置投影。device bind 本地保存独立 X25519 私钥；device start 在同 home 锁下消费当前 binding/generation，generation 将完整 projection 和 sing-box 配置同时绑定到引擎 identity。实际 Windows CLI 经真实用户态 WG 访问 owned target、撤销后新请求失效和受保护 peer 正对照已贯通。它没有建立持续 session lease，没有更改生产端口、授权权威、wg0 或手机服务；Linux 产品后台启动仍未实现。见[设备启动合同](../30-implementation/v2-proxy-bootstrap.md)。
+
 1. 保持 Android `zhreverse` 作为默认数据面。
 2. 确认新 token / bootstrap 配置默认指向 `10.66.0.1:18081`。
 3. 增加基于清单的配置渲染。

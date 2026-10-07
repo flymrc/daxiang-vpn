@@ -52,6 +52,8 @@ type testAuthority struct {
 	failBeforeKind   string
 	cancelled        map[string]dc.ResolveReceipt
 	cancelCount      int
+	proxyReply       func(dc.ProxyBootstrapRequest, dc.Credential) (any, int)
+	applyCheck       func(dc.Command)
 }
 type testChallenge struct {
 	request dc.ChallengeRequest
@@ -184,6 +186,9 @@ func (a *testAuthority) handle(w http.ResponseWriter, r *http.Request) {
 			a.reply(w, 409, dc.Error{Code: dc.Conflict})
 			return
 		}
+		if a.applyCheck != nil {
+			a.applyCheck(b)
+		}
 		a.generation++
 		op := dc.Operation{OperationId: a.id(), DeviceId: a.credential.DeviceId, Action: string(b.Action), Generation: a.generation, State: dc.Pending, Accepted: true, Effective: false, DeadlineUnixSeconds: time.Now().Add(time.Minute).Unix()}
 		a.operations[op.OperationId] = op
@@ -194,6 +199,13 @@ func (a *testAuthority) handle(w http.ResponseWriter, r *http.Request) {
 		a.mutationCount++
 		result = op
 		status = 202
+	case "/api/v2/proxy/bootstrap":
+		var b dc.ProxyBootstrapRequest
+		if json.Unmarshal(body, &b) != nil || !a.active || a.credential == nil || b.ExpectedGeneration != a.generation || q.Purpose != "proxy.bootstrap" || a.proxyReply == nil {
+			a.unauthorized(w)
+			return
+		}
+		result, status = a.proxyReply(b, *a.credential)
 	case "/api/v2/credentials/receipt":
 		var b map[string]any
 		if json.Unmarshal(body, &b) != nil {

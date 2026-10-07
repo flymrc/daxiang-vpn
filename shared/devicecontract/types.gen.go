@@ -23,6 +23,7 @@ const (
 	ChallengeRequestPurposeCredentialRotate  ChallengeRequestPurpose = "credential.rotate"
 	ChallengeRequestPurposeOperationReceipt  ChallengeRequestPurpose = "operation.receipt"
 	ChallengeRequestPurposeOperationStatus   ChallengeRequestPurpose = "operation.status"
+	ChallengeRequestPurposeProxyBootstrap    ChallengeRequestPurpose = "proxy.bootstrap"
 	ChallengeRequestPurposeRequestResolve    ChallengeRequestPurpose = "request.resolve"
 )
 
@@ -64,6 +65,16 @@ const (
 	Done       OperationState = "done"
 	Pending    OperationState = "pending"
 	Superseded OperationState = "superseded"
+)
+
+// Defines values for ProxyBootstrapVersion.
+const (
+	ProxyBootstrapVersionN1 ProxyBootstrapVersion = 1
+)
+
+// Defines values for ProxyRouteProfileVersion.
+const (
+	ProxyRouteProfileVersionN1 ProxyRouteProfileVersion = 1
 )
 
 // Defines values for ResolveReceiptKind.
@@ -187,6 +198,51 @@ type OperationReceiptRequest struct {
 	IdempotencyKey string `json:"idempotency_key"`
 	RequestId      string `json:"request_id"`
 }
+
+// ProxyBootstrap defines model for ProxyBootstrap.
+type ProxyBootstrap struct {
+	// Address Current canonical private customer IPv4 host /32
+	Address            string `json:"address"`
+	AppliedGeneration  int64  `json:"applied_generation"`
+	CredentialId       string `json:"credential_id"`
+	DesiredGeneration  int64  `json:"desired_generation"`
+	DeviceId           string `json:"device_id"`
+	ExpiresUnixSeconds int64  `json:"expires_unix_seconds"`
+	IssuedUnixSeconds  int64  `json:"issued_unix_seconds"`
+
+	// Profile Operator-maintained immutable service-lifetime profile, not caller input. Version 1 permits exactly one canonical private IPv4 proxy /32, excludes legacy management 10.66.0.0/24 and default routes. The endpoint is a canonical IPv4 host and decimal port; no DNS lookup or endpoint probing is performed by validation. Canonical digest is SHA256 of UTF-8 json.Marshal of the ordered string array [zhvpn-device-route,v1,decimal version,authority_epoch,managed_by,wg_interface,decimal revision,wg_endpoint,wg_public_key,proxy_address,egress_id,egress_name,sole allowed_ips entry]. Strings have their exact validated bytes; standard Go JSON escaping is part of this versioned digest contract. This digest detects content identity, not an offline signature or filesystem antirollback.
+	Profile            ProxyRouteProfile     `json:"profile"`
+	ProfileSha256      string                `json:"profile_sha256"`
+	Version            ProxyBootstrapVersion `json:"version"`
+	WireguardPublicKey string                `json:"wireguard_public_key"`
+}
+
+// ProxyBootstrapVersion defines model for ProxyBootstrap.Version.
+type ProxyBootstrapVersion int64
+
+// ProxyBootstrapRequest defines model for ProxyBootstrapRequest.
+type ProxyBootstrapRequest struct {
+	ExpectedGeneration int64  `json:"expected_generation"`
+	WireguardPublicKey string `json:"wireguard_public_key"`
+}
+
+// ProxyRouteProfile Operator-maintained immutable service-lifetime profile, not caller input. Version 1 permits exactly one canonical private IPv4 proxy /32, excludes legacy management 10.66.0.0/24 and default routes. The endpoint is a canonical IPv4 host and decimal port; no DNS lookup or endpoint probing is performed by validation. Canonical digest is SHA256 of UTF-8 json.Marshal of the ordered string array [zhvpn-device-route,v1,decimal version,authority_epoch,managed_by,wg_interface,decimal revision,wg_endpoint,wg_public_key,proxy_address,egress_id,egress_name,sole allowed_ips entry]. Strings have their exact validated bytes; standard Go JSON escaping is part of this versioned digest contract. This digest detects content identity, not an offline signature or filesystem antirollback.
+type ProxyRouteProfile struct {
+	AllowedIps     []string                 `json:"allowed_ips"`
+	AuthorityEpoch string                   `json:"authority_epoch"`
+	EgressId       string                   `json:"egress_id"`
+	EgressName     string                   `json:"egress_name"`
+	ManagedBy      string                   `json:"managed_by"`
+	ProxyAddress   string                   `json:"proxy_address"`
+	Revision       int64                    `json:"revision"`
+	Version        ProxyRouteProfileVersion `json:"version"`
+	WgEndpoint     string                   `json:"wg_endpoint"`
+	WgInterface    string                   `json:"wg_interface"`
+	WgPublicKey    string                   `json:"wg_public_key"`
+}
+
+// ProxyRouteProfileVersion defines model for ProxyRouteProfile.Version.
+type ProxyRouteProfileVersion int64
 
 // ResolveReceipt defines model for ResolveReceipt.
 type ResolveReceipt struct {
@@ -316,6 +372,17 @@ type GetOperationParams struct {
 	XZHSignature  Signature    `json:"X-ZH-Signature"`
 }
 
+// BootstrapProxyParams defines parameters for BootstrapProxy.
+type BootstrapProxyParams struct {
+	XZHDevice     DeviceId     `json:"X-ZH-Device"`
+	XZHCredential CredentialId `json:"X-ZH-Credential"`
+	XZHChallenge  ChallengeId  `json:"X-ZH-Challenge"`
+	XZHNonce      Nonce        `json:"X-ZH-Nonce"`
+	XZHExpires    Expires      `json:"X-ZH-Expires"`
+	XZHRequestID  RequestId    `json:"X-ZH-Request-ID"`
+	XZHSignature  Signature    `json:"X-ZH-Signature"`
+}
+
 // ResolvePendingRequestParams defines parameters for ResolvePendingRequest.
 type ResolvePendingRequestParams struct {
 	XZHChallenge ChallengeId `json:"X-ZH-Challenge"`
@@ -351,6 +418,9 @@ type RotateCredentialJSONRequestBody = RotationRequest
 
 // GetOperationReceiptJSONRequestBody defines body for GetOperationReceipt for application/json ContentType.
 type GetOperationReceiptJSONRequestBody = OperationReceiptRequest
+
+// BootstrapProxyJSONRequestBody defines body for BootstrapProxy for application/json ContentType.
+type BootstrapProxyJSONRequestBody = ProxyBootstrapRequest
 
 // ResolvePendingRequestJSONRequestBody defines body for ResolvePendingRequest for application/json ContentType.
 type ResolvePendingRequestJSONRequestBody = ResolveRequest

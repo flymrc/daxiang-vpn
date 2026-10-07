@@ -87,4 +87,10 @@ GUI 的状态查询失败会清除旧就绪快照/IP并显示待确认，禁用�
 
 旧 CLI 两个平台构建入口都进入统一 gate，正式签名/公证未验收时 release 拒绝，development 有完整 source inventory/空目录/环境恢复与 compile_only清单。SDK 直接 wheel 同样拒绝；自动 bundled discovery 核对协议、实际PE架构及hash，开发未签名包需显式启用。SDK 清单在身份/可选安装/源码校验成功后才发布。正式 publisher 信任、平台 wheel 和可信更新链仍是未完成的独立边界。
 
-新 `device` 命令独立消费 canonical TLS v2 API，默认不替代 legacy login/bootstrap，也不自动改变当前 proxy/WG 配置。公开 device receipt 是 contract version 2，和现有 CLI JSON v1 分开。先落私有 intent 再提交；激活/换钥/命令响应丢失通过原key/request/idempotency只读 receipt 查询恢复，不新建第二次mutation。真实 CLI executable 与实际 Hub handler/SQLite 的 TLS 互通已测试；WG执行是内存 fake，未证明真实隧道或生产采用。
+前三波的 `device` 命令独立消费 canonical TLS v2 API，默认不替代 legacy login/bootstrap，也不自动改变当前 proxy/WG 配置。公开 device receipt 是 contract version 2，和现有 CLI JSON v1 分开。先落私有 intent 再提交；激活/换钥/命令响应丢失通过原key/request/idempotency只读 receipt 查询恢复，不新建第二次mutation。当时真实 CLI executable 与实际 Hub handler/SQLite 的 TLS 互通已测试，WG 执行仅为内存 fake；第五波的真实数据面证据见下。
+
+## 第五波：设备凭据到真实代理
+
+显式 `device bind` 保存本地独立 WG 密钥，`device start` 经正常 TLS 取得与当前 credential/generation/applied/profile 绑定的最多 30 秒启动投影。完整投影和 canonical 路由 bytes 纳入本地 engine 身份，不读取 legacy 私钥、不沿用旧管理网路由。start 使用独立 contract2 DTO/schema；取消在 ready 答复途中发生也撤回本次 owned child，不返回成功。
+
+正式 fixture 已打通实际 Windows CLI→TLS/SQLite→sing-box→用户态 WireGuard→owned HTTP proxy→target marker，验证 key 的 handshake/transfer、撤销后新请求失败及 protected peer 正对照；WSL 验证实际 WG/TLS，产品后台启动明确未验收。启动投影不构成持续会话租约。独立实际反例证明，初始 reconciliation 部分失败虽然阻止 TLS 监听，外部旧 WG peer 仍可能可达；完整部署数据面屏障仍是 NO-GO。详见[设备启动合同](v2-proxy-bootstrap.md)及[第五波 worklog](../90-history/worklogs/2026-10-07-v2-proxy-bootstrap.md)。

@@ -146,6 +146,8 @@ func validPurpose(r ChallengeRequest) bool {
 		return r.Method == "POST" && r.Path == "/api/v2/credentials/receipt" && r.DeviceID == "" && r.CredentialID == ""
 	case "operation.receipt":
 		return r.Method == "POST" && r.Path == "/api/v2/operations/receipt"
+	case "proxy.bootstrap":
+		return r.Method == "POST" && r.Path == "/api/v2/proxy/bootstrap"
 	case "request.resolve":
 		return r.Method == "POST" && r.Path == "/api/v2/requests/resolve"
 	case "operation.status":

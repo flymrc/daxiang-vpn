@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
@@ -12,7 +11,6 @@ import (
 	"io"
 	"math"
 	"net/netip"
-	"os"
 	"strings"
 	"time"
 	"unicode"
@@ -32,7 +30,7 @@ type options struct {
 
 func validCommand(c string) bool {
 	switch c {
-	case "activate", "status", "apply", "disable", "revoke", "rotate-credential", "recover", "cancel-pending":
+	case "activate", "status", "apply", "bind", "disable", "revoke", "rotate-credential", "recover", "cancel-pending":
 		return true
 	}
 	return false
@@ -58,8 +56,8 @@ func parse(args []string) (options, error) {
 	f.Int64Var(&o.generation, "expected-generation", -1, "explicit current desired generation")
 	f.BoolVar(&o.activationStdin, "activation-stdin", false, "read activation credential from stdin")
 	f.DurationVar(&o.timeout, "timeout", 15*time.Second, "whole command timeout")
-	f.Bool("json", true, "v2 JSON receipt")
-	if f.Parse(args[1:]) != nil || f.NArg() != 0 || o.timeout <= 0 || o.timeout > 30*time.Second {
+	jsonOut := f.Bool("json", true, "v2 JSON receipt")
+	if !uniqueFlags(f, args[1:]) || f.Parse(args[1:]) != nil || f.NArg() != 0 || !*jsonOut || o.timeout <= 0 || o.timeout > 30*time.Second {
 		return o, &failure{code: "invalid_arguments"}
 	}
 	switch o.command {
@@ -71,11 +69,15 @@ func parse(args []string) (options, error) {
 		if !hexID(o.operationID) {
 			return o, &failure{code: "invalid_arguments"}
 		}
-	case "apply", "disable", "revoke":
+	case "apply", "bind", "disable", "revoke":
 		if o.generation < 0 || o.generation == math.MaxInt64 || !identifier(o.idempotency, 128) || len(o.reason) > 1024 || !utf8.ValidString(o.reason) {
 			return o, &failure{code: "invalid_arguments"}
 		}
-		if o.command == "apply" {
+		if o.command == "bind" {
+			if o.key != "" || !hostAddress(o.address) || o.generation >= dc.ProxySafeInteger {
+				return o, &failure{code: "invalid_arguments"}
+			}
+		} else if o.command == "apply" {
 			p, e := netip.ParsePrefix(o.address)
 			if !validPublic(o.key) || e != nil || p.Bits() != p.Addr().BitLen() || p.String() != o.address {
 				return o, &failure{code: "invalid_arguments"}
@@ -92,7 +94,7 @@ func parse(args []string) (options, error) {
 		if name == "server" || name == "ca-file" || name == "timeout" || name == "json" {
 			continue
 		}
-		allowed := ((o.command == "activate" || o.command == "cancel-pending") && name == "activation-stdin") || (o.command == "status" && name == "operation-id") || ((o.command == "apply" || o.command == "disable" || o.command == "revoke") && (name == "expected-generation" || name == "idempotency-key" || name == "reason")) || (o.command == "apply" && (name == "address" || name == "wg-public-key"))
+		allowed := ((o.command == "activate" || o.command == "cancel-pending") && name == "activation-stdin") || (o.command == "status" && name == "operation-id") || ((o.command == "apply" || o.command == "bind" || o.command == "disable" || o.command == "revoke") && (name == "expected-generation" || name == "idempotency-key" || name == "reason")) || (o.command == "apply" && (name == "address" || name == "wg-public-key")) || (o.command == "bind" && name == "address")
 		if !allowed {
 			return o, &failure{code: "invalid_arguments"}
 		}
@@ -111,19 +113,12 @@ func Run(ctx context.Context, home paths.Context, args []string, stdin io.Reader
 	}
 	ctx, cancel := context.WithTimeout(ctx, o.timeout)
 	defer cancel()
-	var roots *x509.CertPool
-	if o.caFile != "" {
-		data, e := os.ReadFile(o.caFile)
-		if e != nil || len(data) > 1<<20 {
-			return encodeReceipt(out, resultError(o.command, &failure{code: "invalid_ca_file"}, nil))
-		}
-		roots = x509.NewCertPool()
-		if !roots.AppendCertsFromPEM(data) {
-			return encodeReceipt(out, resultError(o.command, &failure{code: "invalid_ca_file"}, nil))
-		}
+	roots, e := loadRoots(ctx, o.caFile)
+	if e != nil {
+		return encodeReceipt(out, resultError(o.command, e, nil))
 	}
 	var r Receipt
-	e = proxy.WithOperationLock(home, func() error {
+	e = proxy.WithOperationLockContext(ctx, home, func() error {
 		if ctx.Err() != nil {
 			r = resultError(o.command, &failure{code: "command_timeout"}, nil)
 			return nil
@@ -197,6 +192,35 @@ func (c *Client) execute(ctx context.Context, store storage, st state, o options
 	if st.Credential == nil {
 		return resultError(o.command, &failure{code: "not_activated"}, st.Pending)
 	}
+	if o.command == "bind" {
+		if st.Credential.ExpiresUnixSeconds <= c.now().Unix() {
+			return resultError(o.command, &failure{code: "credential_expired"}, nil)
+		}
+		if st.WireGuard != nil && o.generation < st.WireGuard.Generation {
+			return resultError(o.command, &failure{code: "stale_generation"}, nil)
+		}
+		if st.WireGuard == nil {
+			material := make([]byte, 32)
+			if _, e := rand.Read(material); e != nil {
+				return resultError(o.command, e, nil)
+			}
+			material[0] &= 248
+			material[31] = (material[31] & 127) | 64
+			private := base64.StdEncoding.EncodeToString(material)
+			_, pub, e := wireGuardKey(private)
+			if e != nil {
+				return resultError(o.command, e, nil)
+			}
+			st.WireGuardInitialized = true
+			st.WireGuard = &localBinding{PrivateKey: private, PublicKey: pub}
+			// Persist before challenge or mutation; unknown results must never
+			// cause a replacement key to be generated.
+			if e = store.save(st); e != nil {
+				return resultError(o.command, e, nil)
+			}
+		}
+		o.key = st.WireGuard.PublicKey
+	}
 	key, e := privateKey(st.PrivateKey)
 	if e != nil {
 		return resultError(o.command, e, st.Pending)
@@ -219,13 +243,28 @@ func (c *Client) execute(ctx context.Context, store storage, st state, o options
 		if !validateOperation(op, st.Credential.DeviceId, "", o.operationID) {
 			return resultError(o.command, &failure{code: "invalid_response"}, st.Pending)
 		}
+		if st.WireGuard != nil && op.OperationId == st.WireGuard.OperationID {
+			if op.Action != "apply" || op.Generation != st.WireGuard.Generation {
+				return resultError(o.command, &failure{code: "invalid_response"}, nil)
+			}
+			if op.Effective {
+				st.WireGuard.AppliedGeneration = op.Generation
+				if e = store.save(st); e != nil {
+					return resultError(o.command, e, nil)
+				}
+			}
+		}
 		return Receipt{ContractVersion: Version, Command: o.command, OK: true, Outcome: "status", Operation: &op}
 	}
 	if o.command == "rotate-credential" {
 		return c.rotate(ctx, store, st, key)
 	}
-	cmd := dc.Command{Action: dc.CommandAction(o.command), ExpectedGeneration: o.generation, IdempotencyKey: o.idempotency}
-	if o.command == "apply" {
+	action := o.command
+	if action == "bind" {
+		action = "apply"
+	}
+	cmd := dc.Command{Action: dc.CommandAction(action), ExpectedGeneration: o.generation, IdempotencyKey: o.idempotency}
+	if action == "apply" {
 		cmd.WgPublicKey = &o.key
 		cmd.Address = &o.address
 	}
@@ -233,7 +272,7 @@ func (c *Client) execute(ctx context.Context, store storage, st state, o options
 		cmd.Reason = &o.reason
 	}
 	body, _ := json.Marshal(cmd)
-	purpose := "command." + o.command
+	purpose := "command." + action
 	ch, e := c.challenge(ctx, purpose, "POST", "/api/v2/commands", body, st.Credential, "", key)
 	if e != nil {
 		return resultError(o.command, e, st.Pending)
@@ -242,22 +281,29 @@ func (c *Client) execute(ctx context.Context, store storage, st state, o options
 	if e != nil {
 		return resultError(o.command, e, nil)
 	}
-	st.Pending = &intent{Kind: o.command, RequestID: rid, IdempotencyKey: o.idempotency, ExpectedGeneration: &o.generation}
+	st.Pending = &intent{Kind: action, RequestID: rid, IdempotencyKey: o.idempotency, ExpectedGeneration: &o.generation}
+	if o.command == "bind" {
+		st.Pending.BindAddress = o.address
+	}
 	if e = store.save(st); e != nil {
 		return resultError(o.command, e, nil)
 	}
 	h, _ := headers(purpose, "POST", "/api/v2/commands", body, st.Credential, ch, rid, key)
 	var op dc.Operation
 	e = c.call(ctx, "POST", "/api/v2/commands", body, h, 202, &op, true)
-	if e == nil && (!validateOperation(op, st.Credential.DeviceId, o.command, "") || op.Effective || op.Generation != o.generation+1) {
+	if e == nil && (!validateOperation(op, st.Credential.DeviceId, action, "") || op.Effective || op.Generation != o.generation+1) {
 		e = &failure{code: "invalid_response", unknown: true}
 	}
 	if e != nil {
 		return c.failedMutation(store, st, e)
 	}
+	p := st.Pending
+	if e = acceptBinding(&st, p, op); e != nil {
+		return resultError(o.command, &failure{code: "invalid_response", unknown: true}, p)
+	}
 	st.Pending = nil
 	if e = store.save(st); e != nil {
-		return resultError(o.command, e, &intent{Kind: o.command, RequestID: rid, IdempotencyKey: o.idempotency})
+		return resultError(o.command, e, p)
 	}
 	return Receipt{ContractVersion: Version, Command: o.command, OK: true, Outcome: "accepted", RequestID: rid, IdempotencyKey: o.idempotency, Operation: &op}
 }
@@ -268,11 +314,11 @@ func (c *Client) failedMutation(store storage, st state, e error) Receipt {
 	if errorsAsFailure(e, &f) && !f.unknown {
 		st.Pending = nil
 		if store.save(st) == nil {
-			return resultError(p.Kind, e, nil)
+			return resultError(intentCommand(p), e, nil)
 		}
-		return resultError(p.Kind, fmt.Errorf("device intent persistence failed"), p)
+		return resultError(intentCommand(p), fmt.Errorf("device intent persistence failed"), p)
 	}
-	return resultError(p.Kind, e, p)
+	return resultError(intentCommand(p), e, p)
 }
 func errorsAsFailure(e error, p **failure) bool {
 	f, ok := e.(*failure)
@@ -435,6 +481,9 @@ func (c *Client) recover(ctx context.Context, store storage, st state) Receipt {
 		}
 		r.Outcome = "operation_recovered"
 		r.Operation = &op
+		if e = acceptBinding(&st, p, op); e != nil {
+			return resultError("recover", &failure{code: "invalid_response"}, p)
+		}
 	}
 	st.Pending = nil
 	if e = store.save(st); e != nil {

@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -56,11 +57,12 @@ var (
 )
 
 type controlRecord struct {
-	Identity              EngineIdentity `json:"identity"`
-	Address               string         `json:"control_address"`
-	Secret                string         `json:"control_secret"`
-	ProxyAddr             string         `json:"proxy_addr"`
-	StartDeadlineUnixNano int64          `json:"start_deadline_unix_nano"`
+	Identity              EngineIdentity              `json:"identity"`
+	Address               string                      `json:"control_address"`
+	Secret                string                      `json:"control_secret"`
+	ProxyAddr             string                      `json:"proxy_addr"`
+	StartDeadlineUnixNano int64                       `json:"start_deadline_unix_nano"`
+	Authorization         *config.AuthorizationConfig `json:"authorization,omitempty"`
 }
 
 type controlRequest struct {
@@ -104,6 +106,9 @@ func randomHex(bytes int) (string, error) {
 }
 
 func validRecord(ctx paths.Context, record controlRecord) bool {
+	if record.Authorization != nil && record.Authorization.Validate() != nil {
+		return false
+	}
 	secret, err := hex.DecodeString(record.Secret)
 	if err != nil || len(secret) != 32 || len(record.Identity.InstanceID) != 32 || len(record.Identity.Generation) != 64 {
 		return false
@@ -342,6 +347,13 @@ func prepareLaunch(ctx paths.Context, cfg config.Config) (controlRecord, error) 
 }
 
 func prepareLaunchWithTimeout(ctx paths.Context, cfg config.Config, timeout time.Duration) (controlRecord, error) {
+	return prepareLaunchMode(ctx, cfg, timeout, false)
+}
+
+func prepareLaunchMode(ctx paths.Context, cfg config.Config, timeout time.Duration, fast bool) (controlRecord, error) {
+	if err := cfg.ValidateForProxyStart(time.Now()); err != nil {
+		return controlRecord{}, err
+	}
 	status, err := Inspect(ctx)
 	if err != nil {
 		return controlRecord{}, err
@@ -353,6 +365,12 @@ func prepareLaunchWithTimeout(ctx paths.Context, cfg config.Config, timeout time
 	if err != nil {
 		return controlRecord{}, err
 	}
+	if cfg.Authorization.Source == config.DeviceV2Source {
+		expected, err := singBoxConfigBytes(cfg, fast)
+		if err != nil || !bytes.Equal(expected, data) {
+			return controlRecord{}, &RuntimeError{Code: "engine_config_refused", Message: "设备启动配置与授权投影不一致"}
+		}
+	}
 	id, err := randomHex(16)
 	if err != nil {
 		return controlRecord{}, err
@@ -361,15 +379,44 @@ func prepareLaunchWithTimeout(ctx paths.Context, cfg config.Config, timeout time
 	if err != nil {
 		return controlRecord{}, err
 	}
-	generation := sha256.Sum256(data)
-	record := controlRecord{Identity: EngineIdentity{InstanceID: id, Home: homeIdentity(ctx.Root), Generation: hex.EncodeToString(generation[:]), ProtocolVersion: ControlProtocolVersion}, Secret: secret, ProxyAddr: cfg.LocalProxy.Addr(), StartDeadlineUnixNano: time.Now().Add(timeout).UnixNano()}
+	var authorization *config.AuthorizationConfig
+	if cfg.Authorization.Source == config.DeviceV2Source {
+		stamp := cfg.Authorization
+		authorization = &stamp
+	}
+	record := controlRecord{Identity: EngineIdentity{InstanceID: id, Home: homeIdentity(ctx.Root), Generation: configGeneration(data, authorization), ProtocolVersion: ControlProtocolVersion}, Secret: secret, ProxyAddr: cfg.LocalProxy.Addr(), StartDeadlineUnixNano: time.Now().Add(timeout).UnixNano(), Authorization: authorization}
 	encoded, _ := json.Marshal(record)
 	return record, writePrivateFile(ctx, launchPath(ctx), encoded)
+}
+
+// Legacy generations retain their existing SHA256. V2 binds the exact
+// sing-box bytes and the whole startup authority projection, including epoch
+// and applied generation, even when endpoint/routing bytes happen to match.
+func configGeneration(content []byte, authorization *config.AuthorizationConfig) string {
+	h := sha256.New()
+	if authorization != nil {
+		h.Write([]byte("zhvpn-device-v2-engine-config\x00"))
+		metadata, _ := json.Marshal(authorization)
+		h.Write(metadata)
+		h.Write([]byte{0})
+	}
+	h.Write(content)
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // Start's caller must hold the operation transaction lock. The child also
 // holds an independent lifetime lock, defending against duplicate launches.
 func Start(ctx paths.Context, cfg config.Config, fast bool) error {
+	return StartContext(context.Background(), ctx, cfg, fast)
+}
+
+// StartContext uses the same exact-child readiness protocol. Cancellation
+// withdraws this launch and asks only its authenticated child to stop.
+// File I/O and an in-flight control request retain their own bounded limits.
+func StartContext(operation context.Context, ctx paths.Context, cfg config.Config, fast bool) error {
+	if operation.Err() != nil {
+		return &RuntimeError{Code: "engine_start_cancelled", Message: "本次引擎启动已取消"}
+	}
 	ctx, err := canonicalContext(ctx)
 	if err != nil {
 		return err
@@ -378,7 +425,7 @@ func Start(ctx paths.Context, cfg config.Config, fast bool) error {
 	if fast {
 		timeout = 20 * time.Second
 	}
-	record, err := prepareLaunchWithTimeout(ctx, cfg, timeout)
+	record, err := prepareLaunchMode(ctx, cfg, timeout, fast)
 	if err != nil {
 		return err
 	}
@@ -388,6 +435,9 @@ func Start(ctx paths.Context, cfg config.Config, fast bool) error {
 	}
 	deadline := time.Unix(0, record.StartDeadlineUnixNano)
 	for time.Now().Before(deadline) {
+		if operation.Err() != nil {
+			break
+		}
 		live, err := loadRecord(ctx)
 		if err == nil {
 			if live.Identity.InstanceID != record.Identity.InstanceID || live.Identity.Generation != record.Identity.Generation {
@@ -395,7 +445,13 @@ func Start(ctx paths.Context, cfg config.Config, fast bool) error {
 			}
 			status, err := requestControl(live, "activate")
 			if err == nil && status.State == "ready" {
+				if operation.Err() != nil {
+					break
+				}
 				return nil
+			}
+			if operation.Err() != nil {
+				break
 			}
 			if err != nil && !errors.Is(err, ErrControlUnavailable) {
 				return err
@@ -403,13 +459,19 @@ func Start(ctx paths.Context, cfg config.Config, fast bool) error {
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
-		time.Sleep(50 * time.Millisecond)
+		select {
+		case <-operation.Done():
+		case <-time.After(50 * time.Millisecond):
+		}
 	}
 	// Cancelling the launch request prevents a late child from starting. If it
 	// already owns a control endpoint, request self-shutdown of that exact ID.
 	removeLaunch(ctx, record.Identity.InstanceID)
 	if live, err := loadRecord(ctx); err == nil && live.Identity.InstanceID == record.Identity.InstanceID {
 		_, _ = requestControl(live, "stop")
+	}
+	if operation.Err() != nil {
+		return &RuntimeError{Code: "engine_start_cancelled", Message: "本次引擎启动已取消，残留实例须经控制通道确认恢复"}
 	}
 	return &RuntimeError{Code: "engine_start_timeout", Message: "引擎未在期限内完成认证就绪；已取消本次启动，残留实例须经控制通道确认恢复"}
 }
@@ -470,8 +532,10 @@ func beginEngineControlWithHooks(ctx paths.Context, content []byte, hooks Runtim
 	if record.StartDeadlineUnixNano <= time.Now().UnixNano() {
 		return nil, &RuntimeError{Code: "engine_launch_expired", Message: "启动请求已过期，拒绝启动迟到引擎"}
 	}
-	generation := sha256.Sum256(content)
-	if record.Identity.Home != homeIdentity(ctx.Root) || record.Identity.ProtocolVersion != ControlProtocolVersion || record.Identity.Generation != hex.EncodeToString(generation[:]) || len(record.Identity.InstanceID) != 32 || len(record.Secret) != 64 {
+	if record.Authorization != nil && record.Authorization.ValidateFresh(time.Now()) != nil {
+		return nil, &RuntimeError{Code: "engine_authority_projection_expired", Message: "设备启动授权投影无效或已过期"}
+	}
+	if record.Identity.Home != homeIdentity(ctx.Root) || record.Identity.ProtocolVersion != ControlProtocolVersion || record.Identity.Generation != configGeneration(content, record.Authorization) || len(record.Identity.InstanceID) != 32 || len(record.Secret) != 64 {
 		return nil, ErrControlIdentity
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -568,6 +632,10 @@ func (c *engineControl) handle(writer http.ResponseWriter, req *http.Request) {
 		}
 	}
 	c.mu.Lock()
+	if request.Command == "activate" && c.phase == "starting" && c.record.Authorization != nil && c.record.Authorization.ValidateFresh(time.Now()) != nil {
+		c.phase = "stopping"
+		c.stopOnce.Do(func() { close(c.done) })
+	}
 	if request.Command == "activate" && c.phase == "starting" && c.dataStarted && time.Now().UnixNano() < c.record.StartDeadlineUnixNano {
 		c.phase = "ready"
 		c.leaseTimer.Stop()

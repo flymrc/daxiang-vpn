@@ -1,0 +1,183 @@
+{
+  "$id": "https://zongheng.invalid/contracts/device-start-receipt-v2",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "engine_state"
+              ]
+            },
+            {
+              "required": [
+                "instance_id"
+              ]
+            },
+            {
+              "required": [
+                "config_generation"
+              ]
+            },
+            {
+              "required": [
+                "proxy"
+              ]
+            },
+            {
+              "required": [
+                "device_id"
+              ]
+            },
+            {
+              "required": [
+                "generation"
+              ]
+            }
+          ]
+        },
+        "properties": {
+          "outcome": {
+            "enum": [
+              "rejected",
+              "engine_state_unknown"
+            ]
+          },
+          "pending": {
+            "const": false
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "code"
+          ]
+        },
+        "properties": {
+          "outcome": {
+            "const": "engine_ready"
+          },
+          "pending": {
+            "const": false
+          }
+        },
+        "required": [
+          "engine_state",
+          "instance_id",
+          "config_generation",
+          "proxy",
+          "device_id",
+          "generation"
+        ]
+      }
+    }
+  ],
+  "description": "Authenticated local engine readiness only; not proof of WG handshake, egress traffic, or continuously renewed authorization.",
+  "properties": {
+    "code": {
+      "enum": [
+        "invalid_request",
+        "unauthorized",
+        "conflict",
+        "not_found",
+        "unavailable",
+        "rate_limited",
+        "invalid_server",
+        "connection_failure",
+        "invalid_response",
+        "local_storage_failure",
+        "invalid_arguments",
+        "invalid_ca_file",
+        "command_timeout",
+        "server_mismatch",
+        "pending_resolution_required",
+        "already_activated",
+        "invalid_activation_input",
+        "not_activated",
+        "result_unknown",
+        "no_pending_intent",
+        "stale_generation",
+        "binding_required",
+        "credential_expired",
+        "projection_expired",
+        "authority_epoch_mismatch",
+        "profile_rollback",
+        "engine_state_unverified",
+        "engine_already_present",
+        "local_port_occupied",
+        "engine_config_refused",
+        "engine_start_failed",
+        "engine_start_cancelled",
+        "engine_start_timeout",
+        "engine_identity_unverified",
+        "engine_control_unavailable"
+      ]
+    },
+    "command": {
+      "const": "start"
+    },
+    "config_generation": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "contract_version": {
+      "const": 2
+    },
+    "device_id": {
+      "pattern": "^[a-f0-9]{32}$",
+      "type": "string"
+    },
+    "engine_state": {
+      "const": "ready"
+    },
+    "generation": {
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "instance_id": {
+      "pattern": "^[a-f0-9]{32}$",
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "outcome": {
+      "enum": [
+        "engine_ready",
+        "rejected",
+        "engine_state_unknown"
+      ]
+    },
+    "pending": {
+      "type": "boolean"
+    },
+    "proxy": {
+      "pattern": "^(?:127\\.(?:[0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.(?:[0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.(?:[0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])|\\[::1\\]):(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract_version",
+    "command",
+    "ok",
+    "outcome",
+    "pending"
+  ],
+  "title": "Explicit device start local-engine receipt",
+  "type": "object"
+}

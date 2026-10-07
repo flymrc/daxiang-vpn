@@ -21,12 +21,14 @@ import (
 )
 
 type Server struct {
-	store  *deviceauth.Store
-	mux    *http.ServeMux
-	slots  chan struct{}
-	rateMu sync.Mutex
-	window time.Time
-	count  int
+	store          *deviceauth.Store
+	mux            *http.ServeMux
+	slots          chan struct{}
+	rateMu         sync.Mutex
+	window         time.Time
+	count          int
+	proxyProfile   *generated.ProxyRouteProfile
+	proxyInterface string
 }
 
 func NewServer(store *deviceauth.Store) (*Server, error) {
@@ -43,6 +45,49 @@ func NewServer(store *deviceauth.Store) (*Server, error) {
 	s.mux.HandleFunc("POST /api/v2/requests/resolve", s.resolve)
 	s.mux.HandleFunc("GET /api/v2/operations/{operation_id}", s.operation)
 	return s, nil
+}
+
+// NewServerWithProfile enables the optional projection only for an explicitly
+// supplied trusted service profile, checked against the current authority.
+func NewServerWithProfile(store *deviceauth.Store, profile generated.ProxyRouteProfile, wgInterface string) (*Server, error) {
+	if store == nil {
+		return nil, deviceauth.ErrInvalid
+	}
+	if err := store.ValidateProxyProfile(context.Background(), profile, wgInterface); err != nil {
+		return nil, err
+	}
+	s, err := NewServer(store)
+	if err != nil {
+		return nil, err
+	}
+	profile.AllowedIps = append([]string(nil), profile.AllowedIps...)
+	s.proxyProfile, s.proxyInterface = &profile, wgInterface
+	s.mux.HandleFunc("POST /api/v2/proxy/bootstrap", s.proxyBootstrap)
+	return s, nil
+}
+
+func (s *Server) proxyBootstrap(w http.ResponseWriter, r *http.Request) {
+	var req generated.ProxyBootstrapRequest
+	body, err := decode(w, r, &req, "wireguard_public_key", "expected_generation")
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	q, err := signed(r, "proxy.bootstrap", body, false)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	if s.proxyProfile == nil {
+		replyError(w, 404, generated.NotFound)
+		return
+	}
+	projection, err := s.store.ProxyBootstrapSigned(r.Context(), q, req.ExpectedGeneration, req.WireguardPublicKey, *s.proxyProfile, s.proxyInterface)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	reply(w, 200, projection)
 }
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")

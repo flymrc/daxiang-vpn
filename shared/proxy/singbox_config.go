@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"zongheng-vpn/shared/config"
 	"zongheng-vpn/shared/paths"
@@ -64,14 +65,32 @@ type singBoxRoute struct {
 }
 
 func WriteSingBoxConfig(ctx paths.Context, cfg config.Config, systemTUN bool) error {
-	host, portText, err := splitAddr(cfg.Egress.ProxyAddr)
+	data, err := singBoxConfigBytes(cfg, systemTUN)
 	if err != nil {
 		return err
+	}
+	return writePrivateFile(ctx, ctx.SingBoxConfig, data)
+}
+
+func singBoxConfigBytes(cfg config.Config, systemTUN bool) ([]byte, error) {
+	if err := cfg.ValidateForProxyStart(time.Now()); err != nil {
+		return nil, err
+	}
+	allowedIPs := []string{hiddenString([]byte{0x6b, 0x6a, 0x74, 0x6c, 0x6c, 0x74, 0x6a, 0x74, 0x6a, 0x75, 0x68, 0x6e})}
+	if cfg.Authorization.Source == config.DeviceV2Source {
+		if systemTUN {
+			return nil, fmt.Errorf("device v2 system TUN start unsupported")
+		}
+		allowedIPs = append([]string(nil), cfg.WireGuard.AllowedIPs...)
+	}
+	host, portText, err := splitAddr(cfg.Egress.ProxyAddr)
+	if err != nil {
+		return nil, err
 	}
 	port, _ := strconv.Atoi(portText)
 	hubHost, hubPortText, err := splitAddr(cfg.Hub.Endpoint)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	hubPort, _ := strconv.Atoi(hubPortText)
 	sb := singBoxConfig{
@@ -95,7 +114,7 @@ func WriteSingBoxConfig(ctx paths.Context, cfg config.Config, systemTUN bool) er
 				Address:                     hubHost,
 				Port:                        hubPort,
 				PublicKey:                   cfg.Hub.PublicKey,
-				AllowedIPs:                  []string{hiddenString([]byte{0x6b, 0x6a, 0x74, 0x6c, 0x6c, 0x74, 0x6a, 0x74, 0x6a, 0x75, 0x68, 0x6e})},
+				AllowedIPs:                  allowedIPs,
 				PersistentKeepaliveInterval: 25,
 			}},
 		}},
@@ -116,10 +135,10 @@ func WriteSingBoxConfig(ctx paths.Context, cfg config.Config, systemTUN bool) er
 	}
 	data, err := json.MarshalIndent(sb, "", "  ")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	data = append(data, '\n')
-	return writePrivateFile(ctx, ctx.SingBoxConfig, data)
+	return data, nil
 }
 
 func splitAddr(addr string) (string, string, error) {

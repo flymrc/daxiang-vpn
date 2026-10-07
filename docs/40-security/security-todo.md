@@ -121,3 +121,7 @@ P0 各项已由 [Hub 安全审查报告 2026-06-04](../40-security/security-audi
 ## 2026-10-07 本地接线
 
 CLI 代理租约已进入真实引擎控制器，GUI 新建 v2 只调用 CLI；Hub 设备签名 API/后台调度及 reverse tcp-tls 已有合成端到端回归，执行监督与独立负例纳入同一轮门禁。说明见[运行时接线](../30-implementation/steelman-runtime-integration.md)。旧正文中的“未接入”描述的是10-06历史切片，不代表当前开发分支；生产 TokenStore/wg0、raw TCP、campaign 和签名/实机验收尚未切换，不能勾选安全迁移完成。
+
+第五波[设备代理启动](../30-implementation/v2-proxy-bootstrap.md)补齐 credential→本地持有 WG 私钥→正常 TLS 当前配置投影→实际 sing-box/WG 流量。隔离 Windows CLI 与 Linux 用户态 fixture 已验证撤销后新请求失败、旧任务/重建不恢复权限及受保护 peer 保留。30秒 projection 是启动时的当前授权校验，不是离线签名或持续会话租约；同owner整状态回放、已建会话撤销SLA、生产权限/防火墙及legacy导入/campaign仍未关闭。没有授权来源/route profile时不能落回旧10.66路由。
+
+已实测 NO-GO：initial reconciliation 部分失败时，新 TLS API 不监听，但外部 WG 的残留旧 peer 仍可能访问 target。API 启动 gate 不能代替 WG/proxy 的完整启动屏障；须与持续撤销和部署生命周期一起落实后再评估 G01/P4.G。

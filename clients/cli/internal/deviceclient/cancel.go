@@ -131,6 +131,9 @@ func (c *Client) cancelPending(ctx context.Context, store storage, st state, o o
 			}
 			r.Operation = op
 			r.Outcome = "operation_recovered"
+			if e = acceptBinding(&st, p, *op); e != nil {
+				return resultError(o.command, &failure{code: "invalid_response", unknown: true}, p)
+			}
 		}
 	default:
 		return resultError(o.command, &failure{code: "invalid_response", unknown: true}, p)

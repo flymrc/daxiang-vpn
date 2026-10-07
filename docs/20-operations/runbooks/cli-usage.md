@@ -1,5 +1,7 @@
 # CLI 使用设计
 
+本文下面的 `egress list/proxy start/ip` 与双端口描述是早期设计草案，不能当作当前可执行命令。现有 CLI 使用 `login/start/status/stop`，默认 mixed 代理单端口 `127.0.0.1:7890`，以 `zhvpn help` 与[当前客户端指南](../../00-overview/client-guide.md)为准。2026-10-07 隔离 v2 新增显式 `device activate/bind/status/start`，具体参数、TLS/profile及contract2回执见[设备启动合同](../../30-implementation/v2-proxy-bootstrap.md)。该入口未发行/部署，既有生产用户继续原授权路线。
+
 ## 设计目标
 
 中国客户端使用时要尽量简单：

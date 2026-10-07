@@ -7,6 +7,7 @@ import (
 	"io"
 	"reflect"
 	"strings"
+	"unicode/utf8"
 
 	dc "zongheng-vpn/shared/devicecontract"
 )
@@ -17,7 +18,7 @@ var errJSON = errors.New("invalid device v2 JSON")
 // nulls, extensions, unsupported versions or accepted/effective conflation.
 func DecodeReceipt(data []byte) (Receipt, error) {
 	var r Receipt
-	if strictDecode(data, &r, "contract_version", "command", "ok", "outcome", "pending") != nil || r.ContractVersion != Version || (!validCommand(r.Command) && r.Command != "unknown") {
+	if strictDecode(data, &r, "contract_version", "command", "ok", "outcome", "pending") != nil || r.ContractVersion != Version || (!validCommand(r.Command) && r.Command != "unknown" && r.Command != StartCommand) {
 		return r, errJSON
 	}
 	if r.OK {
@@ -27,7 +28,7 @@ func DecodeReceipt(data []byte) (Receipt, error) {
 		if r.Code != "" || r.Pending {
 			return r, errJSON
 		}
-		compatible := (r.Command == "activate" && r.Outcome == "credential_created") || (r.Command == "rotate-credential" && r.Outcome == "credential_rotated") || ((r.Command == "recover" || r.Command == "cancel-pending") && (r.Outcome == "credential_recovered" || r.Outcome == "operation_recovered")) || (r.Command == "status" && r.Outcome == "status") || ((r.Command == "apply" || r.Command == "disable" || r.Command == "revoke") && r.Outcome == "accepted") || (r.Command == "cancel-pending" && r.Outcome == "cancelled")
+		compatible := (r.Command == "activate" && r.Outcome == "credential_created") || (r.Command == "rotate-credential" && r.Outcome == "credential_rotated") || ((r.Command == "recover" || r.Command == "cancel-pending") && (r.Outcome == "credential_recovered" || r.Outcome == "operation_recovered")) || (r.Command == "status" && r.Outcome == "status") || ((r.Command == "apply" || r.Command == "bind" || r.Command == "disable" || r.Command == "revoke") && r.Outcome == "accepted") || (r.Command == "cancel-pending" && r.Outcome == "cancelled")
 		if !compatible {
 			return r, errJSON
 		}
@@ -42,6 +43,9 @@ func DecodeReceipt(data []byte) (Receipt, error) {
 			}
 		case "accepted", "status", "operation_recovered":
 			if r.Operation == nil || r.Credential != nil || !validateOperation(*r.Operation, r.Operation.DeviceId, "", "") || (r.Outcome == "accepted" && r.Operation.Effective) {
+				return r, errJSON
+			}
+			if r.Command == "bind" && r.Operation.Action != "apply" {
 				return r, errJSON
 			}
 		default:
@@ -73,11 +77,7 @@ func DecodeReceipt(data []byte) (Receipt, error) {
 }
 
 func validReceiptCode(code string) bool {
-	switch code {
-	case "invalid_request", "unauthorized", "conflict", "not_found", "unavailable", "rate_limited", "invalid_server", "connection_failure", "invalid_response", "local_storage_failure", "invalid_arguments", "invalid_ca_file", "command_timeout", "server_mismatch", "pending_resolution_required", "already_activated", "invalid_activation_input", "not_activated", "result_unknown", "no_pending_intent":
-		return true
-	}
-	return false
+	return inStrings(code, receiptErrorCodes)
 }
 
 func requiredFields(out any) []string {
@@ -90,12 +90,16 @@ func requiredFields(out any) []string {
 		return []string{"operation_id", "device_id", "action", "generation", "state", "accepted", "effective", "last_error", "deadline_unix_seconds"}
 	case *dc.ResolveReceipt:
 		return []string{"state", "kind", "request_id"}
+	case *dc.ProxyBootstrap:
+		return []string{"version", "device_id", "credential_id", "wireguard_public_key", "address", "desired_generation", "applied_generation", "issued_unix_seconds", "expires_unix_seconds", "profile", "profile_sha256"}
+	case *dc.ProxyRouteProfile:
+		return []string{"version", "authority_epoch", "managed_by", "wg_interface", "revision", "wg_endpoint", "wg_public_key", "proxy_address", "egress_id", "egress_name", "allowed_ips"}
 	}
 	return nil
 }
 
 func strictDecode(data []byte, out any, required ...string) error {
-	if len(data) == 0 || len(data) > 1<<20 {
+	if len(data) == 0 || len(data) > 1<<20 || !utf8.Valid(data) {
 		return errJSON
 	}
 	d := json.NewDecoder(bytes.NewReader(data))
@@ -137,6 +141,23 @@ func jsonValue(d *json.Decoder, depth int) (any, error) {
 		return nil, errJSON
 	}
 	if delim, ok := t.(json.Delim); ok {
+		if delim == '[' {
+			a := []any{}
+			for d.More() {
+				if len(a) >= 64 {
+					return nil, errJSON
+				}
+				v, e := jsonValue(d, depth+1)
+				if e != nil {
+					return nil, e
+				}
+				a = append(a, v)
+			}
+			if end, e := d.Token(); e != nil || end != json.Delim(']') {
+				return nil, errJSON
+			}
+			return a, nil
+		}
 		if delim != '{' {
 			return nil, errJSON
 		}
@@ -181,6 +202,10 @@ func jsonShape(v any, t reflect.Type) bool {
 			required = requiredFields(&dc.Operation{})
 		case reflect.TypeOf(dc.Challenge{}):
 			required = requiredFields(&dc.Challenge{})
+		case reflect.TypeOf(dc.ProxyRouteProfile{}):
+			required = requiredFields(&dc.ProxyRouteProfile{})
+		case reflect.TypeOf(localBinding{}):
+			required = []string{"private_key", "public_key", "address", "generation", "applied_generation", "operation_id"}
 		}
 		for _, key := range required {
 			if _, ok := m[key]; !ok {
@@ -203,6 +228,17 @@ func jsonShape(v any, t reflect.Type) bool {
 		return true
 	}
 	switch t.Kind() {
+	case reflect.Slice:
+		a, ok := v.([]any)
+		if !ok {
+			return false
+		}
+		for _, item := range a {
+			if !jsonShape(item, t.Elem()) {
+				return false
+			}
+		}
+		return true
 	case reflect.String:
 		_, ok := v.(string)
 		return ok

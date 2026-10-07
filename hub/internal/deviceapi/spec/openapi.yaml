@@ -101,6 +101,35 @@ paths:
               schema: {$ref: '#/components/schemas/Operation'}
         '401': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
+  /api/v2/proxy/bootstrap:
+    post:
+      operationId: bootstrapProxy
+      security: [{DeviceSignature: []}]
+      description: Explicitly enabled trusted route-profile projection over normally verified TLS. Purpose proxy.bootstrap signs this exact POST path and raw request body. The authority transaction rechecks live device/credential, current customer binding, expected WG key/generation and applied equality, then consumes the one-use nonce. No desired state, allocation or WG mutation occurs. The response expires within 30 seconds and never later than device/credential authorization. It contains no private key, token or management address, is not an independently signed offline permit, and is not evidence of WG private-key possession or working traffic. Disabled unless hosting explicitly supplies a trusted profile for the isolated interface.
+      parameters:
+        - {$ref: '#/components/parameters/DeviceId'}
+        - {$ref: '#/components/parameters/CredentialId'}
+        - {$ref: '#/components/parameters/ChallengeId'}
+        - {$ref: '#/components/parameters/Nonce'}
+        - {$ref: '#/components/parameters/Expires'}
+        - {$ref: '#/components/parameters/RequestId'}
+        - {$ref: '#/components/parameters/Signature'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProxyBootstrapRequest'}
+      responses:
+        '200':
+          description: Short-lived current binding and immutable trusted profile; Cache-Control no-store
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ProxyBootstrap'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '429': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
   /api/v2/credentials/rotate:
     post:
       operationId: rotateCredential
@@ -233,7 +262,7 @@ components:
       additionalProperties: false
       required: [purpose, method, path, body_sha256]
       properties:
-        purpose: {type: string, enum: [activate, command.apply, command.disable, command.revoke, operation.status, credential.rotate, credential.receipt, operation.receipt, request.resolve]}
+        purpose: {type: string, enum: [activate, command.apply, command.disable, command.revoke, operation.status, credential.rotate, credential.receipt, operation.receipt, request.resolve, proxy.bootstrap]}
         method: {type: string, enum: [GET, POST]}
         path: {type: string, maxLength: 256}
         body_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
@@ -268,6 +297,50 @@ components:
         credential_id: {type: string}
         auth_public_key: {type: string}
         expires_unix_seconds: {type: integer, format: int64}
+    ProxyBootstrapRequest:
+      type: object
+      additionalProperties: false
+      required: [wireguard_public_key, expected_generation]
+      properties:
+        wireguard_public_key: {type: string, minLength: 44, maxLength: 44}
+        expected_generation: {type: integer, format: int64, minimum: 1, maximum: 9007199254740991}
+    ProxyRouteProfile:
+      type: object
+      additionalProperties: false
+      description: Operator-maintained immutable service-lifetime profile, not caller input. Version 1 permits exactly one canonical private IPv4 proxy /32, excludes legacy management 10.66.0.0/24 and default routes. The endpoint is a canonical IPv4 host and decimal port; no DNS lookup or endpoint probing is performed by validation. Canonical digest is SHA256 of UTF-8 json.Marshal of the ordered string array [zhvpn-device-route,v1,decimal version,authority_epoch,managed_by,wg_interface,decimal revision,wg_endpoint,wg_public_key,proxy_address,egress_id,egress_name,sole allowed_ips entry]. Strings have their exact validated bytes; standard Go JSON escaping is part of this versioned digest contract. This digest detects content identity, not an offline signature or filesystem antirollback.
+      required: [version, authority_epoch, managed_by, wg_interface, revision, wg_endpoint, wg_public_key, proxy_address, egress_id, egress_name, allowed_ips]
+      properties:
+        version: {type: integer, format: int64, enum: [1]}
+        authority_epoch: {type: string, minLength: 1, maxLength: 256}
+        managed_by: {type: string, minLength: 1, maxLength: 256}
+        wg_interface: {type: string, pattern: '^[A-Za-z0-9_.-]{1,15}$'}
+        revision: {type: integer, format: int64, minimum: 1, maximum: 9007199254740991}
+        wg_endpoint: {type: string, maxLength: 64}
+        wg_public_key: {type: string, minLength: 44, maxLength: 44}
+        proxy_address: {type: string, maxLength: 64}
+        egress_id: {type: string, minLength: 1, maxLength: 256}
+        egress_name: {type: string, minLength: 1, maxLength: 128}
+        allowed_ips:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items: {type: string, maxLength: 18}
+    ProxyBootstrap:
+      type: object
+      additionalProperties: false
+      required: [version, device_id, credential_id, wireguard_public_key, address, desired_generation, applied_generation, issued_unix_seconds, expires_unix_seconds, profile, profile_sha256]
+      properties:
+        version: {type: integer, format: int64, enum: [1]}
+        device_id: {type: string, pattern: '^[a-f0-9]{32}$'}
+        credential_id: {type: string, pattern: '^[a-f0-9]{32}$'}
+        wireguard_public_key: {type: string, minLength: 44, maxLength: 44}
+        address: {type: string, maxLength: 18, description: Current canonical private customer IPv4 host /32, never legacy management 10.66.0.0/24}
+        desired_generation: {type: integer, format: int64, minimum: 1, maximum: 9007199254740991}
+        applied_generation: {type: integer, format: int64, minimum: 1, maximum: 9007199254740991}
+        issued_unix_seconds: {type: integer, format: int64, minimum: 1, maximum: 7289654399}
+        expires_unix_seconds: {type: integer, format: int64, minimum: 1, maximum: 7289654399}
+        profile: {$ref: '#/components/schemas/ProxyRouteProfile'}
+        profile_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
     Command:
       type: object
       additionalProperties: false

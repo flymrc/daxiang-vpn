@@ -14,9 +14,10 @@ import (
 	"path/filepath"
 	"time"
 	"zongheng-vpn/hub/internal/deviceauth"
+	"zongheng-vpn/shared/devicecontract"
 )
 
-type Config struct{ ListenAddr, DBPath, PolicyPath, WGExecutable, SupervisorExecutable, WGInterface, TLSCert, TLSKey string }
+type Config struct{ ListenAddr, DBPath, PolicyPath, WGExecutable, SupervisorExecutable, WGInterface, TLSCert, TLSKey, ProxyProfilePath string }
 type Service struct {
 	DB        *sql.DB
 	Store     *deviceauth.Store
@@ -41,6 +42,14 @@ func Open(ctx context.Context, c Config) (*Service, error) {
 	policy, err := ReadPolicy(c.PolicyPath)
 	if err != nil {
 		return nil, err
+	}
+	var profile *devicecontract.ProxyRouteProfile
+	if c.ProxyProfilePath != "" {
+		p, err := ReadRouteProfile(c.ProxyProfilePath)
+		if err != nil || !profileMatchesHosting(p, policy, c.WGInterface) {
+			return nil, deviceauth.ErrPolicy
+		}
+		profile = &p
 	}
 	adapter, err := deviceauth.NewSupervisedWGExecutor(c.WGExecutable, c.SupervisorExecutable, c.WGInterface, policy, 5*time.Second)
 	if err != nil {
@@ -73,7 +82,12 @@ func Open(ctx context.Context, c Config) (*Service, error) {
 		db.Close()
 		return nil, err
 	}
-	handler, err := NewServer(store)
+	var handler *Server
+	if profile == nil {
+		handler, err = NewServer(store)
+	} else {
+		handler, err = NewServerWithProfile(store, *profile, c.WGInterface)
+	}
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -109,6 +123,17 @@ func ReadPolicy(path string) (deviceauth.Policy, error) {
 	return p, nil
 }
 func (s *Service) Run(ctx context.Context) error {
+	if s.config.ProxyProfilePath != "" {
+		// Reconcile all registered generations, including completed revocations,
+		// before exposing a fresh projection from persistent applied evidence.
+		initial, cancelInitial := context.WithTimeout(ctx, 30*time.Second)
+		err := s.Scheduler.Tick(initial)
+		cancelled := initial.Err()
+		cancelInitial()
+		if err != nil || cancelled != nil || ctx.Err() != nil {
+			return errors.New("device authority initial reconciliation failed")
+		}
+	}
 	schedulerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	done := make(chan struct{})

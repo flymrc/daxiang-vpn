@@ -2,6 +2,8 @@
 
 更新时间：2026-10-07。实现位于 `clients/cli/internal/deviceclient/`，API 唯一来源为 [canonical OpenAPI](../../hub/internal/deviceapi/spec/openapi.yaml)。本组件通过显式 `device` 命令使用隔离的 v2 设备授权入口；当前生产仍由 legacy TokenStore 授权，未执行迁移或部署。
 
+第五波新增 `device bind/start`，[独立启动合同](v2-proxy-bootstrap.md)明确本地 WG 私钥、当前 TLS 投影和真实引擎接线。`apply` 仍只接收手动公钥；`bind` 才持久化本地独立 X25519 key。`PrepareStartLocked` 只在持锁条件下取得配置、不启动引擎或写 config；根 app 接实际启动。CLI 不启 OS 代理，不把受控实际 WG fixture 当作生产导入或连续撤销 SLA。
+
 ## 命令及边界
 
 ```text
@@ -74,3 +76,5 @@ challenge 请求携带三个头：`X-ZH-Challenge-Proof`、32 位小写十六进
 - [ ] current legacy authorization → v2 的受控 campaign、备份/恢复、真实 WireGuard 会话撤销、生产流量验收。
 
 上述消费者 fixture 的 WG 状态为合成结果；实际 CLI 与 Hub SQLite/HTTP 的集成证据由 Hub 的 `integration` 测试和本次工作日志记录。此文档不把单元或编译通过声明为生产迁移完成。
+
+第五波另有 `integration,with_gvisor` 的实际用户态 WG 测试：Windows normal CGO0 CLI/TLS/SQLite/sing-box/WG/proxy/target 已贯通，race仅指测试runner；Linux跑真实WG/TLS fixture，产品CLI后台启动明确skip。新 `start-receipt.schema.json`/`DecodeStartReceipt` 用contract2报告本地engine_ready或固定拒绝/state_unknown，不把本地ready当成实际出口验收。

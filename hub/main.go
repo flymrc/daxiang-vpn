@@ -93,6 +93,8 @@ func deviceConfigFromEnv() (deviceapi.Config, bool, error) {
 		return deviceapi.Config{}, false, errors.New("invalid opt-in flag")
 	}
 	c := deviceapi.Config{ListenAddr: env("ZHHUB_DEVICE_LISTEN", "127.0.0.1:18443"), DBPath: os.Getenv("ZHHUB_DEVICE_DB"), PolicyPath: os.Getenv("ZHHUB_DEVICE_POLICY"), WGExecutable: os.Getenv("ZHHUB_DEVICE_WG_BIN"), SupervisorExecutable: os.Getenv("ZHHUB_DEVICE_SUPERVISOR_BIN"), WGInterface: os.Getenv("ZHHUB_DEVICE_WG_INTERFACE"), TLSCert: os.Getenv("ZHHUB_DEVICE_TLS_CERT"), TLSKey: os.Getenv("ZHHUB_DEVICE_TLS_KEY")}
+	// No default profile: enabling the authority does not enable proxy bootstrap.
+	c.ProxyProfilePath = os.Getenv("ZHHUB_DEVICE_PROXY_PROFILE")
 	// Legacy APIs still mutate their configured interface. Until cutover installs
 	// a sole-writer boundary, the v2 listener is isolated on a different interface.
 	legacyInterface := strings.TrimSpace(env("ZHHUB_WG_INTERFACE", "wg0"))

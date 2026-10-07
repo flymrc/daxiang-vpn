@@ -9,16 +9,18 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+	dc "zongheng-vpn/shared/devicecontract"
 )
 
 type Config struct {
-	License    LicenseConfig    `json:"license,omitempty" yaml:"license,omitempty"`
-	Client     ClientConfig     `json:"client,omitempty" yaml:"client,omitempty"`
-	Hub        HubConfig        `json:"hub,omitempty" yaml:"hub,omitempty"`
-	Egress     EgressConfig     `json:"egress,omitempty" yaml:"egress,omitempty"`
-	LocalProxy LocalProxyConfig `json:"local_proxy,omitempty" yaml:"local_proxy,omitempty"`
-	WireGuard  WireGuardConfig  `json:"wireguard,omitempty" yaml:"wireguard,omitempty"`
-	Runtime    RuntimeConfig    `json:"runtime,omitempty" yaml:"runtime,omitempty"`
+	Authorization AuthorizationConfig `json:"authorization,omitempty,omitzero" yaml:"authorization,omitempty"`
+	License       LicenseConfig       `json:"license,omitempty" yaml:"license,omitempty"`
+	Client        ClientConfig        `json:"client,omitempty" yaml:"client,omitempty"`
+	Hub           HubConfig           `json:"hub,omitempty" yaml:"hub,omitempty"`
+	Egress        EgressConfig        `json:"egress,omitempty" yaml:"egress,omitempty"`
+	LocalProxy    LocalProxyConfig    `json:"local_proxy,omitempty" yaml:"local_proxy,omitempty"`
+	WireGuard     WireGuardConfig     `json:"wireguard,omitempty" yaml:"wireguard,omitempty"`
+	Runtime       RuntimeConfig       `json:"runtime,omitempty" yaml:"runtime,omitempty"`
 }
 
 type LicenseConfig struct {
@@ -49,9 +51,25 @@ type LocalProxyConfig struct {
 }
 
 type WireGuardConfig struct {
-	Address    string `json:"address,omitempty" yaml:"address,omitempty"`
-	PrivateKey string `json:"private_key,omitempty" yaml:"private_key,omitempty"`
-	PublicKey  string `json:"public_key,omitempty" yaml:"public_key,omitempty"`
+	Address    string   `json:"address,omitempty" yaml:"address,omitempty"`
+	PrivateKey string   `json:"private_key,omitempty" yaml:"private_key,omitempty"`
+	PublicKey  string   `json:"public_key,omitempty" yaml:"public_key,omitempty"`
+	AllowedIPs []string `json:"allowed_ips,omitempty" yaml:"allowed_ips,omitempty"`
+}
+
+// AuthorizationConfig is the normally TLS-verified v2 startup projection,
+// not an offline signature or a renewable data-plane session lease. It stays
+// in the private routing cache without either authentication or WG private key.
+type AuthorizationConfig struct {
+	Source             string               `json:"source" yaml:"source"`
+	DeviceID           string               `json:"device_id" yaml:"device_id"`
+	CredentialID       string               `json:"credential_id" yaml:"credential_id"`
+	DesiredGeneration  int64                `json:"desired_generation" yaml:"desired_generation"`
+	AppliedGeneration  int64                `json:"applied_generation" yaml:"applied_generation"`
+	Profile            dc.ProxyRouteProfile `json:"profile" yaml:"profile"`
+	ProfileSHA256      string               `json:"profile_sha256" yaml:"profile_sha256"`
+	IssuedUnixSeconds  int64                `json:"issued_unix_seconds" yaml:"issued_unix_seconds"`
+	ExpiresUnixSeconds int64                `json:"expires_unix_seconds" yaml:"expires_unix_seconds"`
 }
 
 type RuntimeConfig struct {
@@ -99,6 +117,12 @@ func (c *Config) ApplyDefaults() {
 }
 
 func (c Config) Validate() error {
+	if c.Authorization.Source != "" {
+		return c.validateDeviceProjection()
+	}
+	if !c.Authorization.empty() || len(c.WireGuard.AllowedIPs) != 0 {
+		return errors.New("客户端授权来源无效")
+	}
 	if strings.TrimSpace(c.License.Token) != "" && strings.TrimSpace(c.Egress.ProxyAddr) == "" {
 		return nil
 	}

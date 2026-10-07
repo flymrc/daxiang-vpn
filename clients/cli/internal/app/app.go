@@ -41,6 +41,9 @@ func Run(args []string) error {
 
 	ctx, err := paths.NewContext()
 	if err != nil {
+		if args[0] == "device" {
+			return reportDeviceSetupFailure(os.Stdout, args[1:])
+		}
 		if args[0] == "update" {
 			err := updateclient.ReportSetupFailure(os.Stdout)
 			if errors.Is(err, updateclient.ErrReported) {
@@ -80,6 +83,9 @@ func Run(args []string) error {
 	case "system-proxy":
 		return withOperationLock(ctx, func() error { return systemProxy(ctx, args[1:]) })
 	case "device":
+		if len(args) > 1 && args[1] == "start" {
+			return deviceStart(context.Background(), ctx, args[2:], os.Stdout)
+		}
 		err := deviceclient.Run(context.Background(), ctx, args[1:], os.Stdin, os.Stdout, os.Stderr)
 		if errors.Is(err, deviceclient.ErrReported) {
 			return ErrSilent
@@ -117,7 +123,7 @@ func printUsage() {
   %[1]s rotate-ip [--down-seconds <秒>] [--wait-seconds <秒>]
   %[1]s stop
   %[1]s system-proxy acquire|release|inspect|recover [--lease-id <ID>] [--json]
-  %[1]s device activate|apply|disable|revoke|status|rotate-credential|recover|cancel-pending [参数]
+  %[1]s device activate|bind|start|apply|disable|revoke|status|rotate-credential|recover|cancel-pending [参数]
   %[1]s update enroll|verify|policy-approve|inspect [参数]
   %[1]s logout
   %[1]s version
@@ -408,6 +414,9 @@ func importConfig(ctx paths.Context, source string) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
+	if cfg.Authorization.Source != "" {
+		return errors.New("device v2 配置须通过 device bind/start 获取，不能导入")
+	}
 	if err := ctx.EnsureDirs(); err != nil {
 		return err
 	}
@@ -445,6 +454,9 @@ func loadInstalledConfig(ctx paths.Context) (config.Config, error) {
 }
 
 func refreshInstalledConfig(ctx paths.Context, cached config.Config) (config.Config, error) {
+	if cached.Authorization.Source != "" {
+		return config.Config{}, errors.New("device v2 须使用 device start 重新验证启动授权")
+	}
 	if strings.TrimSpace(cached.License.Token) == "" {
 		return cached, cached.Validate()
 	}
@@ -1015,6 +1027,9 @@ func rotateIP(ctx paths.Context, args []string) error {
 	cfg, err := loadInstalledConfig(ctx)
 	if err != nil {
 		return reportErr(jsonOut, err)
+	}
+	if cfg.Authorization.Source != "" {
+		return reportErr(jsonOut, errors.New("device v2 暂不支持出口控制操作"))
 	}
 	opts, err := parseRotateIPOptions(args, cfg)
 	if err != nil {

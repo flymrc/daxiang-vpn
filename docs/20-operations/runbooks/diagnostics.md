@@ -391,7 +391,7 @@ ssh -i /root/.ssh/zhandroid_control_hub -p 2022 root@10.66.0.101 'echo control-e
 ssh -i /root/.ssh/zhandroid_control_hub -p 2022 root@10.66.0.101 'sh -n /data/adb/zhandroid/rotate-ip.sh && echo rotate-script-syntax-ok'
 ```
 
-若 Hub 日志是 `ssh: connect to host 10.66.0.101 port 2022: Connection timed out`,优先按 Android 本机检查 `tun0 / 10.66.0.101` 和 `/data/local/tmp/zhandroid-control.log`。日志中连续出现 `control deferred; 10.66.0.101 not present yet` 代表 WireGuard 控制隧道未建立,此时不是 `rotate-ip.sh` 本身坏了,而是 Hub 根本连不到手机控制面。
+旧部署可能记录原始 `ssh: connect to host 10.66.0.101 port 2022: Connection timed out`。第三波本地实现将 SSH 路径、参数和 stderr 收敛为固定 `control_failed`，不能从这个统一错误推断“密钥缺失”或“网络超时”。先核对实际 binary 的版本，再做上面的只读连通性/脚本语法检查；不要为了补错误细节重新触发一次换 IP。Android 日志中连续出现 `control deferred; 10.66.0.101 not present yet` 表示控制隧道地址尚未建立，需结合手机当前 `tun0 / 10.66.0.101` 与 `/data/local/tmp/zhandroid-control.log` 核查。
 
 ### 3.5 Android 本机检查
 
@@ -452,8 +452,8 @@ tail -n 50 /usr/local/var/log/zhvpn/*.log
 | Android 日志大量 `message too long` | Android WireGuard/sing-box 发包路径仍需优化 |
 | v4-only 站点经代理卡 15s 后 TLS 失败 | Rakuten IPv4/CGNAT/F5 侧故障;这是手机 IPv4 出口真实异常,不要改由 Hub 直拨 |
 | v4-only 站点出口 IP 变成 `36.50.84.68` | 异常:Hub 不应作为出口兜底;检查 `zhreverse` 是否已部署忽略 `v4_only_direct` 的版本 |
-| 一键换 IP 报「Hub 未能触发 Android 控制面换 IP」 | zhhub 找不到控制面私钥;查 `journalctl -u zhhub.service | grep rotate-ip` 的 `control key unavailable` 路径,核对 `ZHHUB_ANDROID_CONTROL_KEY` 指向真实存在的 `/root/.ssh/zhandroid_control_hub` |
-| 一键换 IP 日志为 `ssh: connect to host 10.66.0.101 port 2022: Connection timed out` | Android 控制隧道未在线;查 Hub `ping/nc 10.66.0.101:2022`、手机 `ip addr show tun0`、`zhandroid-control.log` 是否连续 `control deferred` |
+| 一键换 IP 报「Hub 未能触发 Android 控制面换 IP」或固定 `control_failed` | 不能由这个错误唯一定位原因；只读核对控制密钥文件存在/权限（不打印内容）、Hub `ping/nc`、手机地址和脚本语法。第三波本地版本不再输出私钥路径或 SSH 原始 stderr |
+| 旧部署日志为 `ssh: connect to host 10.66.0.101 port 2022: Connection timed out` | 优先核查 Android 控制隧道当前是否在线；查 Hub `ping/nc 10.66.0.101:2022`、手机 `ip addr show tun0`、`zhandroid-control.log`。不要把旧日志格式作为新版本必须输出的合同 |
 | 客户端提示授权码正在其他网络使用 | 同一 token 正在另一个公网来源 bootstrap，等待约 30 秒或先断开另一台设备 |
 | `ip_forward = 0` | Hub 没开转发，流量到 Hub 就断 |
 
